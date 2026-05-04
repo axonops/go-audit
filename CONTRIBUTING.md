@@ -275,6 +275,62 @@ order of preference:
 (`scripts/tool-versions.txt`). For a local-only install, run
 `make install-gremlins`.
 
+#### Reading the CI workflow report (#524)
+
+Mutation testing runs in CI in three modes (workflow files at
+`.github/workflows/`):
+
+- **Per PR** (`ci.yml`) — only the targets whose source or test file
+  changed in the PR (or all six if `.gremlins.yaml` changed). Each
+  matrix shard uploads an artefact named
+  `mutation-test-report-<target>-<sha>` where `<target>` matches the
+  make-target stem with underscores (e.g.
+  `mutation-test-report-validate_fields-abc1234`); 7-day retention.
+- **Weekly** (`mutation-test.yml`, Sundays 04:00 UTC) — full suite,
+  uploads `mutation-test-report-all-<sha>`; 90-day retention. Also
+  triggerable manually via `workflow_dispatch` with optional
+  per-target scope (single-target dispatches upload
+  `mutation-test-report-<target>-<sha>` instead).
+- **On release tag** (`release.yml`, workflow_dispatch path only) —
+  full suite as a release gate. The Actions artefact name is
+  `mutation-test-report-release-<version>` (90-day retention); the
+  same report is then attached to the published GitHub Release page
+  as the asset `mutation-test-report.txt` (permanent on the release).
+
+To download a CI artefact:
+
+```bash
+# List recent runs — note the RUN_ID in the first column
+gh run list --workflow=mutation-test.yml --limit 5
+
+# Resolve the SHA for that run, then download by exact artefact name
+SHA=$(gh run view <RUN_ID> --json headSha --jq .headSha)
+gh run download <RUN_ID> --name "mutation-test-report-all-${SHA}"
+```
+
+The artefact is the captured stdout of `make mutation-test`.
+`` `LIVED <operator> at <file>:<line>:<col>` `` lines identify
+surviving mutants; cross-reference each against `MUTATION_TESTING.md`
+(repo root) to determine whether it's a genuine regression (kill it
+with a new test) or matches an existing equivalent-mutant exemption.
+
+To verify the workflow itself is detecting surviving mutants — e.g.
+after a gremlins version bump or a `.gremlins.yaml` change — apply a
+deliberately-weak assertion to one of the target files' tests
+(`assert.NotNil(...)` instead of an exact comparison), trigger
+`mutation-test.yml` via `workflow_dispatch`, and confirm the report
+contains LIVED entries.
+
+> **Warning:** the weak assertion MUST NOT be committed. `make check`
+> does not detect weakened assertions — keep the change in a local
+> `git stash` or a throwaway `git worktree`, and revert before
+> opening a PR.
+
+A `workflow_dispatch` run fired while the Sunday scheduled run is
+still in flight waits for the scheduled run to finish before starting
+(`cancel-in-progress: false`); expect up to ~3 hours before results
+are available.
+
 ## Code Standards
 
 The [Google Go Style Guide](https://google.github.io/styleguide/go/)

@@ -1,0 +1,92 @@
+name: Mutation Test
+
+# Standalone full-suite mutation testing for the six security-critical
+# files in the root audit package: validate_fields.go, validate_taxonomy.go,
+# hmac.go, filter.go, format_cef.go, sensitivity.go.
+#
+# Triggers:
+#   - workflow_dispatch  — ad-hoc, optionally scoped to a single target
+#   - schedule (weekly)  — Sunday 04:00 UTC; report lands before
+#                          Monday morning EU workday review.
+#
+# PR-scope mutation testing (per-file targets matching files changed
+# in the PR) is wired into ci.yml; this workflow runs the FULL suite
+# and uploads the report as a 90-day artefact so quarterly trend
+# comparison is possible. Release-tag mutation testing runs from
+# release.yml and attaches the report to the GitHub Release.
+#
+# If wall-time exceeds budget on ubuntu-latest runners, switch
+# `runs-on:` to a self-hosted runner per #524 AC#3.
+
+on:
+  schedule:
+    - cron: '0 4 * * 0'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: |
+          Mutation target to run. `all` runs the full suite (~90-150 min
+          on ubuntu-latest). Single-target shortcuts cut wall time to
+          ~20-30 min for ad-hoc verification.
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - 'all'
+          - 'validate_fields'
+          - 'validate_taxonomy'
+          - 'hmac'
+          - 'filter'
+          - 'format_cef'
+          - 'sensitivity'
+
+permissions:
+  contents: read
+
+# Scheduled and dispatched runs are allowed to queue — never cancel
+# in-flight mutation work since the per-mutant test invocations are
+# expensive to redo. A maintainer's manual dispatch during a Sunday
+# scheduled run will queue behind it (~3 hour worst case).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  mutation-test:
+    name: Mutation test (${{ inputs.target || 'all' }})
+    runs-on: ubuntu-latest
+    # 4-hour budget covers the full suite (60 min local, 90-150 min on
+    # 4-core ubuntu-latest) with headroom for cold caches and tool install.
+    timeout-minutes: 240
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up audit workspace
+        uses: ./.github/actions/setup-audit
+        with:
+          install-tools: 'true'
+
+      - name: Run mutation test
+        env:
+          TARGET: ${{ inputs.target || 'all' }}
+        run: |
+          set -o pipefail
+          if [ "$TARGET" = "all" ]; then
+            make mutation-test 2>&1 | tee mutation-test-report.txt
+          else
+            # Underscore -> hyphen in target stem to match Makefile
+            # target names (mutation-test-format-cef, etc.).
+            NAME=$(echo "$TARGET" | tr '_' '-')
+            make "mutation-test-${NAME}" 2>&1 | tee mutation-test-report.txt
+          fi
+
+      - name: Upload mutation-test report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mutation-test-report-${{ inputs.target || 'all' }}-${{ github.sha }}
+          path: mutation-test-report.txt
+          retention-days: 90
