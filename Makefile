@@ -1,6 +1,6 @@
 .PHONY: test test-all test-core test-file test-syslog test-webhook test-loki test-outputconfig test-audit-gen test-audit-validate \
        test-secrets test-secrets-env test-secrets-file test-secrets-openbao test-secrets-vault \
-       test-integration test-bdd test-bdd-core test-bdd-outputconfig test-bdd-file test-bdd-syslog test-bdd-webhook test-bdd-loki test-bdd-fanout \
+       test-integration test-bdd test-bdd-core test-bdd-outputconfig test-bdd-file test-bdd-file-os test-bdd-syslog test-bdd-webhook test-bdd-loki test-bdd-fanout \
        test-bdd-verify \
        test-examples \
        lint lint-all lint-core lint-file lint-syslog lint-webhook lint-loki lint-outputconfig lint-audit-gen lint-audit-validate lint-capstone \
@@ -18,6 +18,7 @@
        mutation-test-hmac mutation-test-filter mutation-test-format-cef mutation-test-sensitivity \
        test-infra-up test-infra-down test-infra-logs \
        test-infra-syslog-up test-infra-syslog-down \
+       test-infra-file-os-up test-infra-file-os-down \
        test-infra-webhook-up test-infra-webhook-down \
        test-infra-loki-up test-infra-loki-down \
        test-infra-openbao-up test-infra-openbao-down \
@@ -232,7 +233,12 @@ test-bdd-outputconfig:
 	cd outputconfig && go test -race -v -count=1 ./tests/bdd/...
 
 test-bdd-file:
-	BDD_TAGS=@file go test -race -v -count=1 -tags=integration ./tests/bdd/...
+	BDD_TAGS="@file && ~@docker" go test -race -v -count=1 -tags=integration ./tests/bdd/...
+
+# OS-failure-mode scenarios for the file output (#748). Requires the
+# file-os tmpfs container — see `test-infra-file-os-up`.
+test-bdd-file-os:
+	BDD_TAGS="@file && @docker" go test -race -v -count=1 -tags=integration ./tests/bdd/...
 
 test-bdd-syslog:
 	BDD_TAGS=@syslog go test -race -v -count=1 -tags=integration ./tests/bdd/...
@@ -949,6 +955,17 @@ test-infra-syslog-up:
 test-infra-syslog-down:
 	docker compose -f $(COMPOSE_DIR)/docker-compose.syslog.yml down -v
 	docker network rm audit-test 2>/dev/null || true
+
+# File-output OS-failure-mode harness (#748). The container idles
+# with a size-limited tmpfs at /audit-test-tmpfs. The
+# test-bdd-file-os target shells the file-enospc-runner inside the
+# container via `docker compose exec` to drive ENOSPC reproduction.
+test-infra-file-os-up: workspace
+	docker compose -f $(COMPOSE_DIR)/docker-compose.file-os.yml up -d --wait
+	@echo "File-output OS-failure-mode infrastructure is ready."
+
+test-infra-file-os-down:
+	docker compose -f $(COMPOSE_DIR)/docker-compose.file-os.yml down -v
 
 test-infra-webhook-up:
 	docker network create audit-test 2>/dev/null || true

@@ -486,6 +486,36 @@ and [`loki_output.feature`](../tests/bdd/features/loki_output.feature)
 | **Three rapid syslog-ng restarts** | Reconnect count stays under the 30-attempt storm threshold; bounded backoff. |
 | **Vault / OpenBao secrets endpoint with expired TLS cert** | `outputconfig.Load` fails with an error containing `expired`. The `ref+vault://` and `ref+openbao://` resolution paths refuse to connect; no secret value is returned. See `outputconfig/tests/bdd/features/secret_resolution.feature` scenarios 23–24 (#552 AC#2). |
 
+### Tested file-output OS-level failure modes (#748)
+
+The file output's `writeBatch` calls `OutputMetrics.RecordError` when
+the underlying filesystem returns a non-retryable errno. Three OS-level
+scenarios in
+[`tests/bdd/features/file_output.feature`](../tests/bdd/features/file_output.feature)
+pin the behaviour:
+
+| Failure mode | Test mechanism | Scenario |
+|---|---|---|
+| **Permission denied after rotation** (EACCES) | In-process: configure `MaxSizeMB=1`, write enough events to trigger one rotation, `chmod 0o555` the audit log directory, write another batch large enough to trigger a second rotation. The rotate path's `os.Rename` fails because the directory's write bit is required to add/remove entries; `RecordError` fires for each failed batch. | "File output records RecordError when target directory becomes read-only" |
+| **Open-file-limit exhaustion on rotation** (EMFILE) | Subprocess fork: the BDD step shells out to `tests/bdd/cmd/file-emfile-runner`, which exhausts its fd budget with `/dev/null` opens, calls `syscall.Setrlimit(RLIMIT_NOFILE)` below the live count, then triggers an audit. The lazy `openNew` fails with `EMFILE`; subprocess prints `EMFILE_OBSERVED` and exits 0. | "File output records RecordError when fd limit is exhausted on rotation" (`@linux`) |
+| **Disk full** (ENOSPC) | Privileged Docker harness: `tests/bdd/docker-compose.file-os.yml` mounts a 256 KiB tmpfs at `/audit-test-tmpfs`. The BDD step runs `tests/bdd/cmd/file-enospc-runner` inside the container via `docker compose exec`; the runner writes events until the tmpfs fills and the kernel returns `ENOSPC`. Stdout marker `ENOSPC_OBSERVED` + exit 0 reports success. | "File output records RecordError on ENOSPC" (`@linux @docker`) |
+
+To run the OS-level scenarios locally:
+
+```bash
+# In-process scenario (no Docker needed)
+make test-bdd-file
+
+# Docker harness for the ENOSPC scenario
+make test-infra-file-os-up
+make test-bdd-file-os
+make test-infra-file-os-down
+```
+
+The MockFileMetrics extension that captures these errors lives at
+[`tests/bdd/steps/file_steps.go`](../tests/bdd/steps/file_steps.go)
+(`MockFileMetrics.RecordError` + `ErrorCount`).
+
 ## 🔐 Secrets Configuration
 
 The optional `secrets:` section configures secret providers

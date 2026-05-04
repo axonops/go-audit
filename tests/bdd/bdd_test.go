@@ -24,6 +24,7 @@ package bdd_test
 
 import (
 	"os"
+	"runtime"
 	"testing"
 
 	"github.com/cucumber/godog"
@@ -64,6 +65,21 @@ func TestFeatures(t *testing.T) {
 	//
 	// When unset, all scenarios run (original behaviour).
 	tags := os.Getenv("BDD_TAGS")
+
+	// Auto-exclude @linux scenarios on non-Linux runners. The
+	// file-output OS-failure scenarios (#748) use Linux-specific
+	// primitives (RLIMIT_NOFILE, /proc/self/fd, /dev/full); under
+	// `Strict: true` an unfiltered run on macOS/Windows would
+	// surface them as failures. The exclusion is platform-aware
+	// rather than scenario-defaulted so a Linux runner without
+	// BDD_TAGS still exercises every scenario.
+	if runtime.GOOS != "linux" {
+		if tags == "" {
+			tags = "~@linux"
+		} else {
+			tags = "(" + tags + ") && ~@linux"
+		}
+	}
 
 	opts := godog.Options{
 		Output:      colors.Colored(os.Stdout),

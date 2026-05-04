@@ -426,12 +426,19 @@ jobs:
             infra-up: ""
             infra-down: ""
             timeout: 5
-          # File output: no Docker required
+          # File output: no Docker required (excludes @docker scenarios)
           - suite: file
             target: test-bdd-file
             infra-up: ""
             infra-down: ""
             timeout: 5
+          # File output OS-level failure modes (#748): privileged
+          # tmpfs container for ENOSPC reproduction.
+          - suite: file-os
+            target: test-bdd-file-os
+            infra-up: test-infra-file-os-up
+            infra-down: test-infra-file-os-down
+            timeout: 8
           # Syslog: needs syslog-ng container
           - suite: syslog
             target: test-bdd-syslog
