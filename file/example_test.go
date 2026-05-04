@@ -32,11 +32,11 @@ func ExampleNew() {
 	defer func() { _ = os.RemoveAll(dir) }()
 
 	out, err := file.New(&file.Config{
-		Path:        filepath.Join(dir, "audit.log"),
-		MaxSizeMB:   100,
-		MaxBackups:  5,
-		MaxAgeDays:  30,
-		Permissions: "0600",
+		Path:       filepath.Join(dir, "audit.log"),
+		MaxSizeMB:  100,
+		MaxBackups: 5,
+		MaxAgeDays: 30,
+		// GroupReadable defaults to false (mode 0o600).
 	})
 	if err != nil {
 		fmt.Println("create error:", err)

@@ -89,7 +89,7 @@ outputs:
       max_size_mb: 100             # rotate at this size (default: 100)
       max_backups: 5               # keep this many rotated files (default: 5)
       max_age_days: 30             # delete files older than this (default: 30)
-      permissions: "0600"          # file permissions (default: "0600")
+      group_readable: false        # true → mode 0o640 (default false → 0o600)
       compress: true               # gzip rotated files (default: true)
     route:
       exclude_categories:
@@ -694,7 +694,7 @@ See [Sensitivity Labels](sensitivity-labels.md) for details.
 | `max_size_mb` | `100` | Rotate when file reaches this size in MB. Maximum: 10,240 (10 GB). |
 | `max_backups` | `5` | Number of rotated files to keep. Maximum: 100. |
 | `max_age_days` | `30` | Delete rotated files older than this. Maximum: 365. |
-| `permissions` | `"0600"` | File permissions (octal string, must be quoted). |
+| `group_readable` | `false` | When `true`, mode is `0o640` (owner + group read). Default `false` is `0o600` (owner only). World-readable and group-writable modes are unsupported (#436). |
 | `compress` | `true` | Gzip compress rotated files. |
 | `buffer_size` | `10000` | Internal async buffer capacity. Maximum: 100,000. |
 

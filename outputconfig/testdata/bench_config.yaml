@@ -28,7 +28,6 @@ outputs:
     type: file
     file:
       path: "${AUDIT_TEST_DIR}/audit-archive.log"
-      permissions: "0600"
       max_size_mb: 100
       max_backups: 5
       max_age_days: 90
@@ -47,9 +46,8 @@ outputs:
     file:
       path: "${AUDIT_TEST_DIR}/security.log"
       # Group-readable so operators in the audit group can tail
-      # this file. Exercises the permission-warning code path in
-      # file.New; silenced via WithDiagnosticLogger in the bench.
-      permissions: "0640"
+      # this file (mode 0o640).
+      group_readable: true
       max_size_mb: 50
       max_backups: 3
     route:
@@ -65,7 +63,6 @@ outputs:
     type: file
     file:
       path: "${AUDIT_TEST_DIR}/writes.log"
-      permissions: "0600"
       max_size_mb: 200
     route:
       include_categories:

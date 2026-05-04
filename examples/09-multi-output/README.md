@@ -43,7 +43,6 @@ outputs:
     type: file
     file:
       path: "./audit.log"
-      permissions: "0600"
 
   debug_file:
     enabled: false

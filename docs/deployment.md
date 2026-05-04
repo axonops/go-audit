@@ -175,7 +175,9 @@ data:
         type: file
         file:
           path: /var/log/myservice/audit.log
-          permissions: "0600"
+          # Default mode is 0o600 (owner only). Set group_readable:
+          # true for 0o640 when a SIEM forwarder runs in the same
+          # group.
           max_size_mb: 100
           max_backups: 5
         hmac:

@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -40,9 +41,10 @@ func registerFileGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^an auditor with file output at a temporary path$`, func() error {
 		return createFileAuditor(tc, file.Config{})
 	})
-	ctx.Step(`^an auditor with file output with permissions "([^"]*)"$`, func(perms string) error {
-		return createFileAuditor(tc, file.Config{Permissions: perms})
+	ctx.Step(`^an auditor with file output that is group-readable$`, func() error {
+		return createFileAuditor(tc, file.Config{GroupReadable: true})
 	})
+	registerFilePermsCheckSteps(ctx, tc)
 	ctx.Step(`^an auditor with file output configured for (\d+) MB max size$`, func(mb int) error {
 		return createFileAuditor(tc, file.Config{MaxSizeMB: mb})
 	})
@@ -103,7 +105,99 @@ func registerFileGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		}
 	})
 	ctx.Step(`^an auditor with no outputs$`, func() error { return createNoOutputAuditor(tc) })
+}
 
+// registerFilePermsCheckSteps registers the BDD step set for #436's
+// existing-file permission validation: pre-create a file with a
+// specific mode, then construct a file output and observe whether
+// New rejects (broader) or accepts (narrower or equal).
+func registerFilePermsCheckSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^an existing audit log file with permissions (\d+) at the configured path$`, func(perm int) error {
+		return preCreateFileWithPerms(tc, perm)
+	})
+
+	ctx.Step(`^I try to construct a file output at that path$`, func() error {
+		return tryConstructFileAtCapturedPath(tc, false)
+	})
+
+	ctx.Step(`^I construct a group-readable file output at that path$`, func() error {
+		if err := tryConstructFileAtCapturedPath(tc, true); err != nil {
+			return err
+		}
+		if tc.LastErr != nil {
+			return fmt.Errorf("group-readable construction failed: %w", tc.LastErr)
+		}
+		return nil
+	})
+
+	ctx.Step(`^the file output construction should succeed$`, func() error {
+		if tc.LastErr != nil {
+			return fmt.Errorf("expected success, got error: %w", tc.LastErr)
+		}
+		return nil
+	})
+
+	ctx.Step(`^the error should wrap audit\.ErrConfigInvalid$`, func() error {
+		return assertWrapsErrConfigInvalid(tc.LastErr)
+	})
+
+	ctx.Step(`^the error message should contain "([^"]*)"$`, func(needle string) error {
+		return assertErrorMessageContains(tc.LastErr, needle)
+	})
+}
+
+// preCreateFileWithPerms creates a file at the scenario's configured
+// path with the requested mode (interpreted from Gherkin literal
+// digits as octal — 0600, 0640, 0644).
+func preCreateFileWithPerms(tc *AuditTestContext, perm int) error {
+	dir, err := tc.EnsureFileDir()
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(dir, "audit.log")
+	tc.FilePaths["default"] = path
+	mode, parseErr := strconv.ParseUint(fmt.Sprintf("%d", perm), 8, 32)
+	if parseErr != nil {
+		return fmt.Errorf("parse perm %d as octal: %w", perm, parseErr)
+	}
+	if writeErr := os.WriteFile(path, []byte("pre-existing\n"), os.FileMode(mode)); writeErr != nil {
+		return fmt.Errorf("write existing file: %w", writeErr)
+	}
+	// WriteFile may apply umask; chmod explicitly to land the requested mode.
+	if chmodErr := os.Chmod(path, os.FileMode(mode)); chmodErr != nil {
+		return fmt.Errorf("chmod existing file: %w", chmodErr)
+	}
+	return nil
+}
+
+func tryConstructFileAtCapturedPath(tc *AuditTestContext, groupReadable bool) error {
+	path := tc.FilePaths["default"]
+	out, err := file.New(&file.Config{Path: path, GroupReadable: groupReadable})
+	if out != nil {
+		tc.AddCleanup(func() { _ = out.Close() })
+	}
+	tc.LastErr = err
+	return nil
+}
+
+func assertWrapsErrConfigInvalid(err error) error {
+	if err == nil {
+		return fmt.Errorf("no error captured")
+	}
+	if !errors.Is(err, audit.ErrConfigInvalid) {
+		return fmt.Errorf("expected ErrConfigInvalid wrap, got: %w", err)
+	}
+	return nil
+}
+
+func assertErrorMessageContains(err error, needle string) error {
+	if err == nil {
+		return fmt.Errorf("no error captured")
+	}
+	if !strings.Contains(err.Error(), needle) {
+		return fmt.Errorf("expected error to contain %q, got: %s", needle, err.Error())
+	}
+	return nil
 }
 
 func registerFileWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
@@ -132,19 +226,6 @@ func registerFileWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		tc.LastErr = err
 		return nil
 	})
-	ctx.Step(`^I try to create a file output with permissions "([^"]*)"$`, func(perms string) error {
-		dir, dirErr := tc.EnsureFileDir()
-		if dirErr != nil {
-			return dirErr
-		}
-		out, err := file.New(&file.Config{Path: filepath.Join(dir, "test.log"), Permissions: perms})
-		if out != nil {
-			tc.AddCleanup(func() { _ = out.Close() })
-		}
-		tc.LastErr = err
-		return nil
-	})
-
 }
 
 func registerFileThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {

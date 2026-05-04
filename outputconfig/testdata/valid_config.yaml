@@ -8,7 +8,6 @@ outputs:
     type: file
     file:
       path: "${AUDIT_TEST_DIR}/audit.log"
-      permissions: "0600"
     route:
       include_categories:
         - write

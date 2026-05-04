@@ -15,6 +15,68 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Breaking Changes
 
+- **File output permissions restricted to `0o600` (default) or `0o640`
+  (group-readable)** (#436). The flexible `Permissions string`
+  Config field is removed; the YAML `permissions:` key is removed.
+  Replaced by `Config.GroupReadable bool` (YAML: `group_readable:
+  true`). Audit logs are not regular application logs — they contain
+  compliance-critical data subject to SOX/HIPAA/GDPR
+  tamper-resistance — and the prior `0–0o777` flexibility allowed a
+  misconfig to publish audit data world-readable. Two modes are
+  supported: `0o600` (owner only; the strictest default) and
+  `0o640` (owner read/write + group read; for SIEM forwarders
+  running as a separate user in the file's group). World-readable,
+  world-writable, and group-writable modes are unsupported and
+  reject at startup.
+
+  At construction, [`file.New`] now also rejects an existing audit
+  log at the configured path whose on-disk permissions are broader
+  than the target mode, whose setuid/setgid/sticky bits are set, or
+  whose hardlink count exceeds 1 — all are tamper indicators. Errors
+  wrap [`audit.ErrConfigInvalid`].
+
+  **Before**
+  ```yaml
+  outputs:
+    audit_log:
+      type: file
+      config:
+        path: /var/log/audit/events.log
+        permissions: "0600"   # also accepted "0644", "0666", "0777" — silent compliance hazard
+  ```
+
+  **After**
+  ```yaml
+  outputs:
+    audit_log:
+      type: file
+      config:
+        path: /var/log/audit/events.log
+        # Default 0o600 — no field needed.
+  ```
+
+  ```yaml
+  outputs:
+    siem_archive:
+      type: file
+      config:
+        path: /var/log/audit/siem.log
+        group_readable: true   # mode 0o640 for the SIEM forwarder
+  ```
+
+  **Migration**
+
+  | Old YAML | New YAML |
+  |---|---|
+  | `permissions: "0600"` | _omit; default is 0o600_ |
+  | `permissions: "0640"` | `group_readable: true` |
+  | `permissions: "0644"` (or any broader) | unsupported — fix the deployment to `0o600` or `0o640` |
+
+  Operators with existing audit logs at broader modes must `chmod` them
+  before the next startup or the library will refuse to open them.
+  `outputconfig.Load` produces an `unknown field "permissions"` decode
+  error on the legacy key, naming the rejected field for the operator.
+
 - **Collapse output setter interfaces into `audit.FrameworkContext`** (#696).
   The `OutputFactory` signature drops `coreMetrics` and `logger`
   positional parameters and gains all construction-time data via the

@@ -33,7 +33,8 @@ func TestFileFactory_RegisteredByInit(t *testing.T) {
 func TestFileFactory_ValidConfig(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
-	yaml := []byte("path: " + path + "\npermissions: \"0600\"\n")
+	// Default group_readable: false → mode 0o600 (owner only).
+	yaml := []byte("path: " + path + "\n")
 
 	factory := audit.LookupOutputFactory("file")
 	require.NotNil(t, factory)
@@ -44,6 +45,48 @@ func TestFileFactory_ValidConfig(t *testing.T) {
 
 	assert.Equal(t, "compliance_file", out.Name(), "name should be the YAML-configured name")
 	assert.NoError(t, out.Write([]byte(`{"test":true}`+"\n")))
+}
+
+func TestFileFactory_GroupReadable_True_AppliesMode0640(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+	yaml := []byte("path: " + path + "\ngroup_readable: true\n")
+
+	factory := audit.LookupOutputFactory("file")
+	require.NotNil(t, factory)
+
+	out, err := factory("siem_archive", yaml, audit.FrameworkContext{})
+	require.NoError(t, err)
+	require.NoError(t, out.Write([]byte(`{"x":1}`+"\n")))
+	require.NoError(t, out.Close())
+}
+
+// TestFileFactory_RejectsLegacyPermissionsField verifies that the
+// pre-#436 `permissions:` YAML key produces a clear "unknown field"
+// decode error rather than silently widening file mode.
+func TestFileFactory_RejectsLegacyPermissionsField(t *testing.T) {
+	yaml := []byte(`path: /tmp/x.log
+permissions: "0600"
+`)
+	factory := audit.LookupOutputFactory("file")
+	require.NotNil(t, factory)
+	_, err := factory("legacy", yaml, audit.FrameworkContext{})
+	require.Error(t, err)
+	// Decoder produces an "unknown field" error naming the rejected key.
+	assert.Contains(t, err.Error(), "permissions",
+		"error must name the rejected field so operators know to migrate")
+}
+
+// TestFileFactory_GroupReadable_NotBool_Rejected verifies that a
+// non-bool value for group_readable is rejected by the YAML decoder.
+func TestFileFactory_GroupReadable_NotBool_Rejected(t *testing.T) {
+	yaml := []byte(`path: /tmp/x.log
+group_readable: "yes"
+`)
+	factory := audit.LookupOutputFactory("file")
+	require.NotNil(t, factory)
+	_, err := factory("bad", yaml, audit.FrameworkContext{})
+	require.Error(t, err, "string value for bool field must be rejected")
 }
 
 func TestFileFactory_InvalidConfig_ReturnsError(t *testing.T) {
