@@ -264,6 +264,59 @@ jobs:
           if-no-files-found: ignore
 
   # =====================================================================
+  # Job: mutation-test-release (#524)
+  # =====================================================================
+  # Full mutation-test suite as a release gate. Runs after preflight
+  # alongside the other workflow_dispatch-only gates (ci, fuzz-long,
+  # bench-advisory, api-check) and gates `update-deps-pr` (the release
+  # PR cannot land if mutation-test efficacy is below threshold).
+  #
+  # workflow_dispatch ONLY: the push-tag recovery path skips this job
+  # under the assumption that the gates already passed on the original
+  # workflow_dispatch run that aborted before tag publication. Adding
+  # this 4-hour gate to the recovery path would block legitimate
+  # tag-republish operations behind a re-run of work that already
+  # passed — unacceptable for incident-recovery flows.
+  #
+  # The report artefact is also re-attached to the published GitHub
+  # Release by the `mutation-test-attach` job after goreleaser
+  # succeeds (per #524 AC#3).
+  # =====================================================================
+  mutation-test-release:
+    name: Mutation Test (release gate)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    # 4-hour budget — full suite is 60 min on local Ryzen 9, expected
+    # 90-150 min on 4-core ubuntu-latest with headroom for cold caches.
+    timeout-minutes: 240
+    needs: [preflight]
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up audit workspace
+        uses: ./.github/actions/setup-audit
+        with:
+          install-tools: 'true'
+
+      - name: Run full mutation-test suite
+        run: |
+          set -o pipefail
+          make mutation-test 2>&1 | tee mutation-test-report.txt
+
+      - name: Upload mutation-test report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mutation-test-report-release-${{ needs.preflight.outputs.version }}
+          path: mutation-test-report.txt
+          retention-days: 90
+
+  # =====================================================================
   # Job: api-check (workflow_dispatch only)
   # =====================================================================
   # Runs `make api-check` — gorelease per published module against
@@ -331,7 +384,7 @@ jobs:
     name: Open release PR
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [preflight, ci, fuzz-long, api-check]
+    needs: [preflight, ci, fuzz-long, api-check, mutation-test-release]
     if: github.event_name == 'workflow_dispatch'
     permissions:
       contents: read  # job-level — App token grants the writes
@@ -688,6 +741,41 @@ jobs:
   # Triggers proxy.golang.org indexing and runs a smoke test
   # (go get + compile + install) against the freshly tagged versions.
   # =====================================================================
+  # =====================================================================
+  # Job: mutation-test-attach (#524)
+  # =====================================================================
+  # Downloads the mutation-test report artefact uploaded by the
+  # mutation-test-release gate job and attaches it to the published
+  # GitHub Release. The release was already gated on a passing
+  # mutation-test run; this step makes the report permanently
+  # discoverable from the release page.
+  # =====================================================================
+  mutation-test-attach:
+    name: Attach Mutation Report to Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [preflight, goreleaser, mutation-test-release]
+    permissions:
+      contents: write
+    # workflow_dispatch ONLY: matches mutation-test-release gating —
+    # the push-tag recovery path does not produce a mutation-test
+    # artefact to attach.
+    if: github.event_name == 'workflow_dispatch'
+    env:
+      PUBLISH_VERSION: ${{ needs.preflight.outputs.version }}
+    steps:
+      - name: Download mutation-test report
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: mutation-test-report-release-${{ needs.preflight.outputs.version }}
+
+      - name: Attach report to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release upload "$PUBLISH_VERSION" mutation-test-report.txt --clobber --repo "$GITHUB_REPOSITORY"
+
   verify:
     name: Verify Release
     runs-on: ubuntu-latest
@@ -803,10 +891,12 @@ jobs:
       - fuzz-long
       - bench-advisory
       - api-check
+      - mutation-test-release
       - update-deps-pr
       - wait-for-pr-merge
       - tag-all
       - goreleaser
+      - mutation-test-attach
       - verify
       - invariants
     if: always()
@@ -831,10 +921,12 @@ jobs:
             echo "| Long Fuzz | ${{ needs.fuzz-long.result }} |"
             echo "| Bench (advisory) | ${{ needs.bench-advisory.result }} |"
             echo "| API Check | ${{ needs.api-check.result }} |"
+            echo "| Mutation Test (gate) | ${{ needs.mutation-test-release.result }} |"
             echo "| Open release PR | ${{ needs.update-deps-pr.result }} |"
             echo "| Wait for merge | ${{ needs.wait-for-pr-merge.result }} |"
             echo "| Tag all modules | ${{ needs.tag-all.result }} |"
             echo "| GoReleaser | ${{ needs.goreleaser.result }} |"
+            echo "| Mutation Report Attached | ${{ needs.mutation-test-attach.result }} |"
             echo "| Verify | ${{ needs.verify.result }} |"
             echo "| Invariants | ${{ needs.invariants.result }} |"
             echo

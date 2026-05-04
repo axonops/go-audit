@@ -41,37 +41,58 @@ jobs:
     timeout-minutes: 2
     outputs:
       code: ${{ steps.filter.outputs.code }}
+      mutation-targets: ${{ steps.mutation.outputs.targets }}
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
 
-      - name: Check for code changes
-        id: filter
+      # Resolve the diff base shared by both filter steps below.
+      # Sets BASE in $GITHUB_ENV plus a sentinel BASE_RESOLVED that
+      # downstream steps check before running their own diff.
+      #   BASE_RESOLVED=skip       — workflow_dispatch / workflow_call
+      #                              (each consumer decides what skip
+      #                              means: full-CI for `filter`, empty
+      #                              targets for `mutation`).
+      #   BASE_RESOLVED=force-full — base unreachable / first push;
+      #                              run everything.
+      #   BASE_RESOLVED=ok         — BASE is set to a usable commit SHA.
+      - name: Resolve diff base
+        id: base
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "workflow_call" ]; then
-            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "BASE_RESOLVED=skip" >> "$GITHUB_ENV"
             exit 0
           fi
 
-          # For PRs, diff against the base branch. For pushes, diff against parent.
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             BASE="${{ github.event.pull_request.base.sha }}"
           else
             BASE="${{ github.event.before }}"
           fi
 
-          # If BASE is empty or all zeros (new branch), run everything.
           if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
-            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "BASE_RESOLVED=force-full" >> "$GITHUB_ENV"
             exit 0
           fi
 
-          # Verify base commit is reachable (handles force-pushes).
           if ! git cat-file -e "$BASE" 2>/dev/null; then
+            echo "BASE_RESOLVED=force-full" >> "$GITHUB_ENV"
+            echo "Base commit $BASE not reachable — downstream steps will run full CI"
+            exit 0
+          fi
+
+          echo "BASE=$BASE" >> "$GITHUB_ENV"
+          echo "BASE_RESOLVED=ok" >> "$GITHUB_ENV"
+
+      - name: Check for code changes
+        id: filter
+        run: |
+          # filter treats both `skip` (manual trigger) and `force-full`
+          # (unreachable base) as "run full CI" — historical behaviour.
+          if [ "$BASE_RESOLVED" != "ok" ]; then
             echo "code=true" >> "$GITHUB_OUTPUT"
-            echo "Base commit $BASE not reachable — running full CI"
             exit 0
           fi
 
@@ -100,6 +121,57 @@ jobs:
             echo "code=true" >> "$GITHUB_OUTPUT"
             echo "Code changes detected:"
             echo "$CHANGED" | head -20
+          fi
+
+      # Detect which mutation-test targets need to run for this PR.
+      # Output is a JSON array consumed by the `mutation-test` job's
+      # matrix strategy. Empty array → matrix expands to zero jobs and
+      # the gate trivially passes (no surviving-mutant risk introduced).
+      #
+      # A target runs when EITHER its source file OR its test file
+      # changes — a test refactor that drops an `errors.Is` check is
+      # exactly the regression mutation testing is designed to catch.
+      # `.gremlins.yaml` changing forces all 6 targets to run since
+      # config affects every per-file invocation. (#524)
+      - name: Detect mutation-test targets
+        id: mutation
+        run: |
+          # mutation treats `skip` and `force-full` as "no targets" —
+          # the standalone mutation-test workflow handles full-suite
+          # runs explicitly, and a first push without a reachable base
+          # is covered by the next weekly scheduled run.
+          if [ "$BASE_RESOLVED" != "ok" ]; then
+            echo 'targets=[]' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          DIFF=$(git diff --name-only "$BASE" HEAD)
+
+          # If .gremlins.yaml changed, every target must re-run because
+          # operator/threshold config affects every file equally.
+          if echo "$DIFF" | grep -q '^\.gremlins\.yaml$'; then
+            echo 'targets=["validate_fields","validate_taxonomy","hmac","filter","format_cef","sensitivity"]' >> "$GITHUB_OUTPUT"
+            echo ".gremlins.yaml changed — running all 6 mutation targets"
+            exit 0
+          fi
+
+          # Otherwise, run a target if its source OR test file changed.
+          # Test-file suffixes covered: _test, _boundary_test,
+          # _property_test, _internal_test.
+          declare -a TARGETS=()
+          for t in validate_fields validate_taxonomy hmac filter format_cef sensitivity; do
+            if echo "$DIFF" | grep -qE "^${t}(_(boundary|property|internal))?(_test)?\.go$"; then
+              TARGETS+=("\"${t}\"")
+            fi
+          done
+
+          if [ "${#TARGETS[@]}" -eq 0 ]; then
+            echo 'targets=[]' >> "$GITHUB_OUTPUT"
+            echo "No mutation-test targets affected by this PR"
+          else
+            JSON="[$(IFS=,; echo "${TARGETS[*]}")]"
+            echo "targets=${JSON}" >> "$GITHUB_OUTPUT"
+            echo "Mutation-test targets: ${JSON}"
           fi
 
   # Requires Dependency Graph enabled in repo settings:
@@ -563,6 +635,59 @@ jobs:
       - name: Build all examples
         run: make test-examples
 
+  # PR-scope mutation testing (#524). Matrix-fan-out across the six
+  # mutation targets, but ONLY for the targets actually affected by
+  # this PR (per `changes.outputs.mutation-targets` — see the change
+  # detection job above). The matrix expands to zero jobs when no
+  # target source/test file changed; the job result is then "skipped",
+  # which the ci-pass aggregate treats as success.
+  #
+  # Full-suite mutation testing runs weekly via `mutation-test.yml`
+  # and on every release tag via `release.yml`; this PR-scope job
+  # gates the common case (regression in one file's tests) cheaply.
+  mutation-test:
+    name: Test - Mutation (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    # 60 min budget per target — local wall time is ~10 min per file
+    # on Ryzen 9 32-thread; ubuntu-latest 4-core runners are 2-3x
+    # slower (~20-30 min), with headroom for the gather-coverage
+    # warm-up and tool install.
+    timeout-minutes: 60
+    needs: [hygiene, changes]
+    if: needs.changes.outputs.code == 'true' && needs.changes.outputs.mutation-targets != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.changes.outputs.mutation-targets) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up audit workspace
+        uses: ./.github/actions/setup-audit
+        with:
+          install-tools: 'true'
+
+      - name: Run mutation-test for ${{ matrix.target }}
+        run: |
+          set -o pipefail
+          # Recipe naming: target stems map 1:1 to make targets — e.g.
+          # `format_cef` -> `mutation-test-format-cef`. Hyphenate the
+          # underscore tail per CLI naming convention applied in the
+          # Makefile (`mutation-test-format-cef`).
+          NAME=$(echo '${{ matrix.target }}' | tr '_' '-')
+          make "mutation-test-${NAME}" 2>&1 | tee mutation-test-report-${{ matrix.target }}.txt
+
+      - name: Upload mutation-test report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mutation-test-report-${{ matrix.target }}-${{ github.sha }}
+          path: mutation-test-report-${{ matrix.target }}.txt
+          retention-days: 7
+
   # Benchmarks removed from CI — GitHub Actions runners have inconsistent
   # performance, making results unreliable for comparison. Run benchmarks
   # locally on consistent hardware: make bench && make bench-compare
@@ -590,7 +715,7 @@ jobs:
     permissions:
       contents: read
     timeout-minutes: 5
-    needs: [changes, hygiene, lint, test, test-cross-platform, integration, bdd, bdd-verify, security, security-verify, cross-build, examples-build, validate-release]
+    needs: [changes, hygiene, lint, test, test-cross-platform, integration, bdd, bdd-verify, security, security-verify, cross-build, examples-build, validate-release, mutation-test]
     if: always()
     steps:
       - name: Check all jobs passed
