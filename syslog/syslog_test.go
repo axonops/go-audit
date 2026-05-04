@@ -188,6 +188,7 @@ type mockMetrics struct {
 	cond             *sync.Cond
 	syslogReconnects map[string]int // "address:success|failure" -> count
 	mu               sync.Mutex
+	errors           atomic.Int64 // RecordError invocations
 }
 
 func newMockMetrics() *mockMetrics {
@@ -197,6 +198,14 @@ func newMockMetrics() *mockMetrics {
 	m.cond = sync.NewCond(&m.mu)
 	return m
 }
+
+// RecordError counts errors recorded against the output. Used by
+// reconnect tests that need to assert the retry-write-failed branch
+// of handleWriteFailure was exercised.
+func (m *mockMetrics) RecordError() { m.errors.Add(1) }
+
+// getErrorCount returns the number of RecordError invocations.
+func (m *mockMetrics) getErrorCount() int { return int(m.errors.Load()) }
 
 // RecordReconnect satisfies syslog.ReconnectRecorder (#581).
 func (m *mockMetrics) RecordReconnect(address string, success bool) {
@@ -1559,9 +1568,23 @@ func rstClose(conn net.Conn) {
 }
 
 // TestSyslogOutput_HandleWriteFailure_WriteFailsAfterReconnect
-// verifies the branch where the existing connection breaks and
-// the writeLoop's reconnect path runs to completion, recording
-// RecordReconnect(addr, true).
+// verifies BOTH legs of handleWriteFailure that the test name
+// implies:
+//
+//   - the post-disconnect reconnect succeeds — RecordReconnect(addr, true) fires;
+//   - the post-reconnect retry path runs and fails — RecordError fires.
+//
+// The "fails" leg is exercised via the
+// "writer nil after successful reconnect" guard in
+// retryAfterReconnect, NOT the literal "delivery failed after
+// reconnect" syscall-error branch. The latter is unreachable
+// deterministically because srslog.Writer transparently
+// re-dials internally on a closed conn (see writeAndRetryWithPriority
+// in github.com/axonops/srslog), so closing the writer mid-test
+// is masked. The nil-guard branch is the deterministic equivalent —
+// it sits on the same post-reconnect retry path and fires the same
+// RecordError signal, which is what AC3 of #765 specifies
+// ("retry-write-failed signal (e.g., RecordError count > 0)").
 //
 // Closes #765 (and subsumes the lingering #465 / #560 surface).
 //
@@ -1577,7 +1600,8 @@ func rstClose(conn net.Conn) {
 // handleWriteFailure, and the reconnect counter never
 // increments.
 //
-// Final fix (#765) makes the path deterministic without
+// Final fix (#765) makes BOTH the entry into handleWriteFailure
+// and the retry-write-failure branch deterministic, without
 // relying on transport timing:
 //
 //   - SetTestOnFlush signals when the initial successful write
@@ -1589,11 +1613,15 @@ func rstClose(conn net.Conn) {
 //     next writeLoop iteration observes errSyslogNotConnected at
 //     the writeEntry nil check and enters handleWriteFailure
 //     deterministically.
-//   - handleWriteFailure → connect() (succeeds, listener up) →
-//     RecordReconnect(addr, true) before any retry write is
-//     attempted. Whether the retry write itself silently succeeds
-//     or fails on the new conn is irrelevant — the assertion is
-//     on the reconnect counter.
+//   - SetTestOnReconnect installs a hook that fires between
+//     RecordReconnect(addr, true) and the retry write. The hook
+//     calls SimulateDisconnect(), atomically clearing s.writer.
+//     handleWriteFailure's post-reconnect retry path re-loads
+//     s.writer, sees nil, and trips the belt-and-braces "writer
+//     nil after successful reconnect" guard which fires
+//     RecordError. (Closing the writer directly would not work —
+//     srslog.Writer.WriteWithPriority transparently re-dials
+//     internally on a closed conn.)
 func TestSyslogOutput_HandleWriteFailure_WriteFailsAfterReconnect(t *testing.T) {
 	srv := newHostileSyslogServer(t)
 	defer srv.close()
@@ -1620,6 +1648,19 @@ func TestSyslogOutput_HandleWriteFailure_WriteFailsAfterReconnect(t *testing.T) 
 	})
 	t.Cleanup(func() { out.SetTestOnFlush(nil) })
 
+	// Reconnect hook: between RecordReconnect(true) firing and the
+	// retry write, atomically clear Output.writer. handleWriteFailure
+	// re-loads s.writer immediately after the hook returns; a nil
+	// trips the post-reconnect "writer nil after successful
+	// reconnect" guard, which fires RecordError. Closing the writer
+	// directly will not work — srslog.Writer.WriteWithPriority
+	// transparently re-dials internally on a closed conn, masking
+	// the failure.
+	out.SetTestOnReconnect(func(_ *srslog.Writer) {
+		out.SimulateDisconnect()
+	})
+	t.Cleanup(func() { out.SetTestOnReconnect(nil) })
+
 	// Establish a live connection with a successful write.
 	require.NoError(t, out.Write([]byte(`{"n":1}`)))
 
@@ -1636,11 +1677,10 @@ func TestSyslogOutput_HandleWriteFailure_WriteFailsAfterReconnect(t *testing.T) 
 
 	// RST the existing connection but leave the listener accepting
 	// new conns normally. This guarantees connect() succeeds on
-	// reconnect — the only branch this test exercises. SetHostile
-	// (which also RSTs new conns at accept time) introduces an
-	// accept-vs-RST race that the original 30s ticker loop masked
-	// by retrying; the deterministic flow needs connect() to be
-	// race-free.
+	// reconnect. SetHostile (which also RSTs new conns at accept
+	// time) introduces an accept-vs-RST race that the original
+	// 30 s ticker loop masked by retrying; the deterministic flow
+	// needs connect() to be race-free.
 	srv.KillExistingConnections()
 
 	// Atomically clear the writer. The flush barrier above proved
@@ -1651,15 +1691,20 @@ func TestSyslogOutput_HandleWriteFailure_WriteFailsAfterReconnect(t *testing.T) 
 	// ordering.
 	out.SimulateDisconnect()
 
-	// Now drive a single write. writeLoop wakes → writeEntry sees
-	// nil writer → errSyslogNotConnected → handleWriteFailure →
-	// reconnect path. connect() succeeds (listener still up) and
-	// fires RecordReconnect(addr, true) before any retry write is
-	// attempted.
+	// Drive a single write. Path:
+	//
+	//   writeEntry sees nil writer → errSyslogNotConnected →
+	//   handleWriteFailure → close (no-op nil) → backoff →
+	//   connect() succeeds (listener up) →
+	//   RecordReconnect(addr, true) → testOnReconnect hook calls
+	//   SimulateDisconnect → s.writer.Store(nil) →
+	//   post-reconnect retry path re-loads s.writer, sees nil →
+	//   "writer nil after successful reconnect" guard fires →
+	//   RecordError++.
 	require.NoError(t, out.Write([]byte(`{"n":2}`)))
 
 	// Deterministic wait: the reconnect metric must fire within
-	// the first reconnect attempt's backoff window. 5s headroom
+	// the first reconnect attempt's backoff window. 5 s headroom
 	// absorbs CI scheduling jitter; the actual path is sub-ms.
 	if !m.tryWaitForReconnectCount(addr, true, 1, 5*time.Second) {
 		t.Fatalf("RecordReconnect(addr, true) did not fire within 5s — "+
@@ -1672,10 +1717,15 @@ func TestSyslogOutput_HandleWriteFailure_WriteFailsAfterReconnect(t *testing.T) 
 	_ = out.Close()
 
 	assert.Greater(t, m.getSyslogReconnectCount(addr, true), 0,
-		"RecordReconnect(address, true) must be called — "+
-			"connect() succeeds because listener stays up, and "+
-			"SimulateDisconnect forces the writeLoop into the "+
-			"reconnect path on the next event")
+		"RecordReconnect(address, true) must fire — connect() "+
+			"succeeds because the listener stays up after "+
+			"KillExistingConnections")
+	assert.Greater(t, m.getErrorCount(), 0,
+		"RecordError must fire from handleWriteFailure's "+
+			"post-reconnect failure path — the testOnReconnect "+
+			"hook clears s.writer so the post-reconnect retry "+
+			"path observes nil and trips the \"writer nil after "+
+			"successful reconnect\" guard")
 }
 
 func TestSyslogOutput_ReconnectRecorder_InterfaceAssertion(t *testing.T) {

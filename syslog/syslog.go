@@ -175,19 +175,29 @@ type Output struct {
 	// (#705, #763). See internal/testhelper/output.go for the
 	// canonical "wait on observable signal" pattern.
 	testOnFlush atomic.Pointer[func(int, string)]
-	ch          chan syslogEntry // async buffer
-	closeCh     chan struct{}    // signals writeLoop to drain and exit
-	done        chan struct{}    // closed when writeLoop exits
-	name        string           // cached Name() result
-	address     string
-	network     string
-	appName     string
-	hostname    string
-	writeCount  uint64      // drain-side event counter for RecordQueueDepth sampling
-	drops       dropLimiter // rate-limits buffer-full drop warnings
-	mu          sync.Mutex  // protects Close sequence
-	failures    int         // consecutive failure count (writeLoop-only)
-	maxRetry    int
+	// testOnReconnect, if non-nil, is invoked from
+	// handleWriteFailure immediately after a successful reconnect
+	// (after RecordReconnect(addr, true) fires) and before the
+	// retry write is attempted on the new writer. The callback
+	// receives the freshly-connected writer; tests typically close
+	// it to deterministically force the retry-write-failed branch
+	// of handleWriteFailure. Test-only seam — production code MUST
+	// NOT set this. Wired via SetTestOnReconnect in export_test.go
+	// (#765).
+	testOnReconnect atomic.Pointer[func(*srslog.Writer)]
+	ch              chan syslogEntry // async buffer
+	closeCh         chan struct{}    // signals writeLoop to drain and exit
+	done            chan struct{}    // closed when writeLoop exits
+	name            string           // cached Name() result
+	address         string
+	network         string
+	appName         string
+	hostname        string
+	writeCount      uint64      // drain-side event counter for RecordQueueDepth sampling
+	drops           dropLimiter // rate-limits buffer-full drop warnings
+	mu              sync.Mutex  // protects Close sequence
+	failures        int         // consecutive failure count (writeLoop-only)
+	maxRetry        int
 	// Batching knobs — resolved from Config at construction time
 	// (#599). See syslog.Config.BatchSize / .FlushInterval /
 	// .MaxBatchBytes for the user-facing contract.
@@ -816,22 +826,15 @@ func (s *Output) handleWriteFailure(entry syslogEntry, writeErr error, om audit.
 		rr.RecordReconnect(s.address, true)
 	}
 
-	// Retry the write on the new connection. connect() just
-	// stored a non-nil writer and writeLoop is the sole mutator
-	// outside test seams; Load is expected to return non-nil.
-	// Defence in depth: if a future refactor or test misuse
-	// breaks the invariant, log loudly rather than panic.
-	w := s.writer.Load()
-	if w == nil {
-		s.logger.Error("audit: output syslog: writer nil after successful reconnect",
-			"address", s.address)
-		om.RecordError()
-		return
+	// Test-only observability hook (#765). Production-mode callers
+	// leave testOnReconnect as nil; the predictable nil-branch is
+	// amortised over the failure-recovery path, which is already
+	// off the hot path. See struct field documentation.
+	if hp := s.testOnReconnect.Load(); hp != nil {
+		(*hp)(s.writer.Load())
 	}
-	if _, err := w.WriteWithPriority(entry.priority, entry.data); err != nil {
-		s.logger.Error("audit: output syslog: delivery failed after reconnect",
-			"error", err)
-		om.RecordError()
+
+	if !s.retryAfterReconnect(entry, om) {
 		return
 	}
 
@@ -839,6 +842,32 @@ func (s *Output) handleWriteFailure(entry syslogEntry, writeErr error, om audit.
 	// Successful retry-after-reconnect — duration is not
 	// meaningful here because the reconnect dwarfs the write.
 	s.recordSuccess(om, 1, 0)
+}
+
+// retryAfterReconnect performs the post-reconnect retry write on
+// the freshly-connected writer. Returns true on success, false on
+// failure (caller should return without resetting s.failures).
+//
+// connect() just stored a non-nil writer and writeLoop is the sole
+// mutator outside test seams; Load is expected to return non-nil.
+// Defence in depth: if a future refactor or a test seam (e.g.,
+// SimulateDisconnect via SetTestOnReconnect, #765) breaks the
+// invariant, log loudly and record the failure rather than panic.
+func (s *Output) retryAfterReconnect(entry syslogEntry, om audit.OutputMetrics) bool {
+	w := s.writer.Load()
+	if w == nil {
+		s.logger.Error("audit: output syslog: writer nil after successful reconnect",
+			"address", s.address)
+		om.RecordError()
+		return false
+	}
+	if _, err := w.WriteWithPriority(entry.priority, entry.data); err != nil {
+		s.logger.Error("audit: output syslog: delivery failed after reconnect",
+			"error", err)
+		om.RecordError()
+		return false
+	}
+	return true
 }
 
 // drainBatchNoRetry flushes pending batch entries to the syslog

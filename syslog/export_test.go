@@ -18,6 +18,8 @@ import (
 	"crypto/tls"
 	"net"
 	"time"
+
+	"github.com/axonops/srslog"
 )
 
 // BackoffDuration is exported for testing only.
@@ -127,4 +129,41 @@ func (s *Output) SetTestOnFlush(fn func(int, string)) {
 		return
 	}
 	s.testOnFlush.Store(&fn)
+}
+
+// SetTestOnReconnect registers a test-only callback fired from
+// handleWriteFailure immediately after a successful reconnect — i.e.
+// after RecordReconnect(addr, true) but before the post-reconnect
+// retry path runs. The callback receives the freshly-connected
+// writer.
+//
+// Canonical use: call SimulateDisconnect() from inside the hook.
+// This atomically clears Output.writer; handleWriteFailure's
+// retryAfterReconnect helper re-loads s.writer immediately after
+// the hook returns, sees nil, and trips the
+// "writer nil after successful reconnect" guard which fires
+// RecordError. This is the deterministic way to assert that the
+// post-reconnect retry leg of handleWriteFailure was reached.
+//
+// Calling w.Close() directly does NOT work — srslog.Writer
+// transparently re-dials internally on a closed conn (see
+// writeAndRetryWithPriority in github.com/axonops/srslog), so the
+// subsequent WriteWithPriority succeeds and the retry-write-error
+// branch is masked.
+//
+// Mutations to s.writer from inside the hook are observed by the
+// immediately-following s.writer.Load() in retryAfterReconnect.
+//
+// Pass nil to clear the hook. Tests typically pair this with
+// t.Cleanup to ensure the hook is cleared even if the test fails
+// mid-flow.
+//
+// Concurrency: invoked synchronously from the writeLoop goroutine.
+// Callbacks MUST return promptly (#765 AC3).
+func (s *Output) SetTestOnReconnect(fn func(*srslog.Writer)) {
+	if fn == nil {
+		s.testOnReconnect.Store(nil)
+		return
+	}
+	s.testOnReconnect.Store(&fn)
 }
