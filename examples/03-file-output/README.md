@@ -44,7 +44,6 @@ outputs:
       path: "./audit.log"
       max_size_mb: 10
       max_backups: 3
-      permissions: "0600"
 ```
 
 The `type: file` tells the library to use the file output module. The
@@ -59,19 +58,8 @@ type-specific settings are nested under a key matching the type name
 | `max_size_mb` | 100 | Rotate when the file exceeds this size. |
 | `max_backups` | 5 | Number of rotated files to keep. |
 | `max_age_days` | 30 | Delete rotated files older than this. |
-| `permissions` | `"0600"` | File permissions (must be quoted — see below). |
+| `group_readable` | `false` | When `true`, mode is `0o640` (owner + group read) for SIEM forwarders running in the file's group. Default `false` is `0o600` (owner only). |
 | `compress` | `true` | Gzip rotated files. |
-
-### Why Permissions Must Be Quoted
-
-```yaml
-permissions: "0600"    # correct
-permissions: 0600      # WRONG — YAML reads this as integer 384
-```
-
-In YAML, an unquoted `0600` is parsed as the integer 384 (octal
-interpretation). The library requires a string to prevent this silent
-misconfiguration.
 
 ### Enabling the File Output Type
 
