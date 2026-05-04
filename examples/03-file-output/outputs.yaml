@@ -8,4 +8,3 @@ outputs:
       path: "./audit.log"
       max_size_mb: 10
       max_backups: 3
-      permissions: "0600"

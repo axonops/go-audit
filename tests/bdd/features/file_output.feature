@@ -53,11 +53,23 @@ Feature: File Output
     And I close the auditor
     Then the file should have permissions "0600"
 
-  Scenario: Custom file permissions are applied
-    Given an auditor with file output with permissions "0640"
+  Scenario: Group-readable file output uses 0640
+    Given an auditor with file output that is group-readable
     When I audit event "user_create" with required fields
     And I close the auditor
     Then the file should have permissions "0640"
+
+  Scenario: Existing audit log with broader permissions is rejected
+    Given an existing audit log file with permissions 0644 at the configured path
+    When I try to construct a file output at that path
+    Then the file output construction should fail with an error
+    And the error should wrap audit.ErrConfigInvalid
+    And the error message should contain "broader than required"
+
+  Scenario: Existing audit log with narrower permissions is accepted
+    Given an existing audit log file with permissions 0600 at the configured path
+    When I construct a group-readable file output at that path
+    Then the file output construction should succeed
 
   Scenario: Symlink path is rejected on write — symlink target stays empty
     When I write a single event to a file output configured with a symlink path
@@ -108,10 +120,6 @@ Feature: File Output
 
   Scenario: MaxBackups exceeding limit is rejected
     When I try to create a file output with MaxBackups 200
-    Then the file output construction should fail with an error
-
-  Scenario: Invalid permissions string is rejected
-    When I try to create a file output with permissions "notoctal"
     Then the file output construction should fail with an error
 
   # --- Lifecycle ---

@@ -157,7 +157,7 @@ for the complete pipeline architecture.
 | `max_size_mb` | int | `100` | 1–10,240 (10 GB) | Rotate when the file reaches this size. Values <= 0 default to 100 |
 | `max_backups` | int | `5` | 0–100 | Rotated backups to retain. 0 = keep all (no count limit). Values <= 0 default to 5 |
 | `max_age_days` | int | `30` | 0–365 | Delete backups older than this. 0 = no age limit. Values <= 0 default to 30 |
-| `permissions` | string | `"0600"` | Octal (0–0777) | File permissions. MUST be quoted in YAML |
+| `group_readable` | bool | `false` | — | If `true`, mode is `0o640` (owner read/write + group read). If absent or `false`, mode is `0o600` (owner only). See [Permissions and Security](#permissions-and-security) for the rationale. |
 | `compress` | bool | `true` | — | Gzip compress rotated backup files |
 | `buffer_size` | int | `10000` | 1–100,000 | Internal async buffer capacity. Events dropped when full |
 
@@ -167,24 +167,35 @@ for the complete pipeline architecture.
 - Parent directory of `path` MUST exist at construction time
 - **Symlinks are rejected** — the parent directory path is resolved at
   construction time and symlinks are rejected to prevent path traversal
-- `permissions` MUST be a valid octal string. Values above `0777` are
-  rejected
-- Group or world-writable permissions (e.g., `0666`, `0777`) produce a
-  `slog` warning
+- An existing audit log at `path` MUST have permissions equal to or
+  narrower than the configured target mode (`0o600` or `0o640`); a
+  broader on-disk mode is rejected with an error wrapping
+  [`audit.ErrConfigInvalid`] (#436)
+- An existing audit log MUST NOT have setuid, setgid, or sticky bits
+  set, and MUST have a hardlink count of 1; both are treated as
+  tamper indicators (#436)
 - `max_size_mb`, `max_backups`, `max_age_days` are rejected if above
   their upper bounds. Zero values default to the documented defaults
 
-### Permissions Quoting
+### Why only two modes (#436)
 
-The `permissions` field MUST be quoted in YAML:
+Audit logs are not regular application logs. They contain
+compliance-critical data — who did what, when, to which resource —
+and are subject to SOX, HIPAA, and GDPR tamper-resistance
+requirements. The library hardcodes two permission modes:
 
-```yaml
-# CORRECT — quoted string, parsed as octal
-permissions: "0600"
+- **`0o600` (default)** — owner read/write only. The strictest mode;
+  use this unless you have a specific reason not to.
+- **`0o640` (`group_readable: true`)** — owner read/write + group
+  read. Required when a SIEM forwarder (Filebeat, Promtail, Fluentd)
+  runs as a separate user in the file's group.
 
-# WRONG — unquoted, YAML parses 0600 as the integer 384
-permissions: 0600
-```
+World-readable, world-writable, or group-writable modes are
+**unsupported** because they undermine compliance: world-readable
+exposes audit data to any user on the host, and write access (group
+or world) defeats append-only-from-a-single-writer integrity.
+Operators needing finer-grained access SHOULD use POSIX ACLs at the
+OS level rather than relax the library's mode.
 
 ## File Rotation
 
@@ -420,7 +431,6 @@ outputs:
       max_size_mb: 500
       max_backups: 20
       max_age_days: 90
-      permissions: "0600"
       compress: true
 ```
 
@@ -437,7 +447,6 @@ outputs:
       max_size_mb: 1000
       max_backups: 100
       max_age_days: 365
-      permissions: "0600"
       compress: true
     hmac:
       enabled: true
@@ -457,10 +466,12 @@ signature to each event, providing evidence of modification.
 | `path must not be empty` | Missing `path` in config | Add the `path` field to the file block |
 | `parent directory does not exist` | Directory not created | Create the directory before starting the application |
 | `symlink rejected` | Parent path contains a symlink | Use a direct path without symlinks |
-| `invalid permissions` | `permissions` value > 0777 | Use a valid octal string like `"0600"` |
+| `existing file permissions … broader than required` | Pre-existing audit log at the configured path has wider permissions than `0o600` (or `0o640` if `group_readable: true`) | `chmod 0600` (or `0640`) the existing file before next startup, or move it aside |
+| `existing file has setuid/setgid/sticky bits set` | Audit log file has special POSIX bits (tamper indicator) | Investigate the cause; if benign, `chmod` to clear the bits before next startup |
+| `existing file has hardlink count` | Audit log shares an inode with another path | Remove the hardlink; the audit log should be a single file with `nlink=1` |
+| `unknown field "permissions"` | Old YAML still uses pre-#436 `permissions:` key | Remove the line (default is `0o600`) or replace with `group_readable: true` for `0o640` |
 | File not rotating | `max_size_mb` too large for event volume | Reduce `max_size_mb` or check disk space |
 | Disk filling up | Too many backups or age limit too high | Reduce `max_backups` and `max_age_days` |
-| `YAML error: 0600 is not a string` | `permissions` not quoted | Quote it: `permissions: "0600"` |
 
 ## Related Documentation
 

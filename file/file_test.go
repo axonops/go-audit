@@ -15,7 +15,6 @@
 package file_test
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"log/slog"
@@ -199,7 +198,7 @@ func TestFileOutput_Name(t *testing.T) {
 	assert.Equal(t, expected, out.Name())
 }
 
-func TestFileOutput_Permissions(t *testing.T) {
+func TestFileOutput_DefaultPermissions_0600(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX permission bits are not honoured on Windows")
 	}
@@ -218,7 +217,7 @@ func TestFileOutput_Permissions(t *testing.T) {
 	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 }
 
-func TestFileOutput_CustomPermissions(t *testing.T) {
+func TestFileOutput_GroupReadable_True_0640(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX permission bits are not honoured on Windows")
 	}
@@ -226,18 +225,17 @@ func TestFileOutput_CustomPermissions(t *testing.T) {
 	path := filepath.Join(dir, "audit.log")
 
 	out, err := file.New(&file.Config{
-		Path:        path,
-		Permissions: "0644",
+		Path:          path,
+		GroupReadable: true,
 	})
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte("test\n")))
-	// Close to flush async buffer to disk.
 	require.NoError(t, out.Close())
 
 	info, err := os.Stat(path)
 	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(0o644), info.Mode().Perm())
+	assert.Equal(t, os.FileMode(0o640), info.Mode().Perm())
 }
 
 func TestFileOutput_DefaultConfig(t *testing.T) {
@@ -274,22 +272,6 @@ func TestFileOutput_InvalidConfig(t *testing.T) {
 			name:    "missing parent directory",
 			cfg:     file.Config{Path: "/nonexistent/dir/audit.log"},
 			wantErr: "parent directory",
-		},
-		{
-			name: "invalid permissions",
-			cfg: file.Config{
-				Path:        filepath.Join(dir, "invalid-perm.log"),
-				Permissions: "not-octal",
-			},
-			wantErr: "permissions",
-		},
-		{
-			name: "permissions out of range",
-			cfg: file.Config{
-				Path:        filepath.Join(dir, "out-of-range.log"),
-				Permissions: "1777",
-			},
-			wantErr: "exceeds maximum",
 		},
 		{
 			name: "MaxSizeMB exceeds limit",
@@ -345,16 +327,58 @@ func TestFileOutput_NegativeMaxSizeMB_DefaultsTo100(t *testing.T) {
 	_ = out.Close()
 }
 
-func TestFileOutput_Permissions0000_Rejected(t *testing.T) {
-	dir := t.TempDir()
-	_, err := file.New(&file.Config{
-		Path:        filepath.Join(dir, "noaccess.log"),
-		Permissions: "0000",
-	})
-	// "0000" is valid octal but the rotation library rejects zero mode.
-	require.Error(t, err)
-	// text-only: rotate/writer.go:411 errors.New, wrapped by file.go:292 — no audit sentinel in the chain.
-	assert.Contains(t, err.Error(), "non-zero")
+// TestFileOutput_ExistingFile_BroaderPerms covers ACs 7-11 of #436:
+// the on-disk permissions of an existing audit log are validated
+// against the configured target mode at construction time.
+//
+//	target = 0o600 (GroupReadable=false)
+//	  existing 0o600 → accept (#8)
+//	  existing 0o640 → reject (group-read not expected, #11)
+//	  existing 0o644 → reject (broader than required, #7)
+//
+//	target = 0o640 (GroupReadable=true)
+//	  existing 0o600 → accept (narrower than required is safe, #9)
+//	  existing 0o640 → accept (#10)
+//	  existing 0o644 → reject (other-read broader)
+func TestFileOutput_ExistingFile_BroaderPerms(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits are not honoured on Windows")
+	}
+	cases := []struct {
+		name          string
+		existingPerm  os.FileMode
+		groupReadable bool
+		wantErr       bool
+	}{
+		{"target_0600_existing_0600", 0o600, false, false},
+		{"target_0600_existing_0640_rejected", 0o640, false, true},
+		{"target_0600_existing_0644_rejected", 0o644, false, true},
+		{"target_0640_existing_0600", 0o600, true, false},
+		{"target_0640_existing_0640", 0o640, true, false},
+		{"target_0640_existing_0644_rejected", 0o644, true, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "audit.log")
+			require.NoError(t, os.WriteFile(path, []byte("pre-existing\n"), tc.existingPerm))
+			require.NoError(t, os.Chmod(path, tc.existingPerm)) // some umasks override WriteFile mode
+
+			out, err := file.New(&file.Config{Path: path, GroupReadable: tc.groupReadable})
+			if tc.wantErr {
+				require.Error(t, err, "expected rejection for %v on target %v",
+					tc.existingPerm, tc.groupReadable)
+				assert.ErrorIs(t, err, audit.ErrConfigInvalid,
+					"existing-perms rejection must wrap audit.ErrConfigInvalid")
+				assert.Contains(t, err.Error(), "broader than required",
+					"error message must explain the rejection cause")
+			} else {
+				require.NoError(t, err, "expected acceptance for %v on target %v",
+					tc.existingPerm, tc.groupReadable)
+				_ = out.Close()
+			}
+		})
+	}
 }
 
 func TestFileOutput_MaxBoundaryValues_Accepted(t *testing.T) {
@@ -1007,53 +1031,12 @@ func BenchmarkFileOutput_Write_WithRotation(b *testing.B) {
 }
 
 // TestFile_ConstructionWarningsRoutedToInjectedLogger verifies that
-// the permission-mode warning emitted during New() routes through
-// the WithDiagnosticLogger-supplied logger rather than slog.Default.
-// Closes #490.
-func TestFile_ConstructionWarningsRoutedToInjectedLogger(t *testing.T) {
-	var buf strings.Builder
-	handler := slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})
-	injected := slog.New(handler)
-
-	dir := t.TempDir()
-	path := filepath.Join(dir, "perm-warning.log")
-
-	// Permission 0o644 grants group read + world read → triggers the
-	// "grants group/world access" warning in file.New.
-	out, err := file.New(&file.Config{
-		Path:        path,
-		Permissions: "0644",
-	}, file.WithDiagnosticLogger(injected))
-	require.NoError(t, err)
-	require.NoError(t, out.Close())
-
-	logged := buf.String()
-	assert.Contains(t, logged, "permissions grant group/world access",
-		"expected permission warning on injected logger, got: %q", logged)
-}
-
-// TestFile_NilDiagnosticLoggerFallsBackToDefault verifies
-// WithDiagnosticLogger(nil) does not nil-deref and falls back to
-// slog.Default for warning emission.
-func TestFile_NilDiagnosticLoggerFallsBackToDefault(t *testing.T) {
-	var buf strings.Builder
-	prev := slog.Default()
-	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
-	t.Cleanup(func() { slog.SetDefault(prev) })
-
-	dir := t.TempDir()
-	path := filepath.Join(dir, "perm-warning-nil.log")
-
-	out, err := file.New(&file.Config{
-		Path:        path,
-		Permissions: "0644",
-	}, file.WithDiagnosticLogger(nil))
-	require.NoError(t, err)
-	require.NoError(t, out.Close())
-
-	assert.Contains(t, buf.String(), "permissions grant group/world access",
-		"WithDiagnosticLogger(nil) should fall back to slog.Default")
-}
+// (Construction-time permission warnings were removed in #436 along
+// with the flexible Permissions string field; the only configurable
+// modes are now 0o600 and 0o640, neither of which warrants a
+// runtime warning. The injected-vs-default-logger contract for the
+// WithDiagnosticLogger option remains exercised by the writeLoop's
+// async-error path elsewhere in this file.)
 
 // TestNew_NilConfig_ReturnsError verifies that [New] returns a
 // non-nil error when passed a nil *Config (#580). The nil guard
@@ -1190,58 +1173,11 @@ func TestOutputFactory_ZeroContext_NoPanic(t *testing.T) {
 	require.NoError(t, out.Write([]byte(`{"event":"zero"}`+"\n")))
 }
 
-// captureHandler records every slog Record passed through Handle for
-// assertion in factory plumbing tests.
-type captureHandler struct {
-	records []slog.Record
-	mu      sync.Mutex
-}
-
-func (h *captureHandler) Enabled(_ context.Context, _ slog.Level) bool { return true }
-func (h *captureHandler) Handle(_ context.Context, r slog.Record) error { //nolint:gocritic // hugeParam: slog.Handler interface contract
-	h.mu.Lock()
-	h.records = append(h.records, r)
-	h.mu.Unlock()
-	return nil
-}
-func (h *captureHandler) WithAttrs(_ []slog.Attr) slog.Handler { return h }
-func (h *captureHandler) WithGroup(_ string) slog.Handler      { return h }
-
-func (h *captureHandler) anyContains(s string) bool {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	for i := range h.records {
-		if strings.Contains(h.records[i].Message, s) {
-			return true
-		}
-	}
-	return false
-}
-
-// TestOutputFactory_LoggerReachesOutput verifies that a logger
-// supplied via [audit.FrameworkContext.DiagnosticLogger] reaches the
-// file output and is used to emit the permission-mode warning during
-// construction.
-func TestOutputFactory_LoggerReachesOutput(t *testing.T) {
-	t.Parallel()
-	h := &captureHandler{}
-	logger := slog.New(h)
-
-	dir := t.TempDir()
-	path := filepath.Join(dir, "logger-reaches.log")
-	// 0644 grants group/world read → triggers the permission warning.
-	yaml := []byte("path: " + path + "\npermissions: \"0644\"\n")
-
-	factory := audit.LookupOutputFactory("file")
-	require.NotNil(t, factory)
-
-	out, err := factory("logger", yaml, audit.FrameworkContext{DiagnosticLogger: logger})
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = out.Close() })
-
-	assert.True(t, h.anyContains("permissions grant group/world access"),
-		"injected logger must capture the permission-mode warning emitted in New")
-}
+// (TestOutputFactory_LoggerReachesOutput and the captureHandler that
+// supported it were removed in #436. The previous form relied on a
+// construction-time perm-mode warning that no longer exists; the
+// injected-logger contract is exercised via the writeLoop's async
+// error path tests in the BDD scenarios for file_output.feature.)
 
 // TestOutputFactory_OutputMetricsReachesOutput verifies that the
 // per-output metrics value supplied via

@@ -9,7 +9,6 @@ outputs:
     type: file
     file:
       path: "./audit.log"
-      permissions: "0600"
 
   # Disabled outputs are skipped at load time — the output is not
   # created and receives no events. Use this to temporarily turn off

@@ -20,7 +20,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -93,12 +92,25 @@ type Config struct {
 	// The parent directory must exist when [New] is called.
 	Path string
 
-	// Permissions is the octal file mode string (e.g. "0600") applied
-	// to created files. Empty defaults to "0600" (owner read/write).
-	// Values granting group or world write access produce a slog
-	// warning. Values above 0o777 cause [New] to return an error;
-	// this error does not wrap [audit.ErrConfigInvalid].
-	Permissions string
+	// GroupReadable, when false (the default), creates files readable
+	// only by the owning user (mode 0o600) — the recommended setting
+	// for audit logs. Set true to also allow read access by the file's
+	// group (mode 0o640), used when a SIEM forwarder (Filebeat,
+	// Promtail, Fluentd) runs as a separate user in the file's group.
+	//
+	// No other modes are supported. World-readable or group-writable
+	// audit logs are a security defect: audit data may contain PII,
+	// credentials, or operational details, and the trail must be
+	// append-only from a single writer to preserve tamper-detection.
+	// SOX, HIPAA, and GDPR all require this constraint. Operators
+	// needing finer-grained access should use ACLs at the OS level,
+	// not relax the library's mode.
+	//
+	// At construction, if an existing audit log file's permissions are
+	// broader than the configured target, [New] wraps
+	// [audit.ErrConfigInvalid]; setuid/setgid/sticky bits or a
+	// hardlink count above 1 are also rejected as tamper indicators.
+	GroupReadable bool
 
 	// MaxSizeMB is the maximum size in megabytes of a single log file
 	// before rotation. Zero defaults to 100. Values above [MaxSizeMB]
@@ -219,16 +231,14 @@ func New(cfg *Config, opts ...Option) (*Output, error) { //nolint:gocyclo,cyclop
 		return nil, fmt.Errorf("audit/file: output parent directory %q: %w", parentDir, statErr)
 	}
 
-	perm, err := parsePermissions(cfg.Permissions)
-	if err != nil {
-		return nil, fmt.Errorf("audit/file: output permissions %q: %w", cfg.Permissions, err)
-	}
+	perm := targetMode(cfg.GroupReadable)
 
-	// Warn if permissions grant group or world access to audit data.
-	if perm&0o077 != 0 {
-		logger.Warn("audit/file: output permissions grant group/world access",
-			"path", cfg.Path,
-			"permissions", fmt.Sprintf("%04o", perm))
+	// Reject existing audit log files whose permissions, special
+	// bits, or hardlink count signal tampering. Skipped on non-Unix
+	// platforms (see existing_perms_check_*.go) because os.FileMode
+	// semantics there don't map to the POSIX bits we enforce.
+	if validErr := validateExistingFilePerms(cfg.Path, perm); validErr != nil {
+		return nil, validErr
 	}
 
 	applyFileDefaults(cfg)
@@ -478,21 +488,14 @@ func (f *Output) DestinationKey() string {
 	return f.path
 }
 
-// parsePermissions parses an octal permission string. An empty string
-// defaults to 0600.
-func parsePermissions(s string) (os.FileMode, error) {
-	if s == "" {
-		return 0o600, nil
+// targetMode returns the file mode for an audit log output. The two
+// supported modes are 0o600 (default; owner read/write only) and
+// 0o640 (owner read/write, group read) — see [Config.GroupReadable].
+func targetMode(groupReadable bool) os.FileMode {
+	if groupReadable {
+		return 0o640
 	}
-	v, err := strconv.ParseUint(s, 8, 32)
-	if err != nil {
-		return 0, fmt.Errorf("invalid octal: %w", err)
-	}
-	mode := os.FileMode(v)
-	if mode > 0o777 {
-		return 0, fmt.Errorf("value %04o exceeds maximum 0777", mode)
-	}
-	return mode, nil
+	return 0o600
 }
 
 // applyFileDefaults fills zero-valued rotation and buffer fields with defaults.

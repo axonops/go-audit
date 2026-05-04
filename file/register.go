@@ -63,13 +63,13 @@ func NewFactory(factory audit.OutputMetricsFactory) audit.OutputFactory {
 // struct. The existing Config struct does not gain yaml tags —
 // this struct is the mapping layer.
 type yamlFileConfig struct { //nolint:govet // fieldalignment: readability preferred over packing
-	Path        string `yaml:"path"`
-	Permissions string `yaml:"permissions"`
-	MaxSizeMB   int    `yaml:"max_size_mb"`
-	MaxBackups  int    `yaml:"max_backups"`
-	MaxAgeDays  int    `yaml:"max_age_days"`
-	Compress    *bool  `yaml:"compress"`
-	BufferSize  *int   `yaml:"buffer_size"`
+	Path          string `yaml:"path"`
+	GroupReadable bool   `yaml:"group_readable"`
+	MaxSizeMB     int    `yaml:"max_size_mb"`
+	MaxBackups    int    `yaml:"max_backups"`
+	MaxAgeDays    int    `yaml:"max_age_days"`
+	Compress      *bool  `yaml:"compress"`
+	BufferSize    *int   `yaml:"buffer_size"`
 }
 
 // intPtrOrDefault returns the pointed-to value if non-nil, or the
@@ -100,13 +100,13 @@ func buildOutput(name string, rawConfig []byte, om audit.OutputMetrics, logger *
 	}
 
 	cfg := Config{
-		Path:        yc.Path,
-		Permissions: yc.Permissions,
-		MaxSizeMB:   yc.MaxSizeMB,
-		MaxBackups:  yc.MaxBackups,
-		MaxAgeDays:  yc.MaxAgeDays,
-		Compress:    yc.Compress,
-		BufferSize:  intPtrOrDefault(yc.BufferSize, DefaultBufferSize),
+		Path:          yc.Path,
+		GroupReadable: yc.GroupReadable,
+		MaxSizeMB:     yc.MaxSizeMB,
+		MaxBackups:    yc.MaxBackups,
+		MaxAgeDays:    yc.MaxAgeDays,
+		Compress:      yc.Compress,
+		BufferSize:    intPtrOrDefault(yc.BufferSize, DefaultBufferSize),
 	}
 
 	opts := []Option{WithDiagnosticLogger(logger)}

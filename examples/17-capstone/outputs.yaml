@@ -44,7 +44,6 @@ outputs:
       max_size_mb: 100
       max_backups: 5
       max_age_days: 90
-      permissions: "0600"
     formatter:
       type: cef
       vendor: "AxonOps"
@@ -70,7 +69,6 @@ outputs:
       max_size_mb: 50
       max_backups: 5
       max_age_days: 90
-      permissions: "0600"
     route:
       include_categories:
         - security
