@@ -144,6 +144,12 @@ type Provider struct { //nolint:govet // readability over alignment
 // Validates the address (HTTPS required unless [Config.AllowInsecureHTTP]
 // is set), builds the TLS config and HTTP client, but performs no
 // network I/O.
+//
+// Error messages do not echo caller-supplied substrings (the
+// configured address, scheme, or token); the audit/secrets/vault
+// logger category surfaces the failure class without leakage. Set
+// log-level debug on that category if a deployment-time root cause
+// is needed (#651).
 func New(cfg *Config) (*Provider, error) { //nolint:gocyclo,cyclop // linear validation pipeline
 	// Validate address.
 	if cfg.Address == "" {
@@ -151,10 +157,15 @@ func New(cfg *Config) (*Provider, error) { //nolint:gocyclo,cyclop // linear val
 	}
 	u, err := url.Parse(cfg.Address)
 	if err != nil {
-		return nil, fmt.Errorf("%w: audit/secrets/vault: invalid address: %w", audit.ErrConfigInvalid, err)
+		// Do not wrap url.Error — stdlib embeds the full input
+		// address in its error string. The address is operator-
+		// controlled config, not a ref's path/key, but logging it
+		// in error chains still constitutes a leakage vector. See
+		// #651 + the sentinel-injection test in vault_test.go.
+		return nil, fmt.Errorf("%w: audit/secrets/vault: address is not a valid URL", audit.ErrConfigInvalid)
 	}
 	if u.Scheme != "https" && !cfg.AllowInsecureHTTP {
-		return nil, fmt.Errorf("%w: audit/secrets/vault: address must use https (got %q); set AllowInsecureHTTP for local development", audit.ErrConfigInvalid, u.Scheme)
+		return nil, fmt.Errorf("%w: audit/secrets/vault: address must use https; set AllowInsecureHTTP for local development", audit.ErrConfigInvalid)
 	}
 	if u.Host == "" {
 		return nil, fmt.Errorf("%w: audit/secrets/vault: address has empty host", audit.ErrConfigInvalid)
@@ -230,10 +241,11 @@ func NewWithHTTPClient(cfg *Config, client *http.Client) (*Provider, error) {
 	}
 	u, err := url.Parse(cfg.Address)
 	if err != nil {
-		return nil, fmt.Errorf("%w: audit/secrets/vault: invalid address: %w", audit.ErrConfigInvalid, err)
+		// See New for the redaction rationale (#651).
+		return nil, fmt.Errorf("%w: audit/secrets/vault: address is not a valid URL", audit.ErrConfigInvalid)
 	}
 	if u.Scheme != "https" && !cfg.AllowInsecureHTTP {
-		return nil, fmt.Errorf("%w: audit/secrets/vault: address must use https (got %q); set AllowInsecureHTTP for local development", audit.ErrConfigInvalid, u.Scheme)
+		return nil, fmt.Errorf("%w: audit/secrets/vault: address must use https; set AllowInsecureHTTP for local development", audit.ErrConfigInvalid)
 	}
 	if u.Host == "" {
 		return nil, fmt.Errorf("%w: audit/secrets/vault: address has empty host", audit.ErrConfigInvalid)

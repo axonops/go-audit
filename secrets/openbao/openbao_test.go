@@ -136,6 +136,72 @@ func TestNew_RequiresToken(t *testing.T) {
 	assert.Contains(t, err.Error(), "token")
 }
 
+// TestOpenBaoNew_NeverLeaksInputInErrorMessage verifies #651: error
+// messages from openbao.New must not echo caller-supplied substrings.
+// The address parser previously wrapped url.Error directly (which
+// embeds the input URL) and echoed `u.Scheme` via `got %q`; both have
+// been redacted. Sentinel injection across every config-error path
+// catches a regression on either of those leaks.
+func TestOpenBaoNew_NeverLeaksInputInErrorMessage(t *testing.T) {
+	t.Parallel()
+	const (
+		addrSentinel   = "LEAKADDR"
+		schemeSentinel = "leaksentinel"
+		tokenSentinel  = "LEAKTOKEN"
+	)
+	cases := []struct {
+		cfg  *openbao.Config
+		name string
+	}{
+		{&openbao.Config{
+			Address: "://malformed-" + addrSentinel + "%zz",
+			Token:   tokenSentinel,
+		}, "unparseable_address"},
+		{&openbao.Config{
+			Address: schemeSentinel + "://" + addrSentinel + ".invalid",
+			Token:   tokenSentinel,
+		}, "non_https_address_default"},
+		{&openbao.Config{
+			Address: "https://",
+			Token:   tokenSentinel,
+		}, "empty_host"},
+		{&openbao.Config{
+			Address: "https://" + tokenSentinel + "@host." + addrSentinel + ".invalid",
+			Token:   tokenSentinel,
+		}, "embedded_credentials"},
+	}
+	for _, tc := range cases {
+		t.Run("New_"+tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := openbao.New(tc.cfg)
+			require.Error(t, err)
+			require.ErrorIs(t, err, audit.ErrConfigInvalid)
+			msg := err.Error()
+			assert.NotContains(t, msg, addrSentinel,
+				"address sentinel must not appear in the error: %s", msg)
+			assert.NotContains(t, msg, schemeSentinel,
+				"scheme sentinel must not appear in the error: %s", msg)
+			assert.NotContains(t, msg, tokenSentinel,
+				"token sentinel must not appear in the error: %s", msg)
+		})
+		// NewWithHTTPClient shares the same validation pipeline as
+		// New; assert the same redaction guarantee on its surface.
+		t.Run("NewWithHTTPClient_"+tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := openbao.NewWithHTTPClient(tc.cfg, http.DefaultClient)
+			require.Error(t, err)
+			require.ErrorIs(t, err, audit.ErrConfigInvalid)
+			msg := err.Error()
+			assert.NotContains(t, msg, addrSentinel,
+				"address sentinel must not appear in the error: %s", msg)
+			assert.NotContains(t, msg, schemeSentinel,
+				"scheme sentinel must not appear in the error: %s", msg)
+			assert.NotContains(t, msg, tokenSentinel,
+				"token sentinel must not appear in the error: %s", msg)
+		})
+	}
+}
+
 func TestNew_RejectsEmbeddedCredentials(t *testing.T) {
 	t.Parallel()
 	_, err := openbao.New(&openbao.Config{
