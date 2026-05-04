@@ -153,7 +153,14 @@ type syslogEntry struct {
 //
 // Output is safe for concurrent use.
 type Output struct {
-	writer            *srslog.Writer
+	// writer is the active srslog.Writer wrapped in atomic.Pointer
+	// so the test seam SimulateDisconnect (in export_test.go) can
+	// race-free clear it from the test goroutine while writeLoop
+	// reads it in writeEntry. The single-writer invariant for
+	// production paths is preserved (writeLoop is the only producer
+	// outside the test seams). Loads are uncontended on the hot
+	// path — one MOV on amd64, one LDAR on arm64 (#765).
+	writer            atomic.Pointer[srslog.Writer]
 	tlsCfg            *tls.Config         // cached for reconnection; nil for non-TLS
 	reconnectRecorder ReconnectRecorder   // optional: nil when outputMetrics does not implement it
 	outputMetrics     audit.OutputMetrics // immutable after New (#696)
@@ -370,9 +377,13 @@ func (s *Output) Close() error {
 			"events_lost", remaining)
 	}
 
-	// Close the srslog.Writer AFTER the writeLoop exits.
-	if s.writer != nil {
-		if err := s.writer.Close(); err != nil {
+	// Close the srslog.Writer AFTER the writeLoop exits. Store nil
+	// before Close so a concurrent reader (none expected post-
+	// shutdown, but defence in depth) cannot observe a half-closed
+	// writer.
+	if w := s.writer.Load(); w != nil {
+		s.writer.Store(nil)
+		if err := w.Close(); err != nil {
 			return fmt.Errorf("audit/syslog: close: %w", err)
 		}
 	}
@@ -435,7 +446,7 @@ func (s *Output) connect() error {
 		w.SetFramer(srslog.RFC5425MessageLengthFramer)
 	}
 	w.SetHostname(s.hostname)
-	s.writer = w
+	s.writer.Store(w)
 	return nil
 }
 
@@ -704,9 +715,10 @@ func (s *Output) writeEntry(entry syslogEntry) {
 	// gain single-digit nanoseconds per event on a single hot path,
 	// at the cost of maintaining a divergent fork. Accepted as-is.
 	var writeErr error
-	if s.writer == nil {
+	w := s.writer.Load()
+	if w == nil {
 		writeErr = errSyslogNotConnected
-	} else if _, err := s.writer.WriteWithPriority(entry.priority, entry.data); err != nil {
+	} else if _, err := w.WriteWithPriority(entry.priority, entry.data); err != nil {
 		writeErr = err
 	}
 
@@ -758,10 +770,12 @@ func (s *Output) handleWriteFailure(entry syslogEntry, writeErr error, om audit.
 		return
 	}
 
-	// Close the old writer before reconnecting.
-	if s.writer != nil {
-		closeWriterForReconnect(s.writer.Close, s.logger, s.address)
-		s.writer = nil
+	// Close the old writer before reconnecting. Capture into a
+	// local before Store(nil) so the method-value resolution
+	// (w.Close) cannot race with the field reset.
+	if w := s.writer.Load(); w != nil {
+		s.writer.Store(nil)
+		closeWriterForReconnect(w.Close, s.logger, s.address)
 	}
 
 	backoff := backoffDuration(s.failures)
@@ -802,8 +816,19 @@ func (s *Output) handleWriteFailure(entry syslogEntry, writeErr error, om audit.
 		rr.RecordReconnect(s.address, true)
 	}
 
-	// Retry the write on the new connection.
-	if _, err := s.writer.WriteWithPriority(entry.priority, entry.data); err != nil {
+	// Retry the write on the new connection. connect() just
+	// stored a non-nil writer and writeLoop is the sole mutator
+	// outside test seams; Load is expected to return non-nil.
+	// Defence in depth: if a future refactor or test misuse
+	// breaks the invariant, log loudly rather than panic.
+	w := s.writer.Load()
+	if w == nil {
+		s.logger.Error("audit: output syslog: writer nil after successful reconnect",
+			"address", s.address)
+		om.RecordError()
+		return
+	}
+	if _, err := w.WriteWithPriority(entry.priority, entry.data); err != nil {
 		s.logger.Error("audit: output syslog: delivery failed after reconnect",
 			"error", err)
 		om.RecordError()
@@ -859,12 +884,13 @@ func (s *Output) drainOne(entry syslogEntry) {
 		}
 	}()
 
-	if s.writer == nil {
+	w := s.writer.Load()
+	if w == nil {
 		return
 	}
 
 	start := time.Now()
-	if _, err := s.writer.WriteWithPriority(entry.priority, entry.data); err != nil {
+	if _, err := w.WriteWithPriority(entry.priority, entry.data); err != nil {
 		s.logger.Error("audit: output syslog: delivery failed during drain",
 			"error", err)
 		om.RecordError()

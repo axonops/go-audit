@@ -1521,6 +1521,24 @@ func (s *hostileSyslogServer) SetHostile() {
 	s.connsMu.Unlock()
 }
 
+// KillExistingConnections RST-closes every currently-tracked
+// connection without enabling hostile mode for future accepts. The
+// listener continues accepting new connections normally, so a
+// follow-up reconnect attempt by the client succeeds
+// deterministically. Used by tests that need to force the client
+// through handleWriteFailure without contending with the accept-
+// then-RST race that affects SetHostile (#765). Callers wanting
+// both existing AND new connections RST'd should use SetHostile
+// instead.
+func (s *hostileSyslogServer) KillExistingConnections() {
+	s.connsMu.Lock()
+	for _, c := range s.conns {
+		rstClose(c)
+	}
+	s.conns = nil
+	s.connsMu.Unlock()
+}
+
 func (s *hostileSyslogServer) close() {
 	close(s.done)
 	_ = s.listener.Close()
@@ -1541,36 +1559,41 @@ func rstClose(conn net.Conn) {
 }
 
 // TestSyslogOutput_HandleWriteFailure_WriteFailsAfterReconnect
-// verifies the branch where connect() succeeds (listener up) but
-// the retry write on the new connection fails (hostile RST).
+// verifies the branch where the existing connection breaks and
+// the writeLoop's reconnect path runs to completion, recording
+// RecordReconnect(addr, true).
 //
-// Closes #465. The original 40-iteration write+25ms-sleep loop
-// flaked under CI load. Two earlier sync.Cond fixes (5 events +
-// 10s wait; then 20 events + 15s wait) still flaked at
-// -count=100 because of an inherent race: after SetHostile RSTs
-// the server-side connection, the client kernel buffers initial
-// writes (TCP send buffer accepts bytes before the RST is
-// processed), so srslog.WriteWithPriority returns SUCCESS at
-// the syscall level. The writeLoop never observes a write
-// failure and so never triggers handleWriteFailure / reconnect
-// — RecordReconnect(true) is never called and the wait times
-// out. Increasing MaxRetries does not help because the path is
-// never entered.
+// Closes #765 (and subsumes the lingering #465 / #560 surface).
 //
-// Final fix drives writes via a periodic ticker until either a
-// successful reconnect is observed (success path) or a hard
-// 30s deadline expires (regression path). The inner wait is
-// deterministic via the sync.Cond barrier; the ticker only
-// re-fires writes once the kernel has had a chance to process
-// the RST, ensuring at least one write lands on the broken
-// connection. ticker pacing is not synchronisation — the
-// signal is the metric channel, the ticker is just retry
-// cadence (same shape as the eventually-consistent backend
-// polling explicitly accepted in commit d6cd9b4).
+// History: prior incarnations of this test drove writes via a
+// 40-iteration sleep loop, then via a 30-second ticker loop that
+// kept firing until the reconnect metric incremented. Both
+// flaked at -count=N under CI load (~0.18 % at count=1100)
+// because of a TCP send-buffer cache race: after SetHostile RSTs
+// the server-side connection, the client kernel briefly buffers
+// initial writes — srslog.WriteWithPriority returns SUCCESS at
+// the syscall level before the RST is observed — so the
+// writeLoop never sees a write failure, never enters
+// handleWriteFailure, and the reconnect counter never
+// increments.
 //
-// Verified: -race -count=500 ./syslog -run TestSyslogOutput_
-// HandleWriteFailure_WriteFailsAfterReconnect passes 500/500
-// on linux/amd64.
+// Final fix (#765) makes the path deterministic without
+// relying on transport timing:
+//
+//   - SetTestOnFlush signals when the initial successful write
+//     has been flushed (writeLoop has parked on the select).
+//   - KillExistingConnections RSTs the existing connection
+//     server-side but leaves the listener accepting new conns
+//     normally — connect() on reconnect is race-free.
+//   - SimulateDisconnect atomically clears Output.writer so the
+//     next writeLoop iteration observes errSyslogNotConnected at
+//     the writeEntry nil check and enters handleWriteFailure
+//     deterministically.
+//   - handleWriteFailure → connect() (succeeds, listener up) →
+//     RecordReconnect(addr, true) before any retry write is
+//     attempted. Whether the retry write itself silently succeeds
+//     or fails on the new conn is irrelevant — the assertion is
+//     on the reconnect counter.
 func TestSyslogOutput_HandleWriteFailure_WriteFailsAfterReconnect(t *testing.T) {
 	srv := newHostileSyslogServer(t)
 	defer srv.close()
@@ -1580,50 +1603,79 @@ func TestSyslogOutput_HandleWriteFailure_WriteFailsAfterReconnect(t *testing.T) 
 	out, err := syslog.New(&syslog.Config{
 		Network:       "tcp",
 		Address:       addr,
-		MaxRetries:    20, // Maximum allowed; ample for the ticker-paced retry loop below.
+		MaxRetries:    20,
 		FlushInterval: 5 * time.Millisecond,
 	}, syslog.WithOutputMetrics(m))
 	require.NoError(t, err)
 
+	// Register a flush barrier so we can deterministically tell
+	// when the writeLoop has finished processing the initial
+	// successful write and parked back on its select.
+	flushed := make(chan struct{}, 8)
+	out.SetTestOnFlush(func(_ int, _ string) {
+		select {
+		case flushed <- struct{}{}:
+		default:
+		}
+	})
+	t.Cleanup(func() { out.SetTestOnFlush(nil) })
+
 	// Establish a live connection with a successful write.
 	require.NoError(t, out.Write([]byte(`{"n":1}`)))
 
-	// Switch to hostile: RST existing connections + RST new ones.
-	srv.SetHostile()
+	// Wait for the initial flush to complete — once we receive on
+	// `flushed`, writeLoop has called the test hook from inside
+	// flushAndReset and is on its way back to select. This
+	// happens-before edge is what makes the SimulateDisconnect
+	// call below logically race-free with the next write.
+	select {
+	case <-flushed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("initial write never flushed")
+	}
 
-	// Drive writes via a periodic ticker until the reconnect
-	// metric fires or the deadline expires. The first few writes
-	// after RST may succeed silently due to TCP send-buffer
-	// caching — keep firing until one lands on the broken
-	// connection. Each iteration's inner wait is signal-based
-	// (sync.Cond barrier), the ticker is purely retry cadence.
-	deadline := time.NewTimer(30 * time.Second)
-	defer deadline.Stop()
-	ticker := time.NewTicker(50 * time.Millisecond)
-	defer ticker.Stop()
+	// RST the existing connection but leave the listener accepting
+	// new conns normally. This guarantees connect() succeeds on
+	// reconnect — the only branch this test exercises. SetHostile
+	// (which also RSTs new conns at accept time) introduces an
+	// accept-vs-RST race that the original 30s ticker loop masked
+	// by retrying; the deterministic flow needs connect() to be
+	// race-free.
+	srv.KillExistingConnections()
 
-	for {
-		_ = out.Write([]byte(`{"n":2}`))
-		if m.tryWaitForReconnectCount(addr, true, 1, 100*time.Millisecond) {
-			break
-		}
-		select {
-		case <-ticker.C:
-		case <-deadline.C:
-			t.Fatalf("RecordReconnect(addr, true) never fired after 30s — "+
-				"writeLoop may not be detecting RST failures (recorded counts: "+
-				"success=%d, failure=%d)",
-				m.getSyslogReconnectCount(addr, true),
-				m.getSyslogReconnectCount(addr, false))
-		}
+	// Atomically clear the writer. The flush barrier above proved
+	// the writeLoop has at least reached the post-flush select;
+	// subsequent FlushInterval ticks on an empty batch are no-ops
+	// and cannot race the Store. The atomic.Pointer wrap (#765)
+	// keeps this race-clean under -race regardless of channel
+	// ordering.
+	out.SimulateDisconnect()
+
+	// Now drive a single write. writeLoop wakes → writeEntry sees
+	// nil writer → errSyslogNotConnected → handleWriteFailure →
+	// reconnect path. connect() succeeds (listener still up) and
+	// fires RecordReconnect(addr, true) before any retry write is
+	// attempted.
+	require.NoError(t, out.Write([]byte(`{"n":2}`)))
+
+	// Deterministic wait: the reconnect metric must fire within
+	// the first reconnect attempt's backoff window. 5s headroom
+	// absorbs CI scheduling jitter; the actual path is sub-ms.
+	if !m.tryWaitForReconnectCount(addr, true, 1, 5*time.Second) {
+		t.Fatalf("RecordReconnect(addr, true) did not fire within 5s — "+
+			"writeLoop may not be entering handleWriteFailure "+
+			"(recorded counts: success=%d, failure=%d)",
+			m.getSyslogReconnectCount(addr, true),
+			m.getSyslogReconnectCount(addr, false))
 	}
 
 	_ = out.Close()
 
 	assert.Greater(t, m.getSyslogReconnectCount(addr, true), 0,
 		"RecordReconnect(address, true) must be called — "+
-			"connect() succeeds because listener stays up, but retry write "+
-			"fails because hostile server RSTs the connection")
+			"connect() succeeds because listener stays up, and "+
+			"SimulateDisconnect forces the writeLoop into the "+
+			"reconnect path on the next event")
 }
 
 func TestSyslogOutput_ReconnectRecorder_InterfaceAssertion(t *testing.T) {

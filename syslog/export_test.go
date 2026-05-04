@@ -57,11 +57,34 @@ var MapSeverity = mapSeverity
 // errSyslogNotConnected to be returned, triggering handleWriteFailure
 // which records RecordRetry/RecordError. Called synchronously from
 // the test goroutine while writeLoop is blocked on an empty channel.
+//
+// The atomic.Pointer wrap (#765) makes the save/restore race-free
+// under -race even when the writeLoop is technically still in flight
+// from a prior batch (load-store on the same field is well-defined).
 func (s *Output) SimulateWriteFailure() {
-	saved := s.writer
-	s.writer = nil
+	saved := s.writer.Load()
+	s.writer.Store(nil)
 	s.writeEntry(syslogEntry{data: []byte("trigger-error"), priority: 0})
-	s.writer = saved
+	s.writer.Store(saved)
+}
+
+// SimulateDisconnect atomically clears Output.writer without first
+// closing the prior writer (the caller's hostile-server harness has
+// already RST'd the underlying TCP connection). The next call to
+// writeEntry triggered by an enqueued event sees errSyslogNotConnected
+// at the nil check, enters handleWriteFailure, and (if the listener
+// is still up) calls connect() → RecordReconnect(addr, true)
+// deterministically. Used by hostile-server tests to bypass the TCP
+// send-buffer cache that otherwise allows the first post-RST write
+// to silently succeed at the syscall level (#765).
+//
+// Callers SHOULD wait for an initial flush barrier (via
+// SetTestOnFlush) before invoking, so the next event the writeLoop
+// processes is the one that observes nil. The Store itself is always
+// race-clean (atomic.Pointer guarantees that); the wait is for test
+// determinism, not memory safety.
+func (s *Output) SimulateDisconnect() {
+	s.writer.Store(nil)
 }
 
 // SetTestOnFlush registers a test-only callback fired after every
