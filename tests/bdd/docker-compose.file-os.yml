@@ -1,0 +1,48 @@
+# File-output OS-failure-mode harness (#748).
+#
+# A long-running container that idles (`sleep infinity`) and exposes a
+# size-limited tmpfs at /audit-test-tmpfs. BDD scenarios shell into
+# the container via `docker compose exec` to run the file-enospc-runner
+# helper, which writes events to /audit-test-tmpfs/audit.log until the
+# tmpfs fills and the kernel returns ENOSPC.
+#
+# Why a container at all: ENOSPC reproduction needs a small filesystem
+# to fill quickly. tmpfs with `size=256k` gives a deterministic ENOSPC
+# without needing the host to be cooperative; mount-namespaced tmpfs
+# does not affect the host.
+#
+# Usage:
+#   make test-infra-file-os-up        # bring up
+#   make test-bdd-file-os             # run scenarios
+#   make test-infra-file-os-down      # tear down
+#
+# Source-tree mount: /workspace is the bind-mount of the repo root,
+# read-only — the runner uses `go run` to execute. We do NOT pre-build
+# the helper; compile-on-demand keeps the harness in sync with the
+# source the BDD step is exercising on.
+
+services:
+  audit-file-os:
+    image: golang:1.26-alpine
+    container_name: audit-file-os
+    working_dir: /workspace
+    # Read-only bind so the runner cannot write back to the host
+    # source tree. `go run` resolves the module via go.work
+    # (initialised by `make workspace`) which points at the local
+    # submodules; build cache writes go to GOCACHE/GOMODCACHE, both
+    # redirected to the container's writable layer.
+    volumes:
+      - ../../:/workspace:ro
+    tmpfs:
+      - /audit-test-tmpfs:rw,nodev,nosuid,size=262144
+    environment:
+      - GOCACHE=/tmp/go-build-cache
+      - GOMODCACHE=/tmp/go-mod-cache
+    healthcheck:
+      # `--wait` returns when this passes — confirms tmpfs is
+      # actually mounted before BDD scenarios shell in.
+      test: ["CMD", "test", "-d", "/audit-test-tmpfs"]
+      interval: 1s
+      timeout: 1s
+      retries: 5
+    command: ["sleep", "infinity"]

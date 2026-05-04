@@ -157,15 +157,27 @@ Feature: File Output
     And I close the auditor
     Then the file should contain events
 
-  # NOTE on file-output OS-level failure modes (tracked in #748):
-  # disk-full (ENOSPC), open-file-limit, and permission-denied
-  # after rotation are real operational failure modes but the
-  # audit file output opens the underlying log file lazily on first
-  # write (rotate.New only os.Stats the parent dir; the actual
-  # OpenFile happens inside the writeLoop goroutine). Asserting
-  # these failure modes through the BDD harness requires either a
-  # privileged test container (tmpfs with size limit, ulimit -n
-  # lowering) or new public surface on the file output to observe
-  # the async error metric. Both paths are tracked in #748. The
-  # synchronous failures (empty path, non-existent parent, invalid
-  # Mode) are already covered above.
+  # --- OS-level failure modes (#748) ---
+  #
+  # Each scenario asserts the file output's writeLoop calls
+  # om.RecordError when the underlying filesystem returns the
+  # mapped errno. The MockFileMetrics extension (#748) captures
+  # these calls via an ErrorCount() accessor.
+
+  Scenario: File output records RecordError when target directory becomes read-only
+    Given mock file metrics are configured
+    And an auditor with file output configured for 1 MB max size with file metrics
+    When I write enough events to exceed 1 MB
+    And I wait for at least 1 file rotation(s)
+    And the audit log directory is made read-only
+    And I write enough events to exceed 1 MB
+    Then the file output should record at least 1 error(s)
+
+  @linux
+  Scenario: File output records RecordError when fd limit is exhausted on rotation
+    When I run the file-emfile subprocess
+
+  @linux @docker
+  Scenario: File output records RecordError on ENOSPC
+    Given the file-os tmpfs container is up
+    When I run the ENOSPC test inside the file-os container

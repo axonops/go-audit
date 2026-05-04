@@ -170,3 +170,10 @@ soak-output/
 # Example output files (generated at runtime)
 *.log
 examples/*/*.log
+
+# Test-helper binaries from tests/bdd/cmd/. The helpers are invoked
+# via `go run ./tests/bdd/cmd/...` and should not produce a binary at
+# the repo root; these patterns guard against accidental commits if a
+# developer runs `go build` without -o.
+/file-emfile-runner
+/file-enospc-runner

@@ -33,6 +33,7 @@ func registerFileSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	registerFileGivenSteps(ctx, tc)
 	registerFileWhenSteps(ctx, tc)
 	registerFileThenSteps(ctx, tc)
+	registerFileFailureSteps(ctx, tc)
 }
 
 func registerFileGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
@@ -587,14 +588,17 @@ func assertFileEventCount(tc *AuditTestContext, name string, expected int) error
 
 // --- Mock file metrics ---
 
-// MockFileMetrics captures file rotation events. It embeds
-// [audit.NoOpOutputMetrics] to satisfy [audit.OutputMetrics] and
-// additionally implements [file.RotationRecorder] so the file output
-// can detect and call RecordRotation via structural typing.
+// MockFileMetrics captures file rotation events plus async write
+// errors so OS-level failure scenarios (#748) can assert on the same
+// metric surface that production observability systems consume. It
+// embeds [audit.NoOpOutputMetrics] to satisfy [audit.OutputMetrics]
+// and additionally implements [file.RotationRecorder] so the file
+// output can detect and call RecordRotation via structural typing.
 type MockFileMetrics struct {
 	audit.NoOpOutputMetrics
 	mu        sync.Mutex
 	rotations int
+	errors    int
 }
 
 // RecordRotation satisfies [file.RotationRecorder].
@@ -602,4 +606,30 @@ func (m *MockFileMetrics) RecordRotation(_ string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.rotations++
+}
+
+// RecordError shadows [audit.NoOpOutputMetrics.RecordError] so the
+// embedded no-op default does not run; calls are counted for BDD
+// assertion. The file output's writeLoop already calls om.RecordError
+// on every async write failure (see file/file.go writeBatch), so the
+// override is a pure observability extension — no production code
+// change.
+func (m *MockFileMetrics) RecordError() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.errors++
+}
+
+// ErrorCount returns the number of RecordError calls observed.
+func (m *MockFileMetrics) ErrorCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.errors
+}
+
+// Rotations returns the number of RecordRotation calls observed.
+func (m *MockFileMetrics) Rotations() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.rotations
 }
