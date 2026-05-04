@@ -171,9 +171,24 @@ func TestOpenBaoNew_NeverLeaksInputInErrorMessage(t *testing.T) {
 		}, "embedded_credentials"},
 	}
 	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
+		t.Run("New_"+tc.name, func(t *testing.T) {
 			t.Parallel()
 			_, err := openbao.New(tc.cfg)
+			require.Error(t, err)
+			require.ErrorIs(t, err, audit.ErrConfigInvalid)
+			msg := err.Error()
+			assert.NotContains(t, msg, addrSentinel,
+				"address sentinel must not appear in the error: %s", msg)
+			assert.NotContains(t, msg, schemeSentinel,
+				"scheme sentinel must not appear in the error: %s", msg)
+			assert.NotContains(t, msg, tokenSentinel,
+				"token sentinel must not appear in the error: %s", msg)
+		})
+		// NewWithHTTPClient shares the same validation pipeline as
+		// New; assert the same redaction guarantee on its surface.
+		t.Run("NewWithHTTPClient_"+tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := openbao.NewWithHTTPClient(tc.cfg, http.DefaultClient)
 			require.Error(t, err)
 			require.ErrorIs(t, err, audit.ErrConfigInvalid)
 			msg := err.Error()

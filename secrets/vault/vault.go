@@ -241,10 +241,11 @@ func NewWithHTTPClient(cfg *Config, client *http.Client) (*Provider, error) {
 	}
 	u, err := url.Parse(cfg.Address)
 	if err != nil {
-		return nil, fmt.Errorf("%w: audit/secrets/vault: invalid address: %w", audit.ErrConfigInvalid, err)
+		// See New for the redaction rationale (#651).
+		return nil, fmt.Errorf("%w: audit/secrets/vault: address is not a valid URL", audit.ErrConfigInvalid)
 	}
 	if u.Scheme != "https" && !cfg.AllowInsecureHTTP {
-		return nil, fmt.Errorf("%w: audit/secrets/vault: address must use https (got %q); set AllowInsecureHTTP for local development", audit.ErrConfigInvalid, u.Scheme)
+		return nil, fmt.Errorf("%w: audit/secrets/vault: address must use https; set AllowInsecureHTTP for local development", audit.ErrConfigInvalid)
 	}
 	if u.Host == "" {
 		return nil, fmt.Errorf("%w: audit/secrets/vault: address has empty host", audit.ErrConfigInvalid)
