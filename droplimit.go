@@ -14,6 +14,20 @@
 
 package audit
 
+// SYNC: this file's dropLimiter type is also implemented in
+//
+//	file/droplimit.go, webhook/droplimit.go,
+//	syslog/droplimit.go, loki/droplimit.go.
+//
+// The type is unexported and cannot be shared across Go modules
+// (each output module is independently versioned and published).
+// Keep all five copies in sync when making changes (#542).
+//
+// The core copy (this file) is the canonical reference; sub-module
+// copies are byte-for-byte identical to the type definition and
+// record method body, but strip the longer comment block on
+// lock-free semantics (#492) to keep the per-module file minimal.
+
 import (
 	"sync/atomic"
 	"time"

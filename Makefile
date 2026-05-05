@@ -660,6 +660,47 @@ check-bdd-strict:
 	fi
 	@echo "All godog runners use Strict mode (checks 1/3, 2/3, 3/3 passed)."
 
+# Enforce that every file containing intentionally-duplicated logic
+# carries a "// SYNC:" marker. Three pieces of logic are duplicated
+# across published sub-modules because Go's internal/ package
+# mechanism does not cross module boundaries — each output module is
+# independently versioned and published, so cannot share unexported
+# helpers with the others. See #542.
+#
+# Files in scope (12):
+#   - dropLimiter (5 copies): droplimit.go and 4 sub-module copies.
+#   - backoff/jitter (3 copies): syslog/reconnect.go,
+#     webhook/http.go, loki/http.go.
+#   - intPtrOrDefault (4 copies): file/, syslog/, webhook/, loki/
+#     register.go.
+#
+# This target verifies marker PRESENCE only — it does NOT diff
+# function bodies. Reviewers are expected to keep bodies in sync
+# when any listed file changes; the SYNC marker is the trip-wire
+# that prompts the cross-file diff during review.
+check-sync-comments:
+	@FAILING=""; \
+	for f in droplimit.go \
+	         file/droplimit.go webhook/droplimit.go \
+	         syslog/droplimit.go loki/droplimit.go \
+	         syslog/reconnect.go webhook/http.go loki/http.go \
+	         file/register.go syslog/register.go \
+	         webhook/register.go loki/register.go; do \
+	  if ! grep -q '^// SYNC:' "$$f"; then \
+	    FAILING="$$FAILING $$f"; \
+	  fi; \
+	done; \
+	if [ -n "$$FAILING" ]; then \
+	  echo "ERROR: file(s) missing required '// SYNC:' marker:"; \
+	  for f in $$FAILING; do echo "  $$f"; done; \
+	  echo ""; \
+	  echo "Every file in the duplication-by-necessity list MUST carry a"; \
+	  echo "'// SYNC:' comment listing its sibling copies. See #542 and"; \
+	  echo "the existing SYNC comments in droplimit.go for the format."; \
+	  exit 1; \
+	fi
+	@echo "All duplicated-logic files carry the required SYNC markers."
+
 # --- Security ---
 
 # security runs govulncheck serially over every module. Used by
@@ -869,7 +910,7 @@ check-static:
 	@FAILED=""; \
 	for target in fmt-check tidy-check check-todos check-replace \
 	              check-insecure-skip-verify check-example-links \
-	              check-bdd-strict bench-baseline-check \
+	              check-bdd-strict check-sync-comments bench-baseline-check \
 	              regen-release-docs-check regen-schema-artifacts-check; do \
 	  echo "==> make $$target"; \
 	  $(MAKE) "$$target" || FAILED="$$FAILED $$target"; \
