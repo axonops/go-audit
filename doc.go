@@ -114,6 +114,9 @@
 //   - [NewEventKV] — creates an event from alternating key-value pairs (slog-style)
 //   - [Fields] — defined type over map[string]any with [Fields.Has], [Fields.String], [Fields.Int] accessors
 //
+// See docs/event-emission-paths.md for a side-by-side comparison of
+// the three paths with examples and benchmark numbers.
+//
 // # Outputs
 //
 //   - [Output] — interface for audit event destinations (file, syslog, webhook, stdout)

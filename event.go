@@ -119,6 +119,10 @@ type basicEvent struct {
 // [EventHandle] — it pre-validates the event type once and emits
 // without the per-call basicEvent allocation. See [Auditor.Handle]
 // and [Auditor.MustHandle].
+//
+// For a side-by-side comparison of NewEvent, EventHandle, and
+// generated builders with examples and benchmark numbers, see
+// docs/event-emission-paths.md.
 func NewEvent(eventType string, fields Fields) Event {
 	return &basicEvent{
 		eventType: eventType,
@@ -170,6 +174,10 @@ func (e *basicEvent) FieldInfoMap() map[string]FieldInfo { return nil }
 // per call (plus any-boxing of non-string values). For high-throughput
 // callers, prefer generated typed builders (zero caller-side
 // allocations after warm-up) or [EventHandle] for dynamic event types.
+//
+// For a side-by-side comparison of NewEvent, EventHandle, and
+// generated builders with examples and benchmark numbers, see
+// docs/event-emission-paths.md.
 func NewEventKV(eventType string, keysAndValues ...any) (Event, error) {
 	if len(keysAndValues)%2 != 0 {
 		return nil, fmt.Errorf("%w: NewEventKV requires even number of arguments, got %d",
@@ -227,6 +235,10 @@ func MustNewEventKV(eventType string, keysAndValues ...any) Event {
 // builders from audit-gen — they add compile-time field safety and
 // implement [FieldsDonor] for the zero-allocation drain-side fast
 // path.
+//
+// For a side-by-side comparison of NewEvent, EventHandle, and
+// generated builders with examples and benchmark numbers, see
+// docs/event-emission-paths.md.
 type EventHandle struct {
 	auditor      *Auditor
 	fieldInfoMap map[string]FieldInfo
