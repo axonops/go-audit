@@ -839,12 +839,19 @@ value: "ref+openbao://${BAO_SECRET_PATH:-secret/data/audit/hmac}#salt"
 See [Secret Provider Integration](secrets.md) for URI syntax, provider
 setup, caching, security model, and error reference.
 
-## 🏭 Factory Registry
+## 🏭 Output Factory Registration
 
-Output types must be registered before `Load` can create them.
-Registration happens via a blank import in your application. The
-default — and recommended — path is the convenience package, which
-registers every built-in output (including stdout) in a single line:
+Output types must be registered before `outputconfig.Load` can create
+them from YAML. The library exposes two registration paths; both
+resolve to the same `OutputFactory` contract, but they target
+different scenarios.
+
+### Blank-import (default)
+
+The recommended path for production deployments. Importing the
+convenience umbrella package registers every built-in output —
+`stdout`, `file`, `syslog`, `webhook`, `loki` — via the
+sub-modules' `init()` functions:
 
 ```go
 import _ "github.com/axonops/audit/outputs"
@@ -862,10 +869,58 @@ import (
 )
 ```
 
-Note that `stdout` is also a separate module; if you use
-`type: stdout` without importing `outputs` (or calling
-`audit.MustRegisterOutputFactory("stdout", audit.StdoutFactory())`),
-`Load` returns an error — no output is silently dropped.
+`stdout` is part of the core `github.com/axonops/audit` module, not
+a sub-module. Using `type: stdout` without importing the `outputs`
+umbrella (or calling
+`audit.MustRegisterOutputFactory("stdout", audit.StdoutFactory())`
+directly) causes `Load` to return an error — no output is silently
+dropped.
+
+Double-registration is safe: `audit.RegisterOutputFactory` overwrites
+silently by design, so re-registering the same type name with a
+different factory replaces it without error.
+
+### `WithFactory` (per-call override)
+
+The `outputconfig.WithFactory(typeName, factory)` LoadOption
+registers a factory for a single `Load`/`New`/`NewWithLoad` call,
+without mutating the global registry:
+
+```go
+// customFileFactory is your audit.OutputFactory implementation;
+// yamlBytes is the YAML config (e.g. read from disk or embed).
+result, err := outputconfig.Load(
+    ctx, yamlBytes, taxonomy,
+    outputconfig.WithFactory("file", customFileFactory),
+)
+```
+
+Per-call factories take precedence over globally-registered ones.
+Multiple `WithFactory` calls for the same type name resolve as
+last-wins.
+
+### When to use which
+
+| Scenario | Recommended path |
+|----------|------------------|
+| Default production setup | Blank-import the `outputs` umbrella. |
+| Binary-size optimisation | Blank-import only the sub-modules you reference. |
+| Test code that should not depend on a sub-module's `init()` side effects | `WithFactory` — keeps the test hermetic. The test does not import the sub-module, so its `init()` does not register a real factory and cannot leak into other tests sharing the global registry. |
+| Custom metrics-aware factory for one output type | Blank-import the rest, override that one type with `WithFactory`. |
+| Multiple auditors in one process with different factory bindings | `WithFactory` per call. The global registry stores exactly one factory per type name, so two `RegisterOutputFactory` calls for the same type would have the second overwrite the first; `WithFactory` scopes the binding to one `Load` call so the two auditors do not collide. |
+| Output type not provided by any sub-module (consumer-defined) | Either `audit.RegisterOutputFactory` from your own `init()`, or `WithFactory` per call — the test-vs-production trade-off above applies. |
+| Test cleanup / un-registration between tests | Neither path supports removal. The global registry is append-only (overwrite-with-different-factory works, but there is no `Unregister`). For per-test isolation, prefer `WithFactory` which scopes naturally to the call and never touches the global registry. |
+| Resolution order between `init()` and `WithFactory` | Both are resolved at `Load` time. Blank-import order does not matter as long as every needed factory has been registered by the time `Load` runs. `WithFactory` overrides whatever the global registry holds at that moment. |
+
+The two paths can coexist freely. Blank-import sets up sensible
+defaults at process start; `WithFactory` selectively overrides those
+defaults for a single call.
+
+See:
+- [`audit.RegisterOutputFactory`](https://pkg.go.dev/github.com/axonops/audit#RegisterOutputFactory)
+  — the global-registry entry point invoked by sub-module `init()`s.
+- [`outputconfig.WithFactory`](https://pkg.go.dev/github.com/axonops/audit/outputconfig#WithFactory)
+  — the per-call LoadOption.
 
 ## 📦 Loading Output Configuration
 
