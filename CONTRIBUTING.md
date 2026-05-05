@@ -391,6 +391,34 @@ in [docs/releasing.md](docs/releasing.md) under "Tag protection";
 that file is the single source of truth, regenerated from the
 canonical `PUBLISH_MODULES` list.
 
+### Nightly dependency-update PR
+
+A scheduled workflow
+([`.github/workflows/dependency-update.yml`](.github/workflows/dependency-update.yml))
+runs daily at 02:00 UTC and posts transitive Go dependency updates
+to a single long-lived PR on the `chore/nightly-dep-update` branch.
+The PR is updated **in place** — new commits are appended on each
+iteration rather than force-pushed — so reviewer line comments stay
+attached to their original commits and remain visible across runs.
+
+Contributors MUST NOT push directly to `chore/nightly-dep-update`.
+The workflow owns the branch exclusively; an external push will
+either be overwritten on the next nightly run or cause the run to
+fail with a non-fast-forward error.
+
+The PR description is refreshed with the latest main-vs-current diff
+on each run; if you have ticked any review checkboxes in the body,
+they will be reset on the next iteration (each day's diff differs,
+so the checklist warrants a fresh look). PR-level conversation
+comments are never reset.
+
+When the PR is **merged with branch deletion**, the next nightly run
+starts a fresh cycle: it creates a new branch from `main` and opens a
+new PR. When the PR is **closed without merging** (or merged without
+branch deletion), the branch persists; the next nightly run appends
+on top and opens a new PR pointing to the same branch. To force a
+clean reset, delete the branch manually.
+
 ## CI Behaviour
 
 The `CI` workflow (`.github/workflows/ci.yml`) detects whether a
