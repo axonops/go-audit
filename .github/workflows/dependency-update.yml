@@ -40,11 +40,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+      # Single setup story: pulls in setup-go, make workspace, the
+      # ~/go/bin tool cache (keyed by scripts/tool-versions.txt), and
+      # make install-tools. Tools are installed unconditionally up front
+      # so the smoke-test path below stays a flat sequence; cache hits
+      # make this ~5–10 s on no-change runs (#520).
+      - name: Set up audit toolchain
+        uses: ./.github/actions/setup-audit
         with:
-          go-version-file: go.mod
-          cache: true
+          install-tools: 'true'
 
       - name: Save pre-update go.mod files
         run: |
@@ -154,21 +158,7 @@ jobs:
       # --- Smoke test: verify updated deps do not break the build ---
       # Runs vet, lint, unit tests, and cross-build on the updated tree.
       # Full integration/BDD tests run when CI triggers on the PR.
-
-      - name: Set up go.work
-        if: steps.changes.outputs.has_changes == 'true'
-        run: make workspace
-
-      - name: Cache Go tools
-        if: steps.changes.outputs.has_changes == 'true'
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: ~/go/bin
-          key: go-tools-${{ runner.os }}-${{ hashFiles('Makefile') }}
-
-      - name: Install tools
-        if: steps.changes.outputs.has_changes == 'true'
-        run: make install-tools
+      # (Toolchain is set up unconditionally above by setup-audit.)
 
       - name: Smoke test — vet
         if: steps.changes.outputs.has_changes == 'true'
