@@ -93,6 +93,22 @@ func WithOutputMetrics(factory audit.OutputMetricsFactory) LoadOption {
 // WithFactory registers a per-call output factory override for the
 // given type name. Per-call factories take precedence over globally
 // registered factories. Multiple calls for the same type: last wins.
+//
+// # Choosing a registration path
+//
+// WithFactory is one of two registration paths. The other is
+// [github.com/axonops/audit.RegisterOutputFactory] (typically
+// invoked from init() via a blank-import of an output sub-module
+// such as [github.com/axonops/audit/outputs] or
+// [github.com/axonops/audit/file]), which mutates the global
+// registry and applies process-wide.
+//
+// Use WithFactory for tests, per-call overrides, or multiple
+// auditors in one process with different factory bindings. Use
+// RegisterOutputFactory (via blank-import) for default production
+// setup. See the "Output Factory Registration" section of
+// docs/output-configuration.md for full guidance on choosing between
+// them.
 func WithFactory(typeName string, factory audit.OutputFactory) LoadOption {
 	return func(o *loadOptions) {
 		if o.factories == nil {

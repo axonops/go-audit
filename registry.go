@@ -75,6 +75,22 @@ var (
 //
 // Prior to #590 this function panicked directly; the signature change
 // removes the last library-boundary panic in the public API.
+//
+// # Choosing a registration path
+//
+// RegisterOutputFactory is one of two registration paths. The other
+// is [github.com/axonops/audit/outputconfig.WithFactory], which
+// passes a factory as a LoadOption to a single Load call without
+// mutating the global registry. RegisterOutputFactory applies process-wide;
+// WithFactory applies to one Load call only and takes precedence
+// over any globally-registered factory for the same type name.
+//
+// Use RegisterOutputFactory (typically via a blank-import of an
+// output sub-module) for default production setup. Use WithFactory
+// for tests, per-call overrides, or multiple auditors in one process
+// with different factory bindings. See the "Output Factory
+// Registration" section of docs/output-configuration.md for full
+// guidance on choosing between them.
 func RegisterOutputFactory(typeName string, factory OutputFactory) error {
 	if typeName == "" {
 		return fmt.Errorf("%w: RegisterOutputFactory called with empty type name", ErrValidation)
