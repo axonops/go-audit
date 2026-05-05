@@ -4,7 +4,7 @@ go 1.26.2
 
 require (
 	github.com/axonops/audit v0.1.11
-	github.com/axonops/audit/iouring v0.0.0-20260420160236-1c23d72efb5a
+	github.com/axonops/audit/iouring v0.0.0-20260504172742-a7311e23b1c6
 	github.com/goccy/go-yaml v1.19.2
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/goleak v1.3.0
