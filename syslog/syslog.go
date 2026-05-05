@@ -648,4 +648,3 @@ func (s *Output) retryAfterReconnect(entry syslogEntry, om audit.OutputMetrics) 
 	}
 	return true
 }
-
