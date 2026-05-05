@@ -279,7 +279,10 @@ func parseRetryAfter(val string) time.Duration {
 // 100ms * 2^attempt with [0.5, 1.0) jitter, capped at 5s.
 //
 // SYNC: identical to webhook/http.go (webhookBackoff, 5s cap).
-// Similar to syslog/syslog.go (backoffDuration, 30s cap).
+// Similar to syslog/reconnect.go (backoffDuration, 30s cap,
+// persistent TCP reconnection). The helper is unexported and
+// cannot be shared across Go modules. Keep the three copies in
+// sync when making changes (#542).
 func lokiBackoff(attempt int) time.Duration {
 	exp := float64(attempt)
 	if exp > 20 {

@@ -77,7 +77,13 @@ type yamlFileConfig struct { //nolint:govet // fieldalignment: readability prefe
 // non-nil and the value is zero, returns -1 as a sentinel.
 // applyDefaults treats values <= 0 as "not set" and replaces them
 // with the default, so explicit YAML zero silently becomes the
-// default. This matches the webhook and loki pattern.
+// default.
+//
+// SYNC: identical implementation in file/register.go,
+// syslog/register.go, webhook/register.go, loki/register.go. The
+// helper is unexported and cannot be shared across Go modules (each
+// output module is independently versioned and published). Keep all
+// four copies in sync when making changes (#542).
 func intPtrOrDefault(p *int, def int) int {
 	if p == nil {
 		return def

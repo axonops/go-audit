@@ -53,11 +53,14 @@ func closeWriterForReconnect(closeFn func() error, logger *slog.Logger, address 
 // (100ms * 2^(attempt-1) * [0.5, 1.0], capped at 30s). Jitter prevents
 // thundering herd when multiple clients reconnect simultaneously.
 //
+// The exponent uses attempt-1 because s.failures is pre-incremented
+// before this call, so attempt=1 yields the initial 100ms base delay.
+//
 // SYNC: similar implementations in webhook/http.go (webhookBackoff)
 // and loki/http.go (lokiBackoff). Syslog uses a 30s cap (persistent
-// TCP reconnection) vs 5s for HTTP outputs. The exponent uses
-// attempt-1 because s.failures is pre-incremented before this call,
-// so attempt=1 yields the initial 100ms base delay.
+// TCP reconnection) vs 5s for HTTP outputs. The helper is unexported
+// and cannot be shared across Go modules. Keep the three copies in
+// sync when making changes (#542).
 func backoffDuration(attempt int) time.Duration {
 	exp := math.Min(float64(attempt-1), 20) // clamp exponent to avoid overflow
 	d := syslogBaseBackoff * time.Duration(math.Pow(2, exp))

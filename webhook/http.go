@@ -223,8 +223,11 @@ func buildNDJSON(events [][]byte) []byte {
 // for webhook retry: 100ms * 2^attempt with [0.5, 1.0) jitter,
 // capped at 5s.
 //
-// SYNC: similar implementations in syslog/syslog.go (backoffDuration,
-// 30s cap) and loki/http.go (lokiBackoff, identical 5s cap).
+// SYNC: similar implementations in syslog/reconnect.go
+// (backoffDuration, 30s cap, persistent TCP reconnection) and
+// loki/http.go (lokiBackoff, identical 5s cap, per-request HTTP).
+// The helper is unexported and cannot be shared across Go modules.
+// Keep the three copies in sync when making changes (#542).
 func webhookBackoff(attempt int) time.Duration {
 	const (
 		base    = 100 * time.Millisecond

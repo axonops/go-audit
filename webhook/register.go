@@ -106,6 +106,12 @@ func (d *yamlDuration) UnmarshalYAML(data []byte) error {
 // applyDefaults (which treats 0 as "not set") does not silently
 // override the explicit zero. The -1 sentinel is caught by validation
 // which rejects values < 1.
+//
+// SYNC: identical implementation in file/register.go,
+// syslog/register.go, webhook/register.go, loki/register.go. The
+// helper is unexported and cannot be shared across Go modules (each
+// output module is independently versioned and published). Keep all
+// four copies in sync when making changes (#542).
 func intPtrOrDefault(p *int, def int) int {
 	if p == nil {
 		return def
