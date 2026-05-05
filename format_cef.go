@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 )
@@ -536,92 +535,9 @@ func (cf *CEFFormatter) writeFrameworkExtensions(buf *bytes.Buffer, extStart int
 	}
 }
 
-// cefEscapeHeader escapes characters in CEF header fields using a
-// single-pass byte scanner. Escapes: \ -> \\, | -> \|, \n -> space,
-// \r -> space. Returns the original string unchanged when no escaping
-// is needed, avoiding allocation on the common path.
-func cefEscapeHeader(s string) string {
-	var buf strings.Builder
-	start := 0
-	for i := 0; i < len(s); i++ {
-		switch s[i] {
-		case '\\':
-			buf.WriteString(s[start:i])
-			buf.WriteString(`\\`)
-			start = i + 1
-		case '|':
-			buf.WriteString(s[start:i])
-			buf.WriteString(`\|`)
-			start = i + 1
-		case '\n', '\r':
-			buf.WriteString(s[start:i])
-			buf.WriteByte(' ')
-			start = i + 1
-		}
-	}
-	if start == 0 {
-		return s // no escaping needed; return original string (0 allocs)
-	}
-	buf.WriteString(s[start:])
-	return buf.String()
-}
-
-// cefEscapeExtValue escapes characters in CEF extension values using a
-// single-pass byte scanner. Escapes: \ -> \\, = -> \=, \n -> \n
-// (literal backslash-n), \r -> \r (literal backslash-r). Remaining C0
-// control characters (0x00-0x1F) are stripped.
-func cefEscapeExtValue(s string) string {
-	var buf strings.Builder
-	start := 0
-	for i := 0; i < len(s); i++ {
-		b := s[i]
-		if b >= 0x20 {
-			switch b {
-			case '\\':
-				buf.WriteString(s[start:i])
-				buf.WriteString(`\\`)
-				start = i + 1
-			case '=':
-				buf.WriteString(s[start:i])
-				buf.WriteString(`\=`)
-				start = i + 1
-			}
-			continue
-		}
-		// C0 control character.
-		buf.WriteString(s[start:i])
-		switch b {
-		case '\n':
-			buf.WriteString(`\n`)
-		case '\r':
-			buf.WriteString(`\r`)
-		default:
-			// Strip other control characters.
-		}
-		start = i + 1
-	}
-	if start == 0 {
-		return s // no escaping needed; return original string (0 allocs)
-	}
-	buf.WriteString(s[start:])
-	return buf.String()
-}
-
-// validateExtKey returns an error if the key is not a valid CEF
-// extension key name (must match `[a-zA-Z0-9_]+`). Called once per
-// CEFFormatter from [fieldMapping]'s resolveOnce — never on the
-// per-event hot path (#477).
-func validateExtKey(key string) error {
-	if key == "" {
-		return fmt.Errorf("must match [a-zA-Z0-9_]+")
-	}
-	for _, c := range key {
-		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && c != '_' {
-			return fmt.Errorf("must match [a-zA-Z0-9_]+")
-		}
-	}
-	return nil
-}
+// CEF header / extension-value escape helpers (cefEscapeHeader,
+// cefEscapeExtValue) and the extension-key validator (validateExtKey)
+// are defined in format_cef_escape.go.
 
 // writeExtField writes a key=value pair to the buffer. extStart is the
 // buffer position where extensions begin (after the header); a space
