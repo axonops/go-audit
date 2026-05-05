@@ -715,6 +715,10 @@ func (a *Auditor) waitForDrain() {
 // disabled auditor. Metadata accessors ([EventHandle.Description],
 // [EventHandle.Categories], [EventHandle.FieldInfoMap]) on a
 // no-op handle return zero values.
+//
+// For a side-by-side comparison of NewEvent, EventHandle, and
+// generated builders with examples and benchmark numbers, see
+// docs/event-emission-paths.md.
 func (a *Auditor) Handle(eventType string) (*EventHandle, error) {
 	if a.disabled {
 		return &EventHandle{name: eventType, auditor: a}, nil
@@ -738,6 +742,10 @@ func (a *Auditor) Handle(eventType string) (*EventHandle, error) {
 // It panics with an error wrapping [ErrHandleNotFound] if the event
 // type is not registered. Use [Auditor.Handle] to receive the error
 // instead of panicking.
+//
+// For a side-by-side comparison of NewEvent, EventHandle, and
+// generated builders with examples and benchmark numbers, see
+// docs/event-emission-paths.md.
 func (a *Auditor) MustHandle(eventType string) *EventHandle {
 	h, err := a.Handle(eventType)
 	if err != nil {
