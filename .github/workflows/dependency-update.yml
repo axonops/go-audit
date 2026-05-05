@@ -246,18 +246,96 @@ jobs:
             echo "*This PR was created automatically by the [nightly dependency update workflow](https://github.com/${{ github.repository }}/actions/workflows/dependency-update.yml).*"
           } > /tmp/pr-body.md
 
-      # --- Create or update the PR ---
+      # --- Commit dep-update on long-lived branch ---
+      #
+      # Replaces peter-evans/create-pull-request, which always
+      # force-pushes. Force-push detaches reviewer line-comments from
+      # their commit SHAs (GitHub marks them "outdated"), which
+      # operators experience as "comments disappeared between runs"
+      # (#521). Append-only commits on a long-lived branch keep
+      # comments anchored to their original commits.
+
+      - name: Commit dep update on long-lived branch
+        id: commit
+        if: steps.changes.outputs.has_changes == 'true'
+        shell: bash
+        run: |
+          set -eo pipefail
+          BRANCH=chore/nightly-dep-update
+          SAVE=/tmp/depupdate-save
+          rm -rf "$SAVE" && mkdir -p "$SAVE"
+
+          MODULES=". file syslog webhook loki outputconfig outputs cmd/audit-gen cmd/audit-validate secrets secrets/env secrets/file secrets/openbao secrets/vault"
+
+          # Snapshot only go.mod / go.sum from each module — those are
+          # the only files the dep-update step modifies.
+          for mod in $MODULES; do
+            mkdir -p "$SAVE/$mod"
+            cp "$mod/go.mod" "$SAVE/$mod/go.mod"
+            [ -f "$mod/go.sum" ] && cp "$mod/go.sum" "$SAVE/$mod/go.sum" || true
+          done
+
+          # Reset the working tree so we can switch branches cleanly.
+          git reset --hard HEAD
+          git clean -fd
+
+          # Check out target branch — existing on origin if it exists,
+          # otherwise a new branch from current HEAD (main).
+          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+            git fetch origin "$BRANCH"
+            git checkout -B "$BRANCH" "origin/$BRANCH"
+            echo "Checked out existing branch $BRANCH"
+          else
+            git checkout -b "$BRANCH"
+            echo "Created new branch $BRANCH"
+          fi
+
+          # Reapply the snapshotted files on top of the target branch.
+          for mod in $MODULES; do
+            cp "$SAVE/$mod/go.mod" "$mod/go.mod"
+            [ -f "$SAVE/$mod/go.sum" ] && cp "$SAVE/$mod/go.sum" "$mod/go.sum" || true
+          done
+
+          # If the branch already has these exact deps, there is nothing
+          # to push (rare but possible — upstream unchanged since last
+          # successful run).
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "No new dep changes vs existing branch — nothing to push"
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Stage only go.mod and go.sum across all modules. Avoids
+          # accidentally committing other tree noise.
+          for mod in $MODULES; do
+            git add "$mod/go.mod"
+            [ -f "$mod/go.sum" ] && git add "$mod/go.sum" || true
+          done
+
+          git commit -m "chore(deps): nightly transitive dependency update ($(date -u +%Y-%m-%d))"
+          git push origin "$BRANCH"
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
 
       - name: Create or update PR
-        if: steps.changes.outputs.has_changes == 'true'
-        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          branch: chore/nightly-dep-update
-          delete-branch: true
-          title: "chore(deps): nightly transitive dependency update"
-          body-path: /tmp/pr-body.md
-          commit-message: "chore(deps): update transitive Go dependencies"
-          labels: dependencies
-          # If a PR already exists on this branch, it is updated in place.
-          # The branch is force-pushed with the new changes.
+        if: steps.changes.outputs.has_changes == 'true' && steps.commit.outputs.pushed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -eo pipefail
+          BRANCH=chore/nightly-dep-update
+          EXISTING=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING" ]; then
+            gh pr edit "$EXISTING" --body-file /tmp/pr-body.md
+            echo "Updated existing PR #$EXISTING in place — review comments preserved"
+          else
+            gh pr create \
+              --head "$BRANCH" \
+              --base main \
+              --title "chore(deps): nightly transitive dependency update" \
+              --body-file /tmp/pr-body.md \
+              --label dependencies
+          fi
