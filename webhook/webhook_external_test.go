@@ -17,24 +17,15 @@ package webhook_test
 import (
 	"bytes"
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
 	"crypto/tls"
-	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/json"
-	"encoding/pem"
 	"fmt"
 	"io"
 	"log/slog"
-	"math/big"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -42,6 +33,7 @@ import (
 	"time"
 
 	"github.com/axonops/audit"
+	"github.com/axonops/audit/audittest"
 	"github.com/axonops/audit/webhook"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -56,123 +48,9 @@ func TestMain(m *testing.M) {
 // Test helpers: TLS certificates
 // ---------------------------------------------------------------------------
 
-// testCerts holds paths to test TLS certificates and a server TLS config.
-type testCerts struct {
-	tlsCfg     *tls.Config
-	caPath     string
-	certPath   string
-	keyPath    string
-	clientCert string
-	clientKey  string
-}
-
-// generateTestCerts creates a self-signed CA, server cert, and client
-// cert for testing TLS. All files are written to t.TempDir().
-func generateTestCerts(t *testing.T) *testCerts {
-	t.Helper()
-	dir := t.TempDir()
-
-	// CA key and cert.
-	caKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	require.NoError(t, err)
-
-	caTemplate := &x509.Certificate{
-		SerialNumber:          big.NewInt(1),
-		Subject:               pkix.Name{CommonName: "Test CA"},
-		NotBefore:             time.Now(),
-		NotAfter:              time.Now().Add(time.Hour),
-		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
-		BasicConstraintsValid: true,
-		IsCA:                  true,
-	}
-	caCertDER, err := x509.CreateCertificate(rand.Reader, caTemplate, caTemplate, &caKey.PublicKey, caKey)
-	require.NoError(t, err)
-	caCert, err := x509.ParseCertificate(caCertDER)
-	require.NoError(t, err)
-
-	caPath := filepath.Join(dir, "ca.pem")
-	writePEM(t, caPath, "CERTIFICATE", caCertDER)
-
-	// Server key and cert.
-	serverKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	require.NoError(t, err)
-
-	serverTemplate := &x509.Certificate{
-		SerialNumber: big.NewInt(2),
-		Subject:      pkix.Name{CommonName: "localhost"},
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().Add(time.Hour),
-		KeyUsage:     x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		DNSNames:     []string{"localhost"},
-		IPAddresses:  []net.IP{net.IPv4(127, 0, 0, 1)},
-	}
-	serverCertDER, err := x509.CreateCertificate(rand.Reader, serverTemplate, caCert, &serverKey.PublicKey, caKey)
-	require.NoError(t, err)
-
-	certPath := filepath.Join(dir, "server-cert.pem")
-	keyPath := filepath.Join(dir, "server-key.pem")
-	writePEM(t, certPath, "CERTIFICATE", serverCertDER)
-	writeKeyPEM(t, keyPath, serverKey)
-
-	// Client key and cert.
-	clientKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	require.NoError(t, err)
-
-	clientTemplate := &x509.Certificate{
-		SerialNumber: big.NewInt(3),
-		Subject:      pkix.Name{CommonName: "test-client"},
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().Add(time.Hour),
-		KeyUsage:     x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
-	}
-	clientCertDER, err := x509.CreateCertificate(rand.Reader, clientTemplate, caCert, &clientKey.PublicKey, caKey)
-	require.NoError(t, err)
-
-	clientCertPath := filepath.Join(dir, "client-cert.pem")
-	clientKeyPath := filepath.Join(dir, "client-key.pem")
-	writePEM(t, clientCertPath, "CERTIFICATE", clientCertDER)
-	writeKeyPEM(t, clientKeyPath, clientKey)
-
-	// Server TLS config.
-	serverTLSCert, err := tls.LoadX509KeyPair(certPath, keyPath)
-	require.NoError(t, err)
-
-	caPool := x509.NewCertPool()
-	caPool.AddCert(caCert)
-
-	return &testCerts{
-		caPath:     caPath,
-		certPath:   certPath,
-		keyPath:    keyPath,
-		clientCert: clientCertPath,
-		clientKey:  clientKeyPath,
-		tlsCfg: &tls.Config{
-			Certificates: []tls.Certificate{serverTLSCert},
-			ClientCAs:    caPool,
-			ClientAuth:   tls.VerifyClientCertIfGiven,
-			MinVersion:   tls.VersionTLS13,
-		},
-	}
-}
-
-// writePEM writes a PEM-encoded block to the given path.
-func writePEM(t *testing.T, path, blockType string, data []byte) {
-	t.Helper()
-	f, err := os.Create(path)
-	require.NoError(t, err)
-	defer func() { _ = f.Close() }()
-	require.NoError(t, pem.Encode(f, &pem.Block{Type: blockType, Bytes: data}))
-}
-
-// writeKeyPEM writes an ECDSA private key as PEM to the given path.
-func writeKeyPEM(t *testing.T, path string, key *ecdsa.PrivateKey) {
-	t.Helper()
-	der, err := x509.MarshalECPrivateKey(key)
-	require.NoError(t, err)
-	writePEM(t, path, "EC PRIVATE KEY", der)
-}
+// TLS test certificates are produced by [audittest.GenerateTestCerts]
+// — the audittest package is cross-module-importable; the core's
+// internal/testhelper is not (#568).
 
 // ---------------------------------------------------------------------------
 // Test helpers: mock metrics
@@ -1211,18 +1089,18 @@ func TestWebhookOutput_ConcurrentWriteAndClose(t *testing.T) {
 func TestWebhookOutput_TLSPolicy_NilPreservesBehaviour(t *testing.T) {
 	// Nil TLSPolicy should behave identically to the previous hardcoded
 	// TLS 1.3 default.
-	certs := generateTestCerts(t)
+	certs := audittest.GenerateTestCerts(t)
 
 	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(200)
 	}))
-	srv.TLS = certs.tlsCfg
+	srv.TLS = certs.TLSCfg
 	srv.StartTLS()
 	t.Cleanup(func() { srv.Close() })
 
 	out, err := webhook.New(&webhook.Config{
 		URL:                srv.URL,
-		TLSCA:              certs.caPath,
+		TLSCA:              certs.CAPath,
 		TLSPolicy:          nil, // explicitly nil
 		AllowPrivateRanges: true,
 		BatchSize:          1,
@@ -1237,20 +1115,20 @@ func TestWebhookOutput_TLSPolicy_NilPreservesBehaviour(t *testing.T) {
 }
 
 func TestWebhookOutput_TLSPolicy_AllowTLS12(t *testing.T) {
-	certs := generateTestCerts(t)
+	certs := audittest.GenerateTestCerts(t)
 	// Server accepts TLS 1.2.
-	certs.tlsCfg.MinVersion = tls.VersionTLS12
+	certs.TLSCfg.MinVersion = tls.VersionTLS12
 
 	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(200)
 	}))
-	srv.TLS = certs.tlsCfg
+	srv.TLS = certs.TLSCfg
 	srv.StartTLS()
 	t.Cleanup(func() { srv.Close() })
 
 	out, err := webhook.New(&webhook.Config{
 		URL:   srv.URL,
-		TLSCA: certs.caPath,
+		TLSCA: certs.CAPath,
 		TLSPolicy: &audit.TLSPolicy{
 			AllowTLS12: true,
 		},
@@ -1271,19 +1149,19 @@ func TestWebhookOutput_TLSPolicy_AllowTLS12(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestWebhookOutput_TLS_WithCustomCA(t *testing.T) {
-	certs := generateTestCerts(t)
+	certs := audittest.GenerateTestCerts(t)
 
 	// Start an HTTPS server with the test CA's cert.
 	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(200)
 	}))
-	srv.TLS = certs.tlsCfg
+	srv.TLS = certs.TLSCfg
 	srv.StartTLS()
 	t.Cleanup(func() { srv.Close() })
 
 	out, err := webhook.New(&webhook.Config{
 		URL:                srv.URL,
-		TLSCA:              certs.caPath,
+		TLSCA:              certs.CAPath,
 		AllowPrivateRanges: true,
 		BatchSize:          1,
 		FlushInterval:      50 * time.Millisecond,
@@ -1298,22 +1176,22 @@ func TestWebhookOutput_TLS_WithCustomCA(t *testing.T) {
 }
 
 func TestWebhookOutput_TLS_MTLS(t *testing.T) {
-	certs := generateTestCerts(t)
+	certs := audittest.GenerateTestCerts(t)
 	// Require client cert.
-	certs.tlsCfg.ClientAuth = tls.RequireAndVerifyClientCert
+	certs.TLSCfg.ClientAuth = tls.RequireAndVerifyClientCert
 
 	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(200)
 	}))
-	srv.TLS = certs.tlsCfg
+	srv.TLS = certs.TLSCfg
 	srv.StartTLS()
 	t.Cleanup(func() { srv.Close() })
 
 	out, err := webhook.New(&webhook.Config{
 		URL:                srv.URL,
-		TLSCA:              certs.caPath,
-		TLSCert:            certs.clientCert,
-		TLSKey:             certs.clientKey,
+		TLSCA:              certs.CAPath,
+		TLSCert:            certs.ClientCert,
+		TLSKey:             certs.ClientKey,
 		AllowPrivateRanges: true,
 		BatchSize:          1,
 		FlushInterval:      50 * time.Millisecond,
@@ -1327,23 +1205,23 @@ func TestWebhookOutput_TLS_MTLS(t *testing.T) {
 }
 
 func TestWebhookOutput_TLS_WrongCA_Rejected(t *testing.T) {
-	certs := generateTestCerts(t)
+	certs := audittest.GenerateTestCerts(t)
 
 	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(200)
 	}))
-	srv.TLS = certs.tlsCfg
+	srv.TLS = certs.TLSCfg
 	srv.StartTLS()
 	t.Cleanup(func() { srv.Close() })
 
 	// Generate a DIFFERENT CA — the server cert won't be trusted.
-	wrongCerts := generateTestCerts(t)
+	wrongCerts := audittest.GenerateTestCerts(t)
 
 	metrics := newMockMetrics()
 	om := newMockOutputMetrics()
 	out, err := webhook.New(&webhook.Config{
 		URL:                srv.URL,
-		TLSCA:              wrongCerts.caPath, // wrong CA
+		TLSCA:              wrongCerts.CAPath, // wrong CA
 		AllowPrivateRanges: true,
 		BatchSize:          1,
 		FlushInterval:      50 * time.Millisecond,
