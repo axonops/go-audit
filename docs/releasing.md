@@ -959,7 +959,41 @@ action — every job consumes it via `uses: ./.github/actions/setup-audit`.
 The cache key hashes `scripts/tool-versions.txt` so version bumps are
 the only thing that invalidate the cache.
 
+### Security checks in CI
 
+Three CI-time supply-chain controls run in this repository. Each plays
+a distinct role; together they cover known-vuln detection, import
+reachability, license policy, and update propagation. Removing any one
+opens a coverage gap that the others do not fill.
+
+| Tool | Where it runs | Trigger | What it blocks | Threshold |
+|------|---------------|---------|----------------|-----------|
+| `actions/dependency-review-action` (pinned to v4.9.0) | `dependency-review:` job in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) | every pull request to `main` | a PR whose `go.mod`/`go.sum` diff introduces an advisory in the [GitHub Advisory Database](https://github.com/advisories) at or above the configured severity | `fail-on-severity: high` |
+| `govulncheck` (run via `make security` / `make security-one MOD=...`) | `security:` matrix in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) (one job per published module — root, `file`, `iouring`, `syslog`, `webhook`, `loki`, `outputconfig`, `outputs`, `cmd/audit-gen`, `cmd/audit-validate`, `secrets`, `secrets/env`, `secrets/file`, `secrets/openbao`, `secrets/vault`); the same target also runs in [`.github/workflows/security-scan.yml`](../.github/workflows/security-scan.yml) | every push and pull request that touches code; weekly cron at `0 6 * * 1`; manual dispatch | a build whose imported symbols reach a CVE in the [Go vulnerability database](https://pkg.go.dev/vuln/) | any vulnerability flagged by `govulncheck` (no severity gate) |
+| Dependabot | [`.github/dependabot.yml`](../.github/dependabot.yml) | continuous (GitHub-managed) | nothing directly — opens version-bump and security-fix PRs against every module directory listed in the config | n/a (open-PR mechanism, not a gate) |
+
+The split is intentional. `dependency-review` is the only PR-time
+check against GHAS — a broader and often more current advisory feed
+than the Go vulnerability database, and the only place we can enforce
+`deny-licenses` or `deny-packages` if a license-policy or supply-chain
+blocklist is added later. `govulncheck` is the only tool that performs
+import-reachability analysis, so it surfaces "your code actually calls
+into a vulnerable function" rather than "a vulnerable version is in
+the graph". Dependabot is the only mechanism that opens update PRs.
+
+If a PR is failing `Test - Dependency Review`, read the check
+annotation for the GHSA ID and the affected module, then either bump
+the dependency to a fixed version (Dependabot will usually open such a
+PR independently within hours) or, if the advisory is a false positive
+for our usage, allow it via `allow-ghsas:` on the action's `with:`
+block — and document the rationale in the PR description.
+
+A weekly run of `security-scan.yml` opens a tracking issue
+automatically on every run where `make security` exits non-zero —
+this includes CVEs that are already known but not yet resolved, so
+expect duplicate issues until the underlying vulnerability is
+fixed. Resolve them promptly: each one represents a CVE in code we
+already ship, not a hypothetical "new dependency" risk.
 
 ### The pipefail bug class
 
