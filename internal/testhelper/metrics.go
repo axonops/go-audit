@@ -12,6 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package testhelper provides shared test utilities for the core
+// audit module. It is internal-only and never published. Sub-modules
+// cannot import this package because internal/ is module-scoped; the
+// cross-module-importable equivalents live in [audittest].
 package testhelper
 
 import (

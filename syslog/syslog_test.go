@@ -17,19 +17,12 @@ package syslog_test
 import (
 	"bytes"
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
 	"crypto/tls"
-	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
-	"math/big"
 	"net"
 	"os"
 	"path/filepath"
@@ -42,6 +35,7 @@ import (
 	"time"
 
 	"github.com/axonops/audit"
+	"github.com/axonops/audit/audittest"
 	"github.com/axonops/audit/syslog"
 	"github.com/axonops/srslog"
 	"github.com/stretchr/testify/assert"
@@ -53,123 +47,9 @@ import (
 // Test helpers: TLS certificates
 // ---------------------------------------------------------------------------
 
-// testCerts holds paths to test TLS certificates and a server TLS config.
-type testCerts struct {
-	tlsCfg     *tls.Config
-	caPath     string
-	certPath   string
-	keyPath    string
-	clientCert string
-	clientKey  string
-}
-
-// generateTestCerts creates a self-signed CA, server cert, and client
-// cert for testing TLS. All files are written to t.TempDir().
-func generateTestCerts(t *testing.T) *testCerts {
-	t.Helper()
-	dir := t.TempDir()
-
-	// CA key and cert.
-	caKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	require.NoError(t, err)
-
-	caTemplate := &x509.Certificate{
-		SerialNumber:          big.NewInt(1),
-		Subject:               pkix.Name{CommonName: "Test CA"},
-		NotBefore:             time.Now(),
-		NotAfter:              time.Now().Add(time.Hour),
-		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
-		BasicConstraintsValid: true,
-		IsCA:                  true,
-	}
-	caCertDER, err := x509.CreateCertificate(rand.Reader, caTemplate, caTemplate, &caKey.PublicKey, caKey)
-	require.NoError(t, err)
-	caCert, err := x509.ParseCertificate(caCertDER)
-	require.NoError(t, err)
-
-	caPath := filepath.Join(dir, "ca.pem")
-	writePEM(t, caPath, "CERTIFICATE", caCertDER)
-
-	// Server key and cert.
-	serverKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	require.NoError(t, err)
-
-	serverTemplate := &x509.Certificate{
-		SerialNumber: big.NewInt(2),
-		Subject:      pkix.Name{CommonName: "localhost"},
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().Add(time.Hour),
-		KeyUsage:     x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		DNSNames:     []string{"localhost"},
-		IPAddresses:  []net.IP{net.IPv4(127, 0, 0, 1)},
-	}
-	serverCertDER, err := x509.CreateCertificate(rand.Reader, serverTemplate, caCert, &serverKey.PublicKey, caKey)
-	require.NoError(t, err)
-
-	certPath := filepath.Join(dir, "server-cert.pem")
-	keyPath := filepath.Join(dir, "server-key.pem")
-	writePEM(t, certPath, "CERTIFICATE", serverCertDER)
-	writeKeyPEM(t, keyPath, serverKey)
-
-	// Client key and cert.
-	clientKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	require.NoError(t, err)
-
-	clientTemplate := &x509.Certificate{
-		SerialNumber: big.NewInt(3),
-		Subject:      pkix.Name{CommonName: "test-client"},
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().Add(time.Hour),
-		KeyUsage:     x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
-	}
-	clientCertDER, err := x509.CreateCertificate(rand.Reader, clientTemplate, caCert, &clientKey.PublicKey, caKey)
-	require.NoError(t, err)
-
-	clientCertPath := filepath.Join(dir, "client-cert.pem")
-	clientKeyPath := filepath.Join(dir, "client-key.pem")
-	writePEM(t, clientCertPath, "CERTIFICATE", clientCertDER)
-	writeKeyPEM(t, clientKeyPath, clientKey)
-
-	// Server TLS config.
-	serverTLSCert, err := tls.LoadX509KeyPair(certPath, keyPath)
-	require.NoError(t, err)
-
-	caPool := x509.NewCertPool()
-	caPool.AddCert(caCert)
-
-	return &testCerts{
-		caPath:     caPath,
-		certPath:   certPath,
-		keyPath:    keyPath,
-		clientCert: clientCertPath,
-		clientKey:  clientKeyPath,
-		tlsCfg: &tls.Config{
-			Certificates: []tls.Certificate{serverTLSCert},
-			ClientCAs:    caPool,
-			ClientAuth:   tls.VerifyClientCertIfGiven,
-			MinVersion:   tls.VersionTLS13,
-		},
-	}
-}
-
-// writePEM writes a PEM-encoded block to the given path.
-func writePEM(t *testing.T, path, blockType string, data []byte) {
-	t.Helper()
-	f, err := os.Create(path)
-	require.NoError(t, err)
-	defer func() { _ = f.Close() }()
-	require.NoError(t, pem.Encode(f, &pem.Block{Type: blockType, Bytes: data}))
-}
-
-// writeKeyPEM writes an ECDSA private key as PEM to the given path.
-func writeKeyPEM(t *testing.T, path string, key *ecdsa.PrivateKey) {
-	t.Helper()
-	der, err := x509.MarshalECPrivateKey(key)
-	require.NoError(t, err)
-	writePEM(t, path, "EC PRIVATE KEY", der)
-}
+// TLS test certificates are produced by [audittest.GenerateTestCerts]
+// — the audittest package is cross-module-importable; the core's
+// internal/testhelper is not (#568).
 
 // ---------------------------------------------------------------------------
 // Test helpers: mock metrics
@@ -1145,14 +1025,14 @@ func (s *mockTLSSyslogServer) waitForData(timeout time.Duration) bool {
 }
 
 func TestSyslogOutput_TLS(t *testing.T) {
-	certs := generateTestCerts(t)
-	srv := newMockTLSSyslogServer(t, certs.tlsCfg)
+	certs := audittest.GenerateTestCerts(t)
+	srv := newMockTLSSyslogServer(t, certs.TLSCfg)
 	defer srv.close()
 
 	out, err := syslog.New(&syslog.Config{
 		Network:       "tcp+tls",
 		Address:       srv.addr(),
-		TLSCA:         certs.caPath,
+		TLSCA:         certs.CAPath,
 		FlushInterval: 5 * time.Millisecond,
 	})
 	require.NoError(t, err)
@@ -1167,18 +1047,18 @@ func TestSyslogOutput_TLS(t *testing.T) {
 }
 
 func TestSyslogOutput_MTLS(t *testing.T) {
-	certs := generateTestCerts(t)
+	certs := audittest.GenerateTestCerts(t)
 	// Require client cert for mTLS.
-	certs.tlsCfg.ClientAuth = tls.RequireAndVerifyClientCert
-	srv := newMockTLSSyslogServer(t, certs.tlsCfg)
+	certs.TLSCfg.ClientAuth = tls.RequireAndVerifyClientCert
+	srv := newMockTLSSyslogServer(t, certs.TLSCfg)
 	defer srv.close()
 
 	out, err := syslog.New(&syslog.Config{
 		Network:       "tcp+tls",
 		Address:       srv.addr(),
-		TLSCert:       certs.clientCert,
-		TLSKey:        certs.clientKey,
-		TLSCA:         certs.caPath,
+		TLSCert:       certs.ClientCert,
+		TLSKey:        certs.ClientKey,
+		TLSCA:         certs.CAPath,
 		FlushInterval: 5 * time.Millisecond,
 	})
 	require.NoError(t, err)
@@ -1199,14 +1079,14 @@ func TestSyslogOutput_MTLS(t *testing.T) {
 func TestSyslogOutput_TLSPolicy_NilPreservesBehaviour(t *testing.T) {
 	// Nil TLSPolicy should behave identically to the previous hardcoded
 	// TLS 1.3 default: connect to a TLS 1.3 server with a custom CA.
-	certs := generateTestCerts(t)
-	srv := newMockTLSSyslogServer(t, certs.tlsCfg)
+	certs := audittest.GenerateTestCerts(t)
+	srv := newMockTLSSyslogServer(t, certs.TLSCfg)
 	defer srv.close()
 
 	out, err := syslog.New(&syslog.Config{
 		Network:       "tcp+tls",
 		Address:       srv.addr(),
-		TLSCA:         certs.caPath,
+		TLSCA:         certs.CAPath,
 		TLSPolicy:     nil, // explicitly nil,
 		FlushInterval: 5 * time.Millisecond,
 	})
@@ -1221,16 +1101,16 @@ func TestSyslogOutput_TLSPolicy_NilPreservesBehaviour(t *testing.T) {
 }
 
 func TestSyslogOutput_TLSPolicy_AllowTLS12(t *testing.T) {
-	certs := generateTestCerts(t)
+	certs := audittest.GenerateTestCerts(t)
 	// Server accepts TLS 1.2.
-	certs.tlsCfg.MinVersion = tls.VersionTLS12
-	srv := newMockTLSSyslogServer(t, certs.tlsCfg)
+	certs.TLSCfg.MinVersion = tls.VersionTLS12
+	srv := newMockTLSSyslogServer(t, certs.TLSCfg)
 	defer srv.close()
 
 	out, err := syslog.New(&syslog.Config{
 		Network: "tcp+tls",
 		Address: srv.addr(),
-		TLSCA:   certs.caPath,
+		TLSCA:   certs.CAPath,
 		TLSPolicy: &audit.TLSPolicy{
 			AllowTLS12: true,
 		},
@@ -3047,8 +2927,8 @@ func TestOutputMetrics_RecordRetry_CalledOnRetryableError(t *testing.T) {
 func TestSyslog_TLSWarningsRoutedToInjectedLogger(t *testing.T) {
 	// Start a TLS listener that accepts any connection — we don't
 	// need it to speak syslog, only to let dial succeed.
-	certs := generateTestCerts(t)
-	listener, err := tls.Listen("tcp", "127.0.0.1:0", certs.tlsCfg)
+	certs := audittest.GenerateTestCerts(t)
+	listener, err := tls.Listen("tcp", "127.0.0.1:0", certs.TLSCfg)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = listener.Close() })
 	go func() {
@@ -3073,7 +2953,7 @@ func TestSyslog_TLSWarningsRoutedToInjectedLogger(t *testing.T) {
 		Address:  listener.Addr().String(),
 		Facility: "local0",
 		AppName:  "syslog-logger-test",
-		TLSCA:    certs.caPath,
+		TLSCA:    certs.CAPath,
 		TLSPolicy: &audit.TLSPolicy{
 			AllowTLS12:       true,
 			AllowWeakCiphers: true,
@@ -3094,8 +2974,8 @@ func TestSyslog_TLSWarningsRoutedToInjectedLogger(t *testing.T) {
 // WithDiagnosticLogger(nil) does not nil-deref and falls back to
 // slog.Default for warning emission.
 func TestSyslog_NilDiagnosticLoggerFallsBackToDefault(t *testing.T) {
-	certs := generateTestCerts(t)
-	listener, err := tls.Listen("tcp", "127.0.0.1:0", certs.tlsCfg)
+	certs := audittest.GenerateTestCerts(t)
+	listener, err := tls.Listen("tcp", "127.0.0.1:0", certs.TLSCfg)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = listener.Close() })
 	go func() {
@@ -3121,7 +3001,7 @@ func TestSyslog_NilDiagnosticLoggerFallsBackToDefault(t *testing.T) {
 		Address:  listener.Addr().String(),
 		Facility: "local0",
 		AppName:  "syslog-nil-logger-test",
-		TLSCA:    certs.caPath,
+		TLSCA:    certs.CAPath,
 		TLSPolicy: &audit.TLSPolicy{
 			AllowTLS12:       true,
 			AllowWeakCiphers: true,
@@ -3371,11 +3251,11 @@ func TestOutputFactory_LoggerReachesOutput(t *testing.T) {
 	// fails at the dial step (no TLS server listening on the
 	// reserved port) — that's fine, the assertion is on the captured
 	// warning record, not on construction success.
-	certs := generateTestCerts(t)
+	certs := audittest.GenerateTestCerts(t)
 	yaml := []byte(
 		"network: tcp+tls\n" +
 			"address: 127.0.0.1:65530\n" +
-			"tls_ca: " + certs.caPath + "\n" +
+			"tls_ca: " + certs.CAPath + "\n" +
 			"tls_policy:\n" +
 			"  allow_tls12: true\n" +
 			"  allow_weak_ciphers: true\n",

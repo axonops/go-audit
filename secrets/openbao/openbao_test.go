@@ -16,26 +16,19 @@ package openbao_test
 
 import (
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/json"
-	"encoding/pem"
 	"fmt"
-	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/axonops/audit"
+	"github.com/axonops/audit/audittest"
 	"github.com/axonops/audit/secrets"
 	"github.com/axonops/audit/secrets/openbao"
 )
@@ -898,14 +891,12 @@ func TestResolve_OversizedResponse_WrapsResolveFailed(t *testing.T) {
 func TestNew_CustomCA_ValidPEM(t *testing.T) {
 	t.Parallel()
 	// Generate a self-signed CA cert for testing.
-	dir := t.TempDir()
-	caPath := filepath.Join(dir, "ca.pem")
-	generateTestCA(t, caPath)
+	certs := audittest.GenerateTestCerts(t)
 
 	p, err := openbao.New(&openbao.Config{
 		Address:            "https://vault.example.com",
 		Token:              "token",
-		TLSCA:              caPath,
+		TLSCA:              certs.CAPath,
 		AllowPrivateRanges: true,
 	})
 	require.NoError(t, err)
@@ -942,16 +933,13 @@ func TestNew_CustomCA_InvalidPEM(t *testing.T) {
 
 func TestNew_mTLS_ValidCertAndKey(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
-	certPath := filepath.Join(dir, "client.pem")
-	keyPath := filepath.Join(dir, "client-key.pem")
-	generateTestCertAndKey(t, certPath, keyPath)
+	certs := audittest.GenerateTestCerts(t)
 
 	p, err := openbao.New(&openbao.Config{
 		Address:            "https://vault.example.com",
 		Token:              "token",
-		TLSCert:            certPath,
-		TLSKey:             keyPath,
+		TLSCert:            certs.ClientCert,
+		TLSKey:             certs.ClientKey,
 		AllowPrivateRanges: true,
 	})
 	require.NoError(t, err)
@@ -960,15 +948,13 @@ func TestNew_mTLS_ValidCertAndKey(t *testing.T) {
 
 func TestNew_mTLS_InvalidCertPath(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
-	keyPath := filepath.Join(dir, "client-key.pem")
-	generateTestCertAndKey(t, filepath.Join(dir, "unused.pem"), keyPath)
+	certs := audittest.GenerateTestCerts(t)
 
 	_, err := openbao.New(&openbao.Config{
 		Address: "https://vault.example.com",
 		Token:   "token",
 		TLSCert: "/nonexistent/client.pem",
-		TLSKey:  keyPath,
+		TLSKey:  certs.ClientKey,
 	})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
@@ -1027,57 +1013,8 @@ func TestResolvePath_TraversalRejected(t *testing.T) {
 	assert.ErrorIs(t, err, secrets.ErrMalformedRef)
 }
 
-// ---------------------------------------------------------------------------
-// TLS test helpers
-// ---------------------------------------------------------------------------
-
-func generateTestCA(t *testing.T, path string) {
-	t.Helper()
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	require.NoError(t, err)
-	tmpl := &x509.Certificate{
-		SerialNumber:          big.NewInt(1),
-		Subject:               pkix.Name{CommonName: "Test CA"},
-		NotBefore:             time.Now(),
-		NotAfter:              time.Now().Add(time.Hour),
-		KeyUsage:              x509.KeyUsageCertSign,
-		BasicConstraintsValid: true,
-		IsCA:                  true,
-	}
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
-	require.NoError(t, err)
-	f, err := os.Create(path)
-	require.NoError(t, err)
-	defer func() { _ = f.Close() }()
-	require.NoError(t, pem.Encode(f, &pem.Block{Type: "CERTIFICATE", Bytes: der}))
-}
-
-func generateTestCertAndKey(t *testing.T, certPath, keyPath string) {
-	t.Helper()
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	require.NoError(t, err)
-	tmpl := &x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject:      pkix.Name{CommonName: "Test Client"},
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().Add(time.Hour),
-		KeyUsage:     x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
-	}
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
-	require.NoError(t, err)
-	cf, err := os.Create(certPath)
-	require.NoError(t, err)
-	defer func() { _ = cf.Close() }()
-	require.NoError(t, pem.Encode(cf, &pem.Block{Type: "CERTIFICATE", Bytes: der}))
-
-	keyDER, err := x509.MarshalECPrivateKey(key)
-	require.NoError(t, err)
-	kf, err := os.Create(keyPath)
-	require.NoError(t, err)
-	defer func() { _ = kf.Close() }()
-	require.NoError(t, pem.Encode(kf, &pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}))
-}
+// TLS test certificates are now provided by audittest.GenerateTestCerts
+// (#568).
 
 // TestConfig_String_RedactsCredentials verifies openbao.Config String,
 // GoString, and Format never leak the Token, and strip the Address to
