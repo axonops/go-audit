@@ -1,7 +1,7 @@
 github.com/axonops/audit v0.1.11 h1:UO+w7F2UYuOlqMB1c/a6CjSKqX1JHZ6/R8e71ARyM7s=
 github.com/axonops/audit v0.1.11/go.mod h1:8xpwLDivtutu0bAnukCz09deMHVv50o3+hHR8LLW1bk=
-github.com/axonops/audit/iouring v0.0.0-20260504172742-a7311e23b1c6 h1:hSS66oOtqv3pduzG0rY3gNeAHDngWhVcjvJ3QIMfl+4=
-github.com/axonops/audit/iouring v0.0.0-20260504172742-a7311e23b1c6/go.mod h1:uOXtOGLXheRF1e3lQrTiCtTY0SipPH94czfKTv5sZsU=
+github.com/axonops/audit/iouring v0.0.0-20260505172446-264ebe2cc4b2 h1:J4QKmKSj1Y7hmuzUvnAgGRq35LPohUCU8RPTvWnSjmY=
+github.com/axonops/audit/iouring v0.0.0-20260505172446-264ebe2cc4b2/go.mod h1:uOXtOGLXheRF1e3lQrTiCtTY0SipPH94czfKTv5sZsU=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
@@ -24,5 +24,5 @@ gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 h1:qIbj1fsPNlZgppZ+VLlY7N33
 gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
 gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
 gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
-pgregory.net/rapid v1.2.0 h1:keKAYRcjm+e1F0oAuU5F5+YPAWcyxNNRK2wud503Gnk=
-pgregory.net/rapid v1.2.0/go.mod h1:PY5XlDGj0+V1FCq0o192FdRhpKHGTRIWBgqjDBTrq04=
+pgregory.net/rapid v1.3.0 h1:vBvO0VSqti75J1jjYqpgPNBLKMd1+gxa9fYo7vk/Exc=
+pgregory.net/rapid v1.3.0/go.mod h1:dPlE4OBBxgXPqkP79flB6sJL1dx5azpI7HQ9MY9Z7uk=
