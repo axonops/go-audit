@@ -23,9 +23,12 @@ import (
 	"time"
 )
 
-// dropLimiter rate-limits diagnostic slog.Warn calls for buffer-full
-// drop events. The zero value is ready to use — the first drop always
-// triggers a warning.
+// dropLimiter rate-limits diagnostic slog.Warn calls for drop-cause
+// events such as buffer-full or oversized-event-rejected. Each drop
+// cause owns its own dropLimiter (see [Output.dropsOversized] and
+// [Output.dropsBufferFull]) so a burst of one cause does not silence
+// the other in the same window (#692). The zero value is ready to
+// use — the first drop always triggers a warning.
 //
 // dropLimiter is safe for concurrent use.
 type dropLimiter struct {

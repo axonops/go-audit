@@ -113,20 +113,21 @@ func responseHeaderTimeout(t time.Duration) time.Duration {
 //
 // Output is safe for concurrent use.
 type Output struct {
-	metrics       audit.Metrics
-	outputMetrics audit.OutputMetrics // immutable after New (#696)
-	logger        *slog.Logger        // immutable after New (#696)
-	client        *http.Client
-	cancel        context.CancelFunc
-	done          chan struct{}
-	closeCh       chan struct{} // signals batchLoop to drain and exit
-	headers       map[string]string
-	ch            chan []byte
-	url           string
-	name          string      // cached from url.Parse at construction
-	drops         dropLimiter // rate-limits buffer-full warnings
-	flushIvl      time.Duration
-	timeout       time.Duration
+	metrics         audit.Metrics
+	outputMetrics   audit.OutputMetrics // immutable after New (#696)
+	logger          *slog.Logger        // immutable after New (#696)
+	client          *http.Client
+	cancel          context.CancelFunc
+	done            chan struct{}
+	closeCh         chan struct{} // signals batchLoop to drain and exit
+	headers         map[string]string
+	ch              chan []byte
+	url             string
+	name            string      // cached from url.Parse at construction
+	dropsOversized  dropLimiter // rate-limits oversized-event-rejected warnings (#688)
+	dropsBufferFull dropLimiter // rate-limits buffer-full warnings
+	flushIvl        time.Duration
+	timeout         time.Duration
 	// lastDeliveryNanos is the wall-clock UnixNano of the most recent
 	// HTTP 2xx response (post-retry). Webhook is async — Write only
 	// enqueues — so the timestamp updates from the batch goroutine
@@ -238,7 +239,7 @@ func (w *Output) Write(data []byte) error {
 	}
 
 	if len(data) > w.maxEventBytes {
-		w.drops.record(dropWarnInterval, func(dropped int64) {
+		w.dropsOversized.record(dropWarnInterval, func(dropped int64) {
 			w.logger.Warn("audit: output webhook: event rejected (exceeds max_event_bytes)",
 				"event_bytes", len(data),
 				"max_event_bytes", w.maxEventBytes,
@@ -260,7 +261,7 @@ func (w *Output) Write(data []byte) error {
 	case w.ch <- cp:
 		return nil
 	default:
-		w.drops.record(dropWarnInterval, func(dropped int64) {
+		w.dropsBufferFull.record(dropWarnInterval, func(dropped int64) {
 			w.logger.Warn("audit: output webhook: event dropped (buffer full)",
 				"dropped", dropped,
 				"buffer_size", cap(w.ch))

@@ -192,7 +192,8 @@ type Output struct {
 	appName         string
 	hostname        string
 	writeCount      uint64      // drain-side event counter for RecordQueueDepth sampling
-	drops           dropLimiter // rate-limits buffer-full drop warnings
+	dropsOversized  dropLimiter // rate-limits oversized-event-rejected warnings (#688)
+	dropsBufferFull dropLimiter // rate-limits buffer-full drop warnings
 	mu              sync.Mutex  // protects Close sequence
 	failures        int         // consecutive failure count (writeLoop-only)
 	maxRetry        int
@@ -329,7 +330,7 @@ func (s *Output) enqueue(data []byte, priority srslog.Priority) error {
 	}
 
 	if len(data) > s.maxEventBytes {
-		s.drops.record(dropWarnInterval, func(dropped int64) {
+		s.dropsOversized.record(dropWarnInterval, func(dropped int64) {
 			s.logger.Warn("audit: output syslog: event rejected (exceeds max_event_bytes)",
 				"event_bytes", len(data),
 				"max_event_bytes", s.maxEventBytes,
@@ -347,7 +348,7 @@ func (s *Output) enqueue(data []byte, priority srslog.Priority) error {
 	case s.ch <- syslogEntry{data: cp, priority: priority}:
 		return nil
 	default:
-		s.drops.record(dropWarnInterval, func(dropped int64) {
+		s.dropsBufferFull.record(dropWarnInterval, func(dropped int64) {
 			s.logger.Warn("audit: output syslog: event dropped (buffer full)",
 				"dropped", dropped,
 				"buffer_size", cap(s.ch))

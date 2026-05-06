@@ -125,10 +125,11 @@ type Output struct { //nolint:govet // fieldalignment: readability preferred
 	// labels. Populated once in New (#696); the atomic.Pointer
 	// indirection is kept because push.go reads on every event and
 	// benefits from a single load over a multi-string copy.
-	fw            atomic.Pointer[frameworkFields]
-	logger        *slog.Logger // immutable after New (#696)
-	drops         dropLimiter  // rate-limits buffer-full warnings
-	maxEventBytes int          // snapshot of cfg.MaxEventBytes — immutable post-construction (#688)
+	fw              atomic.Pointer[frameworkFields]
+	logger          *slog.Logger // immutable after New (#696)
+	dropsOversized  dropLimiter  // rate-limits oversized-event-rejected warnings (#688)
+	dropsBufferFull dropLimiter  // rate-limits buffer-full warnings
+	maxEventBytes   int          // snapshot of cfg.MaxEventBytes — immutable post-construction (#688)
 	// lastDeliveryNanos is the wall-clock UnixNano of the most recent
 	// HTTP 2xx push response. Loki is async — Write only enqueues —
 	// so the timestamp updates from the batch goroutine after the
@@ -265,7 +266,7 @@ func (o *Output) WriteWithMetadata(data []byte, meta audit.EventMetadata) error 
 	}
 
 	if len(data) > o.maxEventBytes {
-		o.drops.record(dropWarnInterval, func(dropped int64) {
+		o.dropsOversized.record(dropWarnInterval, func(dropped int64) {
 			o.logger.Warn("audit: output loki: event rejected (exceeds max_event_bytes)",
 				"event_bytes", len(data),
 				"max_event_bytes", o.maxEventBytes,
@@ -289,7 +290,7 @@ func (o *Output) WriteWithMetadata(data []byte, meta audit.EventMetadata) error 
 	case o.ch <- lokiEntry{data: cp, metadata: meta}:
 		return nil
 	default:
-		o.drops.record(dropWarnInterval, func(dropped int64) {
+		o.dropsBufferFull.record(dropWarnInterval, func(dropped int64) {
 			o.logger.Warn("audit: output loki: event dropped (buffer full)",
 				"dropped", dropped,
 				"buffer_size", cap(o.ch))
