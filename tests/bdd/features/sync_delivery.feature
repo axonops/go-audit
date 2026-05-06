@@ -48,3 +48,36 @@ Feature: Synchronous Delivery
     Given an auditor with synchronous delivery and a recording mock output
     When I audit 100 events from 10 concurrent goroutines
     Then the recording output should have received exactly 100 events
+
+  # Sync-delivery contract: validation runs BEFORE deliverSyncCtx
+  # (audit.go:496-523), and global filter runs BEFORE deliverSyncCtx
+  # (audit.go:458-463). The two scenarios below pin those orderings
+  # at the BDD layer so a refactor that swaps the order is caught
+  # without relying on unit tests alone (#724 — follow-up to #549
+  # test-analyst finding).
+
+  Scenario: Synchronous delivery surfaces validation errors without dispatching to outputs
+    Given an auditor with synchronous delivery and a recording mock output
+    When I try to audit event "unknown_event_type" with required fields
+    Then the audit call should return an error wrapping "ErrUnknownEventType"
+    And the recording output should have received exactly 0 events
+    # Positive control: confirm the recording output is wired correctly
+    # — a valid event must reach it, otherwise the "0 events" assertion
+    # above would pass vacuously even if the output were never registered.
+    When I audit event "user_create" with required fields
+    Then the audit call should return no error
+    And the recording output should have received exactly 1 events
+
+  Scenario: Synchronous delivery honours global filter — disabled category drops event silently
+    Given an auditor with synchronous delivery and a recording mock output
+    When I disable category "write"
+    And I audit event "user_create" with required fields
+    Then the audit call should return no error
+    And the recording output should have received exactly 0 events
+    # Positive control: re-enable the category and audit again. The
+    # output must receive this event — otherwise the "0 events"
+    # assertion above could pass even if the output were never wired.
+    When I enable category "write"
+    And I audit event "user_create" with required fields
+    Then the audit call should return no error
+    And the recording output should have received exactly 1 events
