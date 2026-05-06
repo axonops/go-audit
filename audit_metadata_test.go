@@ -701,6 +701,7 @@ func TestMetadataWriter_CachedAssertion_Correct(t *testing.T) {
 }
 
 func TestTimezoneAlwaysPopulated(t *testing.T) {
+	t.Parallel()
 	// Create an auditor with NO timezone config — it should auto-detect.
 	tax := &audit.Taxonomy{
 		Version: 1,
@@ -732,6 +733,7 @@ func TestTimezoneAlwaysPopulated(t *testing.T) {
 }
 
 func TestTimezoneAutoDetect(t *testing.T) {
+	t.Parallel()
 	tax := &audit.Taxonomy{
 		Version: 1,
 		Events:  map[string]*audit.EventDef{"test_event": {}},
@@ -764,6 +766,7 @@ func TestTimezoneAutoDetect(t *testing.T) {
 }
 
 func TestTimezoneOverride(t *testing.T) {
+	t.Parallel()
 	tax := &audit.Taxonomy{
 		Version: 1,
 		Events:  map[string]*audit.EventDef{"test_event": {}},

@@ -32,6 +32,12 @@ import (
 // `returnFieldsToPool` calls `clear()` before `Put()` on the non-drop
 // path.
 func TestFieldsPool_DropsOversizedMap_NotReused(t *testing.T) {
+	// Intentionally NOT t.Parallel(): all three TestFieldsPool_* tests
+	// read and assert exact deltas on the package-global
+	// [fieldsPoolDrops] counter. Parallelisation would let one test's
+	// drop bump leak into another test's before/after window, causing
+	// flakes that the race detector cannot surface (atomic counters
+	// are race-free; the race here is logical, not data).
 	before := fieldsPoolDrops.Load()
 
 	// Build a map beyond the threshold.
@@ -51,6 +57,8 @@ func TestFieldsPool_DropsOversizedMap_NotReused(t *testing.T) {
 // at or under the threshold — protects against a regression that
 // over-eagerly discards every map.
 func TestFieldsPool_KeepsSmallMap(t *testing.T) {
+	// Intentionally NOT t.Parallel(): see comment on
+	// TestFieldsPool_DropsOversizedMap_NotReused.
 	before := fieldsPoolDrops.Load()
 
 	small := make(Fields, 4)
@@ -65,6 +73,8 @@ func TestFieldsPool_KeepsSmallMap(t *testing.T) {
 
 // TestFieldsPool_NilIsNoop verifies the nil-safety contract.
 func TestFieldsPool_NilIsNoop(t *testing.T) {
+	// Intentionally NOT t.Parallel(): see comment on
+	// TestFieldsPool_DropsOversizedMap_NotReused.
 	before := fieldsPoolDrops.Load()
 	returnFieldsToPool(nil)
 	after := fieldsPoolDrops.Load()

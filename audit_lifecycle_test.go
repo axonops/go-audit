@@ -32,6 +32,7 @@ import (
 // ---------------------------------------------------------------------------
 
 func TestLogger_Audit_EventDelivered(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor := newTestAuditor(t, out)
@@ -46,6 +47,7 @@ func TestLogger_Audit_EventDelivered(t *testing.T) {
 }
 
 func TestLogger_Audit_BufferFull(t *testing.T) {
+	t.Parallel()
 
 	metrics := testhelper.NewMockMetrics()
 
@@ -105,6 +107,7 @@ func (b *blockingOutput) Close() error { return nil }
 func (b *blockingOutput) Name() string { return b.name }
 
 func TestLogger_Close_DrainsEvents(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
@@ -130,6 +133,7 @@ func TestLogger_Close_DrainsEvents(t *testing.T) {
 }
 
 func TestLogger_Close_Idempotent(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
@@ -145,6 +149,7 @@ func TestLogger_Close_Idempotent(t *testing.T) {
 }
 
 func TestLogger_Audit_AfterClose(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
@@ -164,6 +169,7 @@ func TestLogger_Audit_AfterClose(t *testing.T) {
 }
 
 func TestLogger_Close_ShutdownTimeout(t *testing.T) {
+	t.Parallel()
 
 	// Use a blocking output that never unblocks combined with a very
 	// short drain timeout. Close should return within a bounded time
@@ -197,6 +203,7 @@ func TestLogger_Close_ShutdownTimeout(t *testing.T) {
 }
 
 func TestLogger_Close_OutputError(t *testing.T) {
+	t.Parallel()
 
 	out := &errorOutput{name: "bad", closeErr: errors.New("close failed")}
 	auditor, err := audit.New(
@@ -227,6 +234,7 @@ func (e *errorOutput) Close() error         { return e.closeErr }
 func (e *errorOutput) Name() string         { return e.name }
 
 func TestLogger_Close_MultipleOutputErrors(t *testing.T) {
+	t.Parallel()
 	errAlpha := errors.New("alpha broke")
 	errBeta := errors.New("beta broke")
 
@@ -255,6 +263,7 @@ func TestLogger_Close_MultipleOutputErrors(t *testing.T) {
 }
 
 func TestLogger_Close_AllOutputsCloseCalledOnError(t *testing.T) {
+	t.Parallel()
 	// Verify output B's Close() is called even when output A's Close() fails.
 	outA := &errorOutput{name: "fail-first", closeErr: errors.New("first fail")}
 	outB := testhelper.NewMockOutput("second")

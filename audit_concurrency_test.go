@@ -33,6 +33,7 @@ import (
 // ---------------------------------------------------------------------------
 
 func TestLogger_ConcurrentWritesAndClose(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
@@ -69,6 +70,7 @@ func TestLogger_ConcurrentWritesAndClose(t *testing.T) {
 }
 
 func TestLogger_ThreeWayRace_AuditSetRouteClose(t *testing.T) {
+	t.Parallel()
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
@@ -123,6 +125,7 @@ func TestLogger_ThreeWayRace_AuditSetRouteClose(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestLogger_Handle_AuditAfterClose(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
@@ -152,6 +155,7 @@ func TestLogger_Handle_AuditAfterClose(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestLogger_ConcurrentAudit(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor := newTestAuditor(t, out)
@@ -174,6 +178,7 @@ func TestLogger_ConcurrentAudit(t *testing.T) {
 }
 
 func TestLogger_ConcurrentFilterMutation(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor := newTestAuditor(t, out)
@@ -199,6 +204,7 @@ func TestLogger_ConcurrentFilterMutation(t *testing.T) {
 }
 
 func TestLogger_ConcurrentClose(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(

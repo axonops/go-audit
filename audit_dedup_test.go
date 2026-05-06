@@ -44,6 +44,7 @@ func (d *destKeyOutput) DestinationKey() string {
 }
 
 func TestWithOutputs_DuplicateDestination_ReturnsError(t *testing.T) {
+	t.Parallel()
 	o1 := &destKeyOutput{name: "out1", key: "/var/log/audit.log"}
 	o2 := &destKeyOutput{name: "out2", key: "/var/log/audit.log"}
 	_, err := audit.New(
@@ -58,6 +59,7 @@ func TestWithOutputs_DuplicateDestination_ReturnsError(t *testing.T) {
 }
 
 func TestWithNamedOutput_DuplicateDestination_ReturnsError(t *testing.T) {
+	t.Parallel()
 	o1 := &destKeyOutput{name: "out1", key: "localhost:514"}
 	o2 := &destKeyOutput{name: "out2", key: "localhost:514"}
 	_, err := audit.New(
@@ -73,6 +75,7 @@ func TestWithNamedOutput_DuplicateDestination_ReturnsError(t *testing.T) {
 }
 
 func TestWithOutputs_EmptyDestinationKey_NoCollision(t *testing.T) {
+	t.Parallel()
 	// Outputs returning empty DestinationKey opt out of dedup.
 	o1 := &destKeyOutput{name: "out1", key: ""}
 	o2 := &destKeyOutput{name: "out2", key: ""}
@@ -87,6 +90,7 @@ func TestWithOutputs_EmptyDestinationKey_NoCollision(t *testing.T) {
 }
 
 func TestWithOutputs_MixedTypes_NoFalsePositive(t *testing.T) {
+	t.Parallel()
 	// destKeyOutput + MockOutput (no DestinationKeyer) should not collide.
 	o1 := &destKeyOutput{name: "keyed", key: "/var/log/audit.log"}
 	o2 := testhelper.NewMockOutput("unkeyed")
@@ -112,6 +116,7 @@ func (f *cacheTestFmt) Format(_ time.Time, _ string, _ audit.Fields, _ *audit.Ev
 }
 
 func TestFormatCache_PutGet(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		formatters int
@@ -124,6 +129,7 @@ func TestFormatCache_PutGet(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			fc := &audit.FormatCacheForTest{}
 			fmts := make([]*cacheTestFmt, tt.formatters)
 			for i := range fmts {
@@ -145,6 +151,7 @@ func TestFormatCache_PutGet(t *testing.T) {
 }
 
 func TestFormatCache_NilData(t *testing.T) {
+	t.Parallel()
 	fc := &audit.FormatCacheForTest{}
 	f := &cacheTestFmt{id: 1}
 
@@ -167,6 +174,8 @@ func TestFormatCache_NilData(t *testing.T) {
 // `go test` — benchmarks only fail via benchstat, which is not on
 // the `make check` path.
 func TestFormatCache_FillsArraySlots_ZeroMapAllocs(t *testing.T) {
+	// Intentionally NOT t.Parallel(): testing.AllocsPerRun panics
+	// when called from a parallel test.
 	// Pre-allocate one distinct formatter instance per cache slot.
 	// Pointer identity is what the cache keys on, so each &cacheTestFmt{}
 	// produces a distinct key regardless of field values.

@@ -59,6 +59,7 @@ func (s *slowOutput) Close() error {
 func (s *slowOutput) Name() string { return "slow" }
 
 func TestDrainLoop_SlowOutput_DoesNotBlockOthers(t *testing.T) {
+	t.Parallel()
 	// A slow output must not prevent a fast output from receiving events.
 	slow := &slowOutput{delay: 100 * time.Millisecond}
 	fast := testhelper.NewMockOutput("fast")
@@ -85,6 +86,7 @@ func TestDrainLoop_SlowOutput_DoesNotBlockOthers(t *testing.T) {
 }
 
 func TestDrainLoop_AllOutputsAsync_NoSequentialBlocking(t *testing.T) {
+	t.Parallel()
 	// Verify two async outputs both receive events.
 	outA := testhelper.NewMockOutput("output-a")
 	outB := testhelper.NewMockOutput("output-b")
@@ -113,6 +115,7 @@ func TestDrainLoop_AllOutputsAsync_NoSequentialBlocking(t *testing.T) {
 }
 
 func TestCoreMetrics_RecordSubmitted_CalledPerAuditEvent(t *testing.T) {
+	t.Parallel()
 	out := testhelper.NewMockOutput("test")
 	metrics := testhelper.NewMockMetrics()
 
@@ -139,6 +142,7 @@ func TestCoreMetrics_RecordSubmitted_CalledPerAuditEvent(t *testing.T) {
 }
 
 func TestCoreMetrics_RecordSubmitted_CalledBeforeFiltering(t *testing.T) {
+	t.Parallel()
 	out := testhelper.NewMockOutput("test")
 	metrics := testhelper.NewMockMetrics()
 
@@ -170,6 +174,7 @@ func TestCoreMetrics_RecordSubmitted_CalledBeforeFiltering(t *testing.T) {
 }
 
 func TestCoreMetrics_RecordQueueDepth_SampledEveryNEvents(t *testing.T) {
+	t.Parallel()
 	out := testhelper.NewMockOutput("test")
 	metrics := testhelper.NewMockMetrics()
 

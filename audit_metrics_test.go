@@ -32,6 +32,7 @@ import (
 // ---------------------------------------------------------------------------
 
 func TestAudit_UnknownEventType_RecordsValidationError(t *testing.T) {
+	t.Parallel()
 	metrics := testhelper.NewMockMetrics()
 	out := testhelper.NewMockOutput("test")
 	auditor := newTestAuditor(t, out,
@@ -45,6 +46,7 @@ func TestAudit_UnknownEventType_RecordsValidationError(t *testing.T) {
 }
 
 func TestAudit_MissingRequiredField_RecordsValidationError(t *testing.T) {
+	t.Parallel()
 	metrics := testhelper.NewMockMetrics()
 	out := testhelper.NewMockOutput("test")
 	auditor := newTestAuditor(t, out,
@@ -58,6 +60,7 @@ func TestAudit_MissingRequiredField_RecordsValidationError(t *testing.T) {
 }
 
 func TestAudit_UnknownFieldStrict_RecordsValidationError(t *testing.T) {
+	t.Parallel()
 	metrics := testhelper.NewMockMetrics()
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
@@ -82,6 +85,7 @@ func TestAudit_UnknownFieldStrict_RecordsValidationError(t *testing.T) {
 }
 
 func TestAudit_FilteredEvent_RecordsFiltered(t *testing.T) {
+	t.Parallel()
 	metrics := testhelper.NewMockMetrics()
 	out := testhelper.NewMockOutput("test")
 	auditor := newTestAuditor(t, out,
@@ -97,6 +101,7 @@ func TestAudit_FilteredEvent_RecordsFiltered(t *testing.T) {
 }
 
 func TestAudit_FilteredEventOverride_RecordsFiltered(t *testing.T) {
+	t.Parallel()
 	metrics := testhelper.NewMockMetrics()
 	out := testhelper.NewMockOutput("test")
 	auditor := newTestAuditor(t, out,
@@ -117,6 +122,7 @@ func TestAudit_FilteredEventOverride_RecordsFiltered(t *testing.T) {
 }
 
 func TestProcessEntry_SerializationError_RecordsMetric(t *testing.T) {
+	t.Parallel()
 	metrics := testhelper.NewMockMetrics()
 	out := testhelper.NewMockOutput("test")
 	badFormatter := &stubFormatter{
@@ -150,6 +156,7 @@ func TestProcessEntry_SerializationError_RecordsMetric(t *testing.T) {
 }
 
 func TestEmitShutdown_BufferFull_RecordsBufferDrop(t *testing.T) {
+	t.Parallel()
 	metrics := testhelper.NewMockMetrics()
 	out := &blockingOutput{name: "stuck", blockCh: make(chan struct{})}
 	t.Cleanup(func() { close(out.blockCh) })
@@ -181,6 +188,7 @@ func TestEmitShutdown_BufferFull_RecordsBufferDrop(t *testing.T) {
 }
 
 func TestAudit_NilMetrics_NoPanic(t *testing.T) {
+	t.Parallel()
 	// Verify that all metrics paths handle nil metrics without panic,
 	// including the async serialization error path in processEntry.
 	badFormatter := &stubFormatter{
@@ -244,6 +252,7 @@ var _ audit.DeliveryReporter = (*deliveryReporterOutput)(nil)
 var _ audit.Output = (*deliveryReporterOutput)(nil)
 
 func TestWriteToOutput_DeliveryReporter_SuccessSkipsCoreMetrics(t *testing.T) {
+	t.Parallel()
 	// When an output satisfies DeliveryReporter and ReportsDelivery()
 	// returns true, the core auditor must NOT call RecordDelivery on success.
 	metrics := testhelper.NewMockMetrics()
@@ -275,6 +284,7 @@ func TestWriteToOutput_DeliveryReporter_SuccessSkipsCoreMetrics(t *testing.T) {
 }
 
 func TestWriteToOutput_DeliveryReporter_ErrorSkipsCoreMetrics(t *testing.T) {
+	t.Parallel()
 	// When a DeliveryReporter output fails on Write, the core auditor must
 	// NOT call RecordDelivery or RecordOutputError — the output is responsible.
 	metrics := testhelper.NewMockMetrics()
@@ -310,6 +320,7 @@ func TestWriteToOutput_DeliveryReporter_ErrorSkipsCoreMetrics(t *testing.T) {
 }
 
 func TestWriteToOutput_NonDeliveryReporter_SuccessRecordsCoreMetrics(t *testing.T) {
+	t.Parallel()
 	// A plain output (not DeliveryReporter) must have RecordDelivery(success)
 	// called by the core auditor on a successful write.
 	metrics := testhelper.NewMockMetrics()
@@ -369,6 +380,7 @@ func TestIsZeroValue_NumericTypeBranches_Direct(t *testing.T) {
 }
 
 func TestLogger_Audit_OmitEmpty_NumericTypeBranches(t *testing.T) {
+	t.Parallel()
 	// Exercises the int32, float32, uint, uint64 branches in isZeroValue
 	// via the OmitEmpty path through the JSON formatter.
 	out := testhelper.NewMockOutput("test")
@@ -434,6 +446,7 @@ func TestLogger_Audit_OmitEmpty_NumericTypeBranches(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			// Use a fresh output per subtest to avoid event ordering issues.
 			subOut := testhelper.NewMockOutput("sub-" + tt.name)
 			subLogger, err := audit.New(
@@ -470,6 +483,7 @@ func TestLogger_Audit_OmitEmpty_NumericTypeBranches(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestLogger_Audit_MetricsRecordSuccess(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test-out")
 	metrics := testhelper.NewMockMetrics()
@@ -490,6 +504,7 @@ func TestLogger_Audit_MetricsRecordSuccess(t *testing.T) {
 }
 
 func TestLogger_Audit_MetricsRecordOutputError(t *testing.T) {
+	t.Parallel()
 
 	metrics := testhelper.NewMockMetrics()
 	out := &errorWriteOutput{name: "bad-write"}

@@ -182,6 +182,7 @@ func BenchmarkEventHandle_AuditContext_Background(b *testing.B) {
 // a regression that allows N+1 events through, or rejects the
 // Nth, would surface here. (#565 G11).
 func TestLogger_OverflowPolicy_ExactCapacity(t *testing.T) {
+	t.Parallel()
 	metrics := testhelper.NewMockMetrics()
 
 	// QueueSize 1 with a blocking output: the drain goroutine
@@ -233,6 +234,7 @@ func TestLogger_OverflowPolicy_ExactCapacity(t *testing.T) {
 // missing increments would mislead operators about backpressure
 // pressure. (#565 G11).
 func TestLogger_Audit_QueueFull_MetricsIncrement(t *testing.T) {
+	t.Parallel()
 	metrics := testhelper.NewMockMetrics()
 
 	out := &blockingOutput{name: "blocking", blockCh: make(chan struct{})}
@@ -274,6 +276,7 @@ func TestLogger_Audit_QueueFull_MetricsIncrement(t *testing.T) {
 // contract: an explicit Close on a non-blocking pipeline never
 // drops events. (#565 G1).
 func TestLogger_Close_DrainCompletesBeforeTimeout(t *testing.T) {
+	t.Parallel()
 	out := testhelper.NewMockOutput("drainable")
 	auditor, err := audit.New(
 		audit.WithValidationMode(audit.ValidationPermissive),
@@ -308,6 +311,7 @@ func TestLogger_Close_DrainCompletesBeforeTimeout(t *testing.T) {
 // "zero defaults to DefaultShutdownTimeout" — a more permissive
 // interpretation that this test pins. (#565 G1).
 func TestLogger_Close_ZeroShutdownTimeout(t *testing.T) {
+	t.Parallel()
 	out := testhelper.NewMockOutput("zero-timeout")
 	auditor, err := audit.New(
 		audit.WithValidationMode(audit.ValidationPermissive),
@@ -331,6 +335,7 @@ func TestLogger_Close_ZeroShutdownTimeout(t *testing.T) {
 // per the documented contract — verify the actual behaviour).
 // (#565 G1).
 func TestLogger_New_WithDisabledCategoryAtBoot(t *testing.T) {
+	t.Parallel()
 	out := testhelper.NewMockOutput("after-disable")
 	auditor, err := audit.New(
 		audit.WithValidationMode(audit.ValidationPermissive),
