@@ -88,3 +88,43 @@ Feature: Async Buffer Shutdown
     And I close the auditor
     Then RecordSubmitted should have been called 4 times
     And the delivery accounting invariant should hold
+
+  # Per-counter coverage of the delivery accounting invariant
+  # (#722). The mixed-workload scenario above exercises Successes,
+  # ValidationErrors, and Filtered; the three scenarios below force
+  # OutputErrors, SerializationErrors, and BufferDrops respectively
+  # so every counter in the invariant equation is non-zero in at
+  # least one scenario. Together they kill the tautology risk where
+  # a regression in RecordOutputError, RecordSerializationError, or
+  # RecordBufferDrop would not be caught by the mixed-workload
+  # scenario alone.
+
+  Scenario: Delivery accounting invariant holds when an output Write returns an error
+    Given an auditor with an error output, pipeline metrics, and synchronous delivery
+    When I audit event "user_create" with required fields
+    And I close the auditor
+    Then RecordSubmitted should have been called 1 time
+    And the OutputErrors counter should equal 1
+    And the delivery accounting invariant should hold
+
+  Scenario: Delivery accounting invariant holds when the formatter returns an error
+    Given an auditor with an error-returning formatter, a recording output, pipeline metrics, and synchronous delivery
+    When I audit event "user_create" with required fields
+    And I close the auditor
+    Then RecordSubmitted should have been called 1 time
+    And the SerializationErrors counter should equal 1
+    And the delivery accounting invariant should hold
+
+  # Async delivery is the only mode that exposes BufferDrops; sync
+  # delivery has no buffer, hence no overflow path. The default
+  # behaviour when the queue is full is non-blocking — AuditEvent
+  # returns audit.ErrQueueFull and RecordBufferDrop is incremented
+  # (audit.go:320 doc block). This scenario pins that contract.
+  Scenario: Delivery accounting invariant holds when the async queue overflows
+    Given an auditor with a slow output, pipeline metrics, and async delivery with queue_size 1
+    When I audit 200 events with required fields
+    And I close the auditor
+    Then RecordSubmitted should have been called 200 times
+    And the BufferDrops counter should be at least 1
+    And Successes plus BufferDrops should equal 200
+    And the delivery accounting invariant should hold
