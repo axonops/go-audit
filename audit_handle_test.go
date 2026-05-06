@@ -31,6 +31,7 @@ import (
 // ---------------------------------------------------------------------------
 
 func TestLogger_Handle_Valid(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor := newTestAuditor(t, out)
@@ -42,6 +43,7 @@ func TestLogger_Handle_Valid(t *testing.T) {
 }
 
 func TestLogger_Handle_Error(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor := newTestAuditor(t, out)
@@ -53,6 +55,7 @@ func TestLogger_Handle_Error(t *testing.T) {
 }
 
 func TestLogger_MustHandle_Valid(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor := newTestAuditor(t, out)
@@ -64,6 +67,7 @@ func TestLogger_MustHandle_Valid(t *testing.T) {
 }
 
 func TestLogger_MustHandle_Panics(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor := newTestAuditor(t, out)
@@ -172,6 +176,7 @@ func TestEventHandle_Metadata_ReadOnlyContract(t *testing.T) {
 }
 
 func TestLogger_Handle_Audit(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor := newTestAuditor(t, out)

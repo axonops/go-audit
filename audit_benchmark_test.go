@@ -496,6 +496,7 @@ func TestDropLimiter_TotalConservedAcrossWindows(t *testing.T) {
 }
 
 func TestLogger_DisableEvent_UncategorisedEvent(t *testing.T) {
+	t.Parallel()
 	tax := &audit.Taxonomy{
 		Version: 1,
 		Categories: map[string]*audit.CategoryDef{

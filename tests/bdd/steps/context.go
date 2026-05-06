@@ -105,6 +105,15 @@ type AuditTestContext struct { //nolint:govet // fieldalignment: readability pre
 	// Cleanup functions run in AfterScenario (LIFO order).
 	cleanups []func()
 	mu       sync.Mutex
+
+	// ScenarioName is the name of the running scenario, captured by
+	// the Before hook for use by the step-error enrichment hook
+	// (#570 AC#3). Safe without a mutex only because the BDD runner
+	// uses Concurrency: 1 (see tests/bdd/bdd_test.go); if that ever
+	// changes, this field must move onto context.Context with a
+	// typed key, since steps within different scenarios would
+	// otherwise race on it.
+	ScenarioName string
 }
 
 // AddCleanup registers a cleanup function to run after the scenario.
@@ -156,6 +165,7 @@ func (tc *AuditTestContext) Reset() {
 	tc.TLSReceiver = nil
 	tc.LocalReceiver = nil
 	tc.cleanups = nil
+	tc.ScenarioName = ""
 }
 
 // EnsureFileDir creates a temp directory for file outputs if not already set.
@@ -181,6 +191,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 
 	ctx.Before(func(ctx context.Context, sc *godog.Scenario) (context.Context, error) {
 		tc.Reset()
+		tc.ScenarioName = sc.Name
 		// Reset webhook receiver if Docker is available (ignore errors
 		// for non-Docker scenarios).
 		_ = resetWebhookReceiver(tc.WebhookURL)
@@ -194,6 +205,17 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 		}
 		tc.Cleanup()
 		return ctx, nil
+	})
+
+	// Step-error enrichment hook (#570 AC#3). When a step fails,
+	// godog's default failure log shows only the underlying error.
+	// Wrap it with scenario+step context so CI logs are diagnosable
+	// without local repro.
+	ctx.StepContext().After(func(ctx context.Context, st *godog.Step, status godog.StepResultStatus, err error) (context.Context, error) {
+		if err == nil {
+			return ctx, nil
+		}
+		return ctx, fmt.Errorf("scenario %q step %q: %w", tc.ScenarioName, st.Text, err)
 	})
 
 	// Register all step definitions.

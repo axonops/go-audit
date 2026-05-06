@@ -35,6 +35,7 @@ import (
 // ---------------------------------------------------------------------------
 
 func TestLogger_Audit_MultipleOutputs(t *testing.T) {
+	t.Parallel()
 
 	out1 := testhelper.NewMockOutput("out1")
 	out2 := testhelper.NewMockOutput("out2")
@@ -64,6 +65,7 @@ func TestLogger_Audit_MultipleOutputs(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestLogger_Audit_OmitEmptyNonZeroIncluded(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor := newTestAuditor(t, out, audit.WithOmitEmpty(), audit.WithValidationMode(audit.ValidationPermissive))
@@ -87,6 +89,7 @@ func TestLogger_Audit_OmitEmptyNonZeroIncluded(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestLogger_Audit_FuncFieldOmitEmpty(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor := newTestAuditor(t, out, audit.WithOmitEmpty(), audit.WithValidationMode(audit.ValidationPermissive))
@@ -118,6 +121,7 @@ func TestLogger_Audit_FuncFieldOmitEmpty(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestLogger_Close_ShutdownEventDroppedOnFullBuffer(t *testing.T) {
+	t.Parallel()
 
 	out := &blockingOutput{name: "stuck", blockCh: make(chan struct{})}
 	t.Cleanup(func() { close(out.blockCh) })
@@ -151,6 +155,7 @@ func TestLogger_Close_ShutdownEventDroppedOnFullBuffer(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestLogger_Audit_AllCategoriesEnabledByDefault(t *testing.T) {
+	t.Parallel()
 
 	tax := &audit.Taxonomy{
 		Version:    1,
@@ -182,6 +187,7 @@ func TestLogger_Audit_AllCategoriesEnabledByDefault(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestLogger_Audit_NoOutputs(t *testing.T) {
+	t.Parallel()
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
@@ -204,6 +210,7 @@ func TestLogger_Audit_NoOutputs(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestNew_QueueSizeExceedsMax(t *testing.T) {
+	t.Parallel()
 	_, err := audit.New(
 		audit.WithQueueSize(audit.MaxQueueSize+1),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
@@ -216,6 +223,7 @@ func TestNew_QueueSizeExceedsMax(t *testing.T) {
 }
 
 func TestNew_ShutdownTimeoutExceedsMax(t *testing.T) {
+	t.Parallel()
 	_, err := audit.New(
 		audit.WithShutdownTimeout(audit.MaxShutdownTimeout+1),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
@@ -232,6 +240,7 @@ func TestNew_ShutdownTimeoutExceedsMax(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestLogger_Audit_OmitEmptyZeroInt(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor := newTestAuditor(t, out, audit.WithOmitEmpty(), audit.WithValidationMode(audit.ValidationPermissive))
@@ -261,6 +270,7 @@ func TestLogger_Audit_OmitEmptyZeroInt(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestLogger_Audit_UnsupportedFieldValueType_Permissive_CoercesAndDelivers(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor := newTestAuditor(t, out, audit.WithValidationMode(audit.ValidationPermissive))
@@ -291,6 +301,7 @@ func TestLogger_Audit_UnsupportedFieldValueType_Permissive_CoercesAndDelivers(t 
 // ---------------------------------------------------------------------------
 
 func TestLogger_Audit_NilFieldsNoRequiredFields(t *testing.T) {
+	t.Parallel()
 
 	// Create a taxonomy with an event that has no required fields.
 	tax := &audit.Taxonomy{

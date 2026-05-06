@@ -31,6 +31,7 @@ import (
 // ---------------------------------------------------------------------------
 
 func TestLogger_Audit_FieldCompleteness_AllFieldsPresent(t *testing.T) {
+	t.Parallel()
 	tax := &audit.Taxonomy{
 		Version: 1,
 		Categories: map[string]*audit.CategoryDef{
@@ -87,6 +88,7 @@ func TestLogger_Audit_FieldCompleteness_AllFieldsPresent(t *testing.T) {
 }
 
 func TestLogger_Audit_FieldCompleteness_OmittedOptionalFieldsAbsent(t *testing.T) {
+	t.Parallel()
 	tax := &audit.Taxonomy{
 		Version: 1,
 		Categories: map[string]*audit.CategoryDef{

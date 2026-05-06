@@ -32,6 +32,7 @@ import (
 // ---------------------------------------------------------------------------
 
 func TestLogger_Audit_ValidCall(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor := newTestAuditor(t, out)
@@ -52,6 +53,7 @@ func TestLogger_Audit_ValidCall(t *testing.T) {
 }
 
 func TestLogger_Audit_MissingRequiredField(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor := newTestAuditor(t, out)
@@ -69,6 +71,7 @@ func TestLogger_Audit_MissingRequiredField(t *testing.T) {
 }
 
 func TestLogger_Audit_MissingSingleRequiredField(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor := newTestAuditor(t, out)
@@ -83,6 +86,7 @@ func TestLogger_Audit_MissingSingleRequiredField(t *testing.T) {
 }
 
 func TestLogger_Audit_UnknownEventType(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor := newTestAuditor(t, out)
@@ -96,6 +100,7 @@ func TestLogger_Audit_UnknownEventType(t *testing.T) {
 }
 
 func TestLogger_Audit_UnknownFieldStrict(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor := newTestAuditor(t, out)
@@ -114,6 +119,7 @@ func TestLogger_Audit_UnknownFieldStrict(t *testing.T) {
 }
 
 func TestLogger_Audit_UnknownFieldWarn(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor := newTestAuditor(t, out, audit.WithValidationMode(audit.ValidationWarn))
@@ -130,6 +136,7 @@ func TestLogger_Audit_UnknownFieldWarn(t *testing.T) {
 }
 
 func TestLogger_Audit_UnknownFieldPermissive(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor := newTestAuditor(t, out, audit.WithValidationMode(audit.ValidationPermissive))
@@ -525,6 +532,7 @@ func TestWithStandardFieldDefaults_SatisfiesRequired(t *testing.T) {
 }
 
 func TestLogger_Audit_NilFields(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor := newTestAuditor(t, out)
@@ -539,6 +547,7 @@ func TestLogger_Audit_NilFields(t *testing.T) {
 }
 
 func TestLogger_Audit_DisabledCategory(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor := newTestAuditor(t, out)
@@ -559,6 +568,7 @@ func TestLogger_Audit_DisabledCategory(t *testing.T) {
 }
 
 func TestLogger_Audit_OptionalFields(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor := newTestAuditor(t, out)
@@ -581,6 +591,7 @@ func TestLogger_Audit_OptionalFields(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestLogger_Audit_TimestampAutoPopulated(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor := newTestAuditor(t, out)
@@ -602,6 +613,7 @@ func TestLogger_Audit_TimestampAutoPopulated(t *testing.T) {
 }
 
 func TestLogger_Audit_EventTypeAutoPopulated(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor := newTestAuditor(t, out)
@@ -618,6 +630,7 @@ func TestLogger_Audit_EventTypeAutoPopulated(t *testing.T) {
 }
 
 func TestLogger_Audit_ConsumerTimestampOverwritten(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor := newTestAuditor(t, out, audit.WithValidationMode(audit.ValidationPermissive))
@@ -640,6 +653,7 @@ func TestLogger_Audit_ConsumerTimestampOverwritten(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestLogger_Audit_OmitEmptyTrue(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor := newTestAuditor(t, out, audit.WithOmitEmpty())
@@ -659,6 +673,7 @@ func TestLogger_Audit_OmitEmptyTrue(t *testing.T) {
 }
 
 func TestLogger_Audit_OmitEmptyFalse(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor := newTestAuditor(t, out)

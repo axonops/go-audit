@@ -31,6 +31,7 @@ import (
 // ---------------------------------------------------------------------------
 
 func TestLogger_EnableCategory(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor := newTestAuditor(t, out)
@@ -45,6 +46,7 @@ func TestLogger_EnableCategory(t *testing.T) {
 }
 
 func TestLogger_DisableCategory(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor := newTestAuditor(t, out)
@@ -67,6 +69,7 @@ func TestLogger_DisableCategory(t *testing.T) {
 }
 
 func TestLogger_EnableEvent_OverridesCategory(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor := newTestAuditor(t, out)
@@ -92,6 +95,7 @@ func TestLogger_EnableEvent_OverridesCategory(t *testing.T) {
 }
 
 func TestLogger_DisableEvent_OverridesCategory(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor := newTestAuditor(t, out)
@@ -118,6 +122,7 @@ func TestLogger_DisableEvent_OverridesCategory(t *testing.T) {
 }
 
 func TestLogger_Filter_InvalidCategory(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor := newTestAuditor(t, out)
@@ -134,6 +139,7 @@ func TestLogger_Filter_InvalidCategory(t *testing.T) {
 }
 
 func TestLogger_MultiCategory_DeliveredPerCategory(t *testing.T) {
+	t.Parallel()
 	out := testhelper.NewMockOutput("test")
 
 	// Create a taxonomy where auth_failure is in both security and access.
@@ -166,6 +172,7 @@ func TestLogger_MultiCategory_DeliveredPerCategory(t *testing.T) {
 }
 
 func TestLogger_MultiCategory_DisableOneCategory(t *testing.T) {
+	t.Parallel()
 	out := testhelper.NewMockOutput("test")
 
 	tax := &audit.Taxonomy{
@@ -200,6 +207,7 @@ func TestLogger_MultiCategory_DisableOneCategory(t *testing.T) {
 }
 
 func TestLogger_MultiCategory_DisableAllCategories(t *testing.T) {
+	t.Parallel()
 	out := testhelper.NewMockOutput("test")
 
 	tax := &audit.Taxonomy{
@@ -238,6 +246,7 @@ func TestLogger_MultiCategory_DisableAllCategories(t *testing.T) {
 }
 
 func TestLogger_Uncategorised_DeliveredToUnroutedOutput(t *testing.T) {
+	t.Parallel()
 	out := testhelper.NewMockOutput("test")
 
 	// data_export is not in any category.
@@ -269,6 +278,7 @@ func TestLogger_Uncategorised_DeliveredToUnroutedOutput(t *testing.T) {
 }
 
 func TestLogger_MultiCategory_EnableEventOverride(t *testing.T) {
+	t.Parallel()
 	out := testhelper.NewMockOutput("test")
 
 	tax := &audit.Taxonomy{
@@ -306,6 +316,7 @@ func TestLogger_MultiCategory_EnableEventOverride(t *testing.T) {
 }
 
 func TestLogger_MultiCategory_IncludeRoute(t *testing.T) {
+	t.Parallel()
 	out := testhelper.NewMockOutput("test")
 
 	tax := &audit.Taxonomy{
@@ -340,6 +351,7 @@ func TestLogger_MultiCategory_IncludeRoute(t *testing.T) {
 }
 
 func TestLogger_MultiCategory_ExcludeRoute(t *testing.T) {
+	t.Parallel()
 	out := testhelper.NewMockOutput("test")
 
 	tax := &audit.Taxonomy{
@@ -373,6 +385,7 @@ func TestLogger_MultiCategory_ExcludeRoute(t *testing.T) {
 }
 
 func TestLogger_Filter_InvalidEvent(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	auditor := newTestAuditor(t, out)
