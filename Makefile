@@ -7,7 +7,7 @@
        lint-secrets lint-secrets-openbao lint-secrets-vault \
        vet vet-all fmt fmt-check \
        build build-all bench bench-save bench-compare bench-baseline-check coverage \
-       tidy tidy-check verify check-replace check-todos check-example-links check-bdd-strict check-insecure-skip-verify check-static \
+       tidy tidy-check verify check-replace check-todos check-example-links check-bdd-strict check-insecure-skip-verify check-license-headers check-static \
        security release-check api-check check-release-invariants \
        regen-release-docs regen-release-docs-check \
        regen-schema-artifacts regen-schema-artifacts-check \
@@ -578,6 +578,26 @@ check-todos:
 		exit 1; \
 	fi
 
+# Reject any *.go file that lacks the standard Apache 2.0 license
+# header. Generated files (recognised by the standard
+# `// Code generated ... DO NOT EDIT.` marker per `cmd/go` docs)
+# are exempt. The header search window is the first 16 lines so
+# that files starting with build constraints (`//go:build ...`)
+# or a code-generation directive are still recognised. (#539)
+check-license-headers:
+	@MISSING=""; \
+	while IFS= read -r f; do \
+		if ! head -16 "$$f" | grep -qE 'Copyright.*AxonOps|Code generated.*DO NOT EDIT'; then \
+			MISSING="$$MISSING $$f"; \
+		fi; \
+	done < <(find . -name '*.go' -not -path './.git/*' -not -path '*/.scratch/*' -not -path '*/vendor/*' -not -path '*/testdata/*'); \
+	if [ -n "$$MISSING" ]; then \
+		echo "ERROR: .go files missing the Apache 2.0 license header:"; \
+		for f in $$MISSING; do echo "  $$f"; done; \
+		exit 1; \
+	fi
+	@echo "All .go files have the standard license header."
+
 # Reject broken numeric cross-references in example READMEs (e.g.
 # `../05-file-output/` when `examples/05-formatters/` is the actual
 # directory at index 05). Catches drift after example renumbering.
@@ -911,6 +931,7 @@ check-static:
 	for target in fmt-check tidy-check check-todos check-replace \
 	              check-insecure-skip-verify check-example-links \
 	              check-bdd-strict check-sync-comments bench-baseline-check \
+	              check-license-headers \
 	              regen-release-docs-check regen-schema-artifacts-check; do \
 	  echo "==> make $$target"; \
 	  $(MAKE) "$$target" || FAILED="$$FAILED $$target"; \

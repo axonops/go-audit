@@ -20,7 +20,8 @@ permissions:
 #   dependency-review — PR-only, blocks vulnerable-dependency PRs
 #   validate-release — always runs (GoReleaser config check)
 #   hygiene — always runs (make check-static; fmt/tidy/replace/todos/
-#              insecure-skip-verify/example-links/bdd-strict/bench-baseline)
+#              insecure-skip-verify/example-links/bdd-strict/bench-baseline/
+#              license-headers)
 #   lint, test x11, cross-build, examples-build,
 #   security x13, security-verify    — needs: hygiene
 #   integration                      — needs: hygiene
