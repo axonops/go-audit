@@ -327,6 +327,7 @@ for the full table of 31 names, types, and CEF mappings.
 | 🔧 [Troubleshooting](docs/troubleshooting.md) | Common problems and how to fix them |
 | 🔒 [Security Policy](SECURITY.md) | Vulnerability reporting |
 | ⚡ [Benchmarks](BENCHMARKS.md) | Performance baseline, methodology, and side-by-side comparison against [`log/slog`](BENCHMARKS.md#comparison-against-logslog) |
+| 🎮 [Playground note](docs/playground.md) | Why audit examples don't run on play.golang.org, and where to run them instead |
 
 ---
 
