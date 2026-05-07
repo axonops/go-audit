@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.12] - 2026-05-07
+
 > See [`docs/v1-changes.md`](docs/v1-changes.md) for a consolidated
 > Before/After reference table of every public-API rename, YAML
 > field rename, signature change, removal, and new error sentinel
