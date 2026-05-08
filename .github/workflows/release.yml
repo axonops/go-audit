@@ -364,7 +364,7 @@ jobs:
             echo "::error::Invalid GORELEASE_VER from tool-versions.txt: '$GORELEASE_VER'"
             exit 1
           fi
-          GOTOOLCHAIN=go1.26.2 go install "golang.org/x/exp/cmd/gorelease@$GORELEASE_VER"
+          GOTOOLCHAIN=go1.26.3 go install "golang.org/x/exp/cmd/gorelease@$GORELEASE_VER"
 
       - name: Run make api-check
         id: check

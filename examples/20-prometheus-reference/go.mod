@@ -1,6 +1,6 @@
 module github.com/axonops/audit/examples/20-prometheus-reference
 
-go 1.26.2
+go 1.26.3
 
 replace github.com/axonops/audit => ../..
 
