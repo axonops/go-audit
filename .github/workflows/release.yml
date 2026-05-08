@@ -148,10 +148,20 @@ jobs:
   # =====================================================================
   # Job: ci (workflow_dispatch only)
   # =====================================================================
+  # The called ci.yml contains a `dependency-review` job that requests
+  # `pull-requests: write` so it can post a PR comment on findings.
+  # Even though that job has `if: github.event_name == 'pull_request'`
+  # and so won't run on the workflow_dispatch path, GitHub validates
+  # the requested permissions BEFORE evaluating the `if`. Without
+  # granting `pull-requests: write` here, the entire workflow fails
+  # validation with a startup_failure (regression introduced in #631).
   ci:
     name: CI Gate
     needs: [preflight]
     if: github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+      pull-requests: write
     uses: ./.github/workflows/ci.yml
 
   # =====================================================================
