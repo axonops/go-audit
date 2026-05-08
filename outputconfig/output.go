@@ -252,10 +252,22 @@ func invokeFactory(name string, f *outputFields, globalAppName, globalHost, glob
 	}
 	if factory == nil {
 		registered := audit.RegisteredOutputTypes()
+		// Only suggest a per-output import path when the type name
+		// looks like a valid Go package path (printable, no spaces,
+		// no control characters). Otherwise, embedding the raw type
+		// name unquoted leaks invalid bytes into the error message
+		// — caught by FuzzOutputConfigLoad on a NUL-containing
+		// input. The %q above still surfaces the offending name to
+		// the operator, just in escaped form.
+		if isValidImportPathSegment(f.typeName) {
+			return nil, fmt.Errorf("output %q: unknown output type %q (registered: [%s]); "+
+				"add import _ \"github.com/axonops/audit/outputs\" for all built-in types "+
+				"(or import _ \"github.com/axonops/audit/%s\" for only this one)",
+				name, f.typeName, strings.Join(registered, ", "), f.typeName)
+		}
 		return nil, fmt.Errorf("output %q: unknown output type %q (registered: [%s]); "+
-			"add import _ \"github.com/axonops/audit/outputs\" for all built-in types "+
-			"(or import _ \"github.com/axonops/audit/%s\" for only this one)",
-			name, f.typeName, strings.Join(registered, ", "), f.typeName)
+			"add import _ \"github.com/axonops/audit/outputs\" for all built-in types",
+			name, f.typeName, strings.Join(registered, ", "))
 	}
 	// Inject global app_name and hostname into syslog config if not already set.
 	injectSyslogGlobals(f, globalAppName, globalHost)
@@ -298,4 +310,28 @@ func invokeFactory(name string, f *outputFields, globalAppName, globalHost, glob
 			name, f.typeName)
 	}
 	return output, nil
+}
+
+// isValidImportPathSegment reports whether s is plausibly a Go
+// package-path segment safe to embed unquoted in an error message.
+// The check rejects empty strings, anything containing whitespace,
+// control characters (NUL/0x7F), backslashes, or double quotes —
+// all of which would either break the suggested `import _ "..."`
+// line or leak invalid bytes into the error message.
+//
+// This is intentionally narrower than the Go spec's actual import
+// path grammar: any plausible audit sub-module name (lowercase
+// letters, digits, hyphen, underscore, slash, dot) is accepted;
+// anything else falls back to a generic error message in
+// invokeFactory.
+func isValidImportPathSegment(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < 0x21 || r == 0x7f || r == '"' || r == '\\' {
+			return false
+		}
+	}
+	return true
 }

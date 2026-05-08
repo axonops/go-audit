@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("version: 1\napp_name: 0\nhost: 0\noutputs:\n A:\n  type: \x00")
