@@ -39,7 +39,7 @@ SHELL      := bash
 MODULES           := . file iouring syslog webhook loki outputconfig outputs cmd/audit-gen cmd/audit-validate secrets secrets/env secrets/file secrets/openbao secrets/vault
 WORKSPACE_MODULES := $(MODULES) examples/17-capstone examples/20-prometheus-reference
 GOBIN             := $(shell go env GOPATH)/bin
-GO_TOOLCHAIN      := go1.26.2
+GO_TOOLCHAIN      := go1.26.3
 
 # Tool versions — pinned for supply chain safety, single source
 # of truth for both this Makefile and the CI cache key. The CI

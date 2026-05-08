@@ -148,10 +148,20 @@ jobs:
   # =====================================================================
   # Job: ci (workflow_dispatch only)
   # =====================================================================
+  # The called ci.yml contains a `dependency-review` job that requests
+  # `pull-requests: write` so it can post a PR comment on findings.
+  # Even though that job has `if: github.event_name == 'pull_request'`
+  # and so won't run on the workflow_dispatch path, GitHub validates
+  # the requested permissions BEFORE evaluating the `if`. Without
+  # granting `pull-requests: write` here, the entire workflow fails
+  # validation with a startup_failure (regression introduced in #631).
   ci:
     name: CI Gate
     needs: [preflight]
     if: github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+      pull-requests: write
     uses: ./.github/workflows/ci.yml
 
   # =====================================================================
@@ -354,7 +364,7 @@ jobs:
             echo "::error::Invalid GORELEASE_VER from tool-versions.txt: '$GORELEASE_VER'"
             exit 1
           fi
-          GOTOOLCHAIN=go1.26.2 go install "golang.org/x/exp/cmd/gorelease@$GORELEASE_VER"
+          GOTOOLCHAIN=go1.26.3 go install "golang.org/x/exp/cmd/gorelease@$GORELEASE_VER"
 
       - name: Run make api-check
         id: check
