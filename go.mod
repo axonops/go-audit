@@ -1,6 +1,6 @@
 module github.com/axonops/audit
 
-go 1.26.2
+go 1.26.3
 
 require (
 	github.com/axonops/audit/file v0.1.11
