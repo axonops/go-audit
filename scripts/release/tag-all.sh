@@ -53,8 +53,8 @@ fi
 
 # Configure committer for annotated tags (the message field uses the
 # release-bot identity).
-git config user.name  "axonops-release-bot[bot]"
-git config user.email "axonops-release-bot[bot]@users.noreply.github.com"
+git config user.name  "axonops-audit-release-bot[bot]"
+git config user.email "axonops-audit-release-bot[bot]@users.noreply.github.com"
 
 failed=()
 remaining=()

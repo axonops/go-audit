@@ -504,7 +504,7 @@ boundaries, and key source files.
 Releases are cut by maintainers. Contributors do not create release tags.
 
 The full release procedure — pre-release checklist, the unified single-tag
-flow, the `axonops-release-bot` GitHub App, the `api-check` gate, proxy
+flow, the `axonops-audit-release-bot` GitHub App, the `api-check` gate, proxy
 verification, and retraction policy — is documented in
 [docs/releasing.md](docs/releasing.md). That file is the single source of
 truth for the release contract.
