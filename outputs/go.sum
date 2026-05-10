@@ -1,13 +1,3 @@
-github.com/axonops/audit v0.1.9 h1:fcddptoX+Cetr27K7t66m6wK676M+tXm3yHb6eMw8Og=
-github.com/axonops/audit v0.1.9/go.mod h1:XxgQyZIAaV3ey5cW2qqDucCM2puaVUSJE9W3+pHitUg=
-github.com/axonops/audit/file v0.1.9 h1:ISyd7SBEOwg8h9UKpNB6UMtL9vcR64aK0HOXoylpFUc=
-github.com/axonops/audit/file v0.1.9/go.mod h1:JQSQKuaERlSzC00bAx2gqpsR0O9J2eFYH0n0+SZliPI=
-github.com/axonops/audit/loki v0.1.9 h1:G20aG7qxbrSMrdc1zsoy6EKBPivIt6R0cFO6/2gPEx4=
-github.com/axonops/audit/loki v0.1.9/go.mod h1:0ECpXGsNPvkYQ6Y4IzHtH34VnvpdM/TpD6ck1kj5FFs=
-github.com/axonops/audit/syslog v0.1.9 h1:qpE9xxX21XNzFJc5/QvKVBjfDcGryXPXeqpF/JGnDIo=
-github.com/axonops/audit/syslog v0.1.9/go.mod h1:iv4QlGt2slk7yu9p4IimWVBAtDGyRgpAo5W+iEWhnsM=
-github.com/axonops/audit/webhook v0.1.9 h1:9dgc3dye4xpK7wuwmVwwa/V3M5mZf9kYY700tg1J4Qg=
-github.com/axonops/audit/webhook v0.1.9/go.mod h1:gE+I3c/cZ93TMXyKqERak0FRINntU4fg/43A6QFFk10=
 github.com/axonops/srslog v1.0.1 h1:TucvspQNxwL18w3xo9r3p+ulxJ5ltR8S9DalDTYDfA4=
 github.com/axonops/srslog v1.0.1/go.mod h1:KmR9aaV5bdRj/WE95Nzfwwed8MKdDpjFCcFO5syaJWg=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=

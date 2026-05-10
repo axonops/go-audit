@@ -1,5 +1,3 @@
-github.com/axonops/audit v0.1.11 h1:UO+w7F2UYuOlqMB1c/a6CjSKqX1JHZ6/R8e71ARyM7s=
-github.com/axonops/audit v0.1.11/go.mod h1:8xpwLDivtutu0bAnukCz09deMHVv50o3+hHR8LLW1bk=
 github.com/axonops/audit/file v0.1.11 h1:KxpdGfDMgvj+T2IW3pZSY+fkeIUvBs/WCtADBJk+yp4=
 github.com/axonops/audit/file v0.1.11/go.mod h1:+hVpn7go1vZ3myfQYsa0l3JCuSHatFWxACpQXJHeNAE=
 github.com/axonops/audit/syslog v0.1.11 h1:BZIREZNbxhrJYHEUO8JY/+JrEJ21YRSMC1ITeQX534c=
