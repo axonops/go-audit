@@ -1,17 +1,5 @@
 github.com/DATA-DOG/go-sqlmock v1.5.2 h1:OcvFkGmslmlZibjAjaHm3L//6LiuBgolP7OputlJIzU=
 github.com/DATA-DOG/go-sqlmock v1.5.2/go.mod h1:88MAG/4G7SMwSE3CeA0ZKzrT5CiOU3OJ+JlNzwDqpNU=
-github.com/axonops/audit v0.1.11 h1:UO+w7F2UYuOlqMB1c/a6CjSKqX1JHZ6/R8e71ARyM7s=
-github.com/axonops/audit v0.1.11/go.mod h1:8xpwLDivtutu0bAnukCz09deMHVv50o3+hHR8LLW1bk=
-github.com/axonops/audit/file v0.1.11 h1:KxpdGfDMgvj+T2IW3pZSY+fkeIUvBs/WCtADBJk+yp4=
-github.com/axonops/audit/file v0.1.11/go.mod h1:+hVpn7go1vZ3myfQYsa0l3JCuSHatFWxACpQXJHeNAE=
-github.com/axonops/audit/loki v0.1.11 h1:jYewrKwhuml6KBsN2rS/4nejqTGQgv0X3GGV7GpQAuY=
-github.com/axonops/audit/loki v0.1.11/go.mod h1:7MZcSDpT4likpw/RqsroAimsjtxe+HGjzCkC7ds/6OY=
-github.com/axonops/audit/outputconfig v0.1.11 h1:RArErBa0X18R3QEEAQAYS5yY5VjoyQojnCezYMNuduw=
-github.com/axonops/audit/outputconfig v0.1.11/go.mod h1:gTzEFOubwmnvfLxTms+Y/3NjsQN+Rsd98IVKQhO9GVA=
-github.com/axonops/audit/secrets v0.1.11 h1:ilszR93wSDYRCVNK37LUJsrHUcHXyPOMjx5Lax29t9M=
-github.com/axonops/audit/secrets v0.1.11/go.mod h1:gAQX3co4e/23wOe4vkylrJ6smNicyITP+UEcx/gypak=
-github.com/axonops/audit/secrets/openbao v0.1.11 h1:pIRUVAFg117K48btcK4USV/1yaTa6p1gyLv1rWRNNqc=
-github.com/axonops/audit/secrets/openbao v0.1.11/go.mod h1:apfMUZvQANpgFVt711xEGKL95NzMhmqSMEZOCTqb/Vo=
 github.com/axonops/audit/secrets/vault v0.1.11 h1:qfQxaslNpfucZQpUm6eZDR3gQwJIB04UyMrVckVEJPA=
 github.com/axonops/audit/secrets/vault v0.1.11/go.mod h1:gN0O2z8/gLSc7OTsBIXBcbS9bhL7Bn7QL324aoBFz7A=
 github.com/axonops/audit/syslog v0.1.11 h1:BZIREZNbxhrJYHEUO8JY/+JrEJ21YRSMC1ITeQX534c=
