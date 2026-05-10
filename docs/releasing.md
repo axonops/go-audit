@@ -303,7 +303,7 @@ so no PR merges without a maintainer's approval.
 
 ### Release-bot GitHub App
 
-The release workflow uses a dedicated GitHub App identity — `axonops-release-bot` —
+The release workflow uses a dedicated GitHub App identity — `axonops-audit-release-bot` —
 instead of a personal access token (PAT). PAT compromise = full account takeover
 across every org the human belongs to; App compromise is scoped to this single
 repository plus the App's explicit permissions.
@@ -329,7 +329,7 @@ installation:
 
 1. **Settings → Developer settings → GitHub Apps → New GitHub App** (on the
    organisation, not personal account).
-2. **GitHub App name**: `axonops-release-bot`.
+2. **GitHub App name**: `axonops-audit-release-bot`.
 3. **Homepage URL**: any URL — `https://github.com/axonops/audit` is fine.
 4. **Webhook URL**: GitHub's form requires a non-empty URL even when webhooks
    are unused. Enter `https://github.com` and **uncheck Active**. The App will
@@ -437,7 +437,7 @@ prevents an unauthorised actor from triggering a release pipeline.
 publish a sub-module release.**
 
 **Allowed actors per rule**: under the unified release flow (#513), the
-canonical creator of release tags is the `axonops-release-bot` App.
+canonical creator of release tags is the `axonops-audit-release-bot` App.
 Each rule's "Restrict who can create matching tags" allow-list MUST
 include the App identity. Maintainers are intentionally **not** on
 the standing allow-list for these patterns — see the rationale in
@@ -545,7 +545,7 @@ The two triggers serve different purposes:
   the same SHA, aborting on SHA mismatch), and runs GoReleaser. It does
   NOT open a release PR. See "Release recovery playbook" below.
 
-The `release.yml` workflow uses the `axonops-release-bot` GitHub App for
+The `release.yml` workflow uses the `axonops-audit-release-bot` GitHub App for
 every write operation; it does not consume a personal access token.
 
 ### `api-check` transition (advisory → blocking)
@@ -1124,7 +1124,7 @@ GitHub), but the proxy cache would still serve the old bytes for existing
 
 - **Do not create release tags.** Every published module's `v*` pattern
   is tag-protected — see "Tag protection" above for the full list.
-  Release tags are created exclusively by the `axonops-release-bot`
+  Release tags are created exclusively by the `axonops-audit-release-bot`
   GitHub App via the `release.yml` workflow.
 - **Do not add `replace` directives to `go.mod` on any branch intended for
   merge.** `replace` directives in published modules break consumer builds.

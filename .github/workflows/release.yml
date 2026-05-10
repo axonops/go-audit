@@ -6,7 +6,7 @@
 #
 #   workflow_dispatch (primary path)
 #     - Runs full CI gate, fuzz-long, advisory bench, advisory api-check
-#     - Opens a release PR via the axonops-release-bot GitHub App
+#     - Opens a release PR via the axonops-audit-release-bot GitHub App
 #     - Waits (polling) for PR auto-merge through normal branch
 #       protection — this is what makes branch protection real
 #     - Tags every published module at the merge SHA
@@ -19,7 +19,7 @@
 #       no-ops; tags at a DIFFERENT SHA are aborted as a contamination)
 #     - Runs GoReleaser + verify + invariants
 #
-# All write operations use a token minted from the axonops-release-bot
+# All write operations use a token minted from the axonops-audit-release-bot
 # GitHub App at job start (1-hour TTL; per-job mints). The legacy
 # RELEASE_TOKEN PAT is retired (see CHANGELOG #513). Each job that
 # does git pushes uses persist-credentials:false on checkouts that
@@ -450,8 +450,8 @@ jobs:
         run: |
           set -euo pipefail
           BRANCH="release/$PUBLISH_VERSION"
-          git config user.name  "axonops-release-bot[bot]"
-          git config user.email "axonops-release-bot[bot]@users.noreply.github.com"
+          git config user.name  "axonops-audit-release-bot[bot]"
+          git config user.email "axonops-audit-release-bot[bot]@users.noreply.github.com"
 
           # Recreate the branch idempotently. A previous failed run
           # may have left both a branch AND an orphaned open PR on it
