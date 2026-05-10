@@ -1,13 +1,3 @@
-github.com/axonops/audit v0.1.11 h1:UO+w7F2UYuOlqMB1c/a6CjSKqX1JHZ6/R8e71ARyM7s=
-github.com/axonops/audit v0.1.11/go.mod h1:8xpwLDivtutu0bAnukCz09deMHVv50o3+hHR8LLW1bk=
-github.com/axonops/audit/file v0.1.11 h1:KxpdGfDMgvj+T2IW3pZSY+fkeIUvBs/WCtADBJk+yp4=
-github.com/axonops/audit/file v0.1.11/go.mod h1:+hVpn7go1vZ3myfQYsa0l3JCuSHatFWxACpQXJHeNAE=
-github.com/axonops/audit/secrets v0.1.11 h1:ilszR93wSDYRCVNK37LUJsrHUcHXyPOMjx5Lax29t9M=
-github.com/axonops/audit/secrets v0.1.11/go.mod h1:gAQX3co4e/23wOe4vkylrJ6smNicyITP+UEcx/gypak=
-github.com/axonops/audit/secrets/openbao v0.1.11 h1:pIRUVAFg117K48btcK4USV/1yaTa6p1gyLv1rWRNNqc=
-github.com/axonops/audit/secrets/openbao v0.1.11/go.mod h1:apfMUZvQANpgFVt711xEGKL95NzMhmqSMEZOCTqb/Vo=
-github.com/axonops/audit/secrets/vault v0.1.11 h1:qfQxaslNpfucZQpUm6eZDR3gQwJIB04UyMrVckVEJPA=
-github.com/axonops/audit/secrets/vault v0.1.11/go.mod h1:gN0O2z8/gLSc7OTsBIXBcbS9bhL7Bn7QL324aoBFz7A=
 github.com/cpuguy83/go-md2man/v2 v2.0.2/go.mod h1:tgQtvFlXSQOSOSIRvRPT7W67SCa46tRHOmNcaadrF8o=
 github.com/cucumber/gherkin/go/v26 v26.2.0 h1:EgIjePLWiPeslwIWmNQ3XHcypPsWAHoMCz/YEBKP4GI=
 github.com/cucumber/gherkin/go/v26 v26.2.0/go.mod h1:t2GAPnB8maCT4lkHL99BDCVNzCh1d7dBhCLt150Nr/0=

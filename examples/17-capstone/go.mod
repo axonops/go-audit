@@ -4,10 +4,10 @@ go 1.26.3
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
-	github.com/axonops/audit v0.1.11
-	github.com/axonops/audit/file v0.1.11
-	github.com/axonops/audit/loki v0.1.11
-	github.com/axonops/audit/outputconfig v0.1.11
+	github.com/axonops/audit v0.1.12
+	github.com/axonops/audit/file v0.1.12
+	github.com/axonops/audit/loki v0.1.12
+	github.com/axonops/audit/outputconfig v0.1.12
 	github.com/google/uuid v1.6.0
 	github.com/lib/pq v1.12.3
 	github.com/prometheus/client_golang v1.23.2
@@ -17,8 +17,8 @@ require (
 require github.com/axonops/audit/secrets/vault v0.1.11 // indirect
 
 require (
-	github.com/axonops/audit/secrets v0.1.11 // indirect
-	github.com/axonops/audit/secrets/openbao v0.1.11 // indirect
+	github.com/axonops/audit/secrets v0.1.12 // indirect
+	github.com/axonops/audit/secrets/openbao v0.1.12 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
