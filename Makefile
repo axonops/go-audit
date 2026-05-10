@@ -516,17 +516,21 @@ tidy:
 	done
 
 tidy-check:
-	@for mod in $(MODULES); do \
-		echo "=== tidy-check $$mod ==="; \
-		(cd $$mod && \
-		 cp go.mod go.mod.bak && (cp go.sum go.sum.bak 2>/dev/null; true) && \
-		 go mod tidy && \
-		 diff -q go.mod go.mod.bak > /dev/null 2>&1 && \
-		 ([ ! -f go.sum.bak ] || diff -q go.sum go.sum.bak > /dev/null 2>&1) && \
-		 rm -f go.mod.bak go.sum.bak || \
-		 { echo "ERROR: go mod tidy produced changes in $$mod"; \
-		   mv go.mod.bak go.mod 2>/dev/null; mv go.sum.bak go.sum 2>/dev/null; exit 1; }) || exit 1; \
-	done
+	@if [ -n "$$SKIP_TIDY_CHECK" ]; then \
+		echo "tidy-check: SKIP_TIDY_CHECK is set — skipping (release-branch flow)"; \
+	else \
+		for mod in $(MODULES); do \
+			echo "=== tidy-check $$mod ==="; \
+			(cd $$mod && \
+			 cp go.mod go.mod.bak && (cp go.sum go.sum.bak 2>/dev/null; true) && \
+			 go mod tidy && \
+			 diff -q go.mod go.mod.bak > /dev/null 2>&1 && \
+			 ([ ! -f go.sum.bak ] || diff -q go.sum go.sum.bak > /dev/null 2>&1) && \
+			 rm -f go.mod.bak go.sum.bak || \
+			 { echo "ERROR: go mod tidy produced changes in $$mod"; \
+			   mv go.mod.bak go.mod 2>/dev/null; mv go.sum.bak go.sum 2>/dev/null; exit 1; }) || exit 1; \
+		done; \
+	fi
 
 verify:
 	@for mod in $(MODULES); do \
