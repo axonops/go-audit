@@ -234,7 +234,16 @@ jobs:
       # check-static` which developers also run locally.
       # Replaces 8 individual `run: make ...` steps that
       # previously each ran in serial.
+      #
+      # On a `release/v*` branch (the auto-opened release PR),
+      # `tidy-check` is skipped: update-deps.sh pins go.mods to
+      # the new version BEFORE the tag exists on origin, so a
+      # workspace-mode `go mod tidy` would write pseudo-version
+      # hashes that don't match the (future) tag's tarball. The
+      # release flow restores tidy correctness post-tag.
       - name: Run static-analysis checks
+        env:
+          SKIP_TIDY_CHECK: ${{ (startsWith(github.head_ref, 'release/') || startsWith(github.ref_name, 'release/')) && '1' || '' }}
         run: make check-static
 
   lint:
