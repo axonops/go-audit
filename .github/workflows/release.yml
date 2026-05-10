@@ -418,7 +418,12 @@ jobs:
           # disabled at the repo level. Catch the misconfiguration
           # here rather than discover it after the workflow times out
           # waiting for a merge that will never happen.
-          allow=$(gh repo view --json autoMergeAllowed --jq '.autoMergeAllowed')
+          #
+          # `gh repo view --json` does not expose this setting (the
+          # GraphQL Repository type has no autoMergeAllowed field).
+          # The setting lives on the REST repo object as
+          # `allow_auto_merge`, so query the REST API directly.
+          allow=$(gh api "/repos/${GITHUB_REPOSITORY}" --jq '.allow_auto_merge')
           if [ "$allow" != "true" ]; then
             echo "::error::Repository setting 'Allow auto-merge' is disabled. Enable it in Settings → General before triggering the release workflow."
             exit 1
