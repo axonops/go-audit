@@ -1,5 +1,5 @@
-github.com/axonops/audit v0.1.11 h1:UO+w7F2UYuOlqMB1c/a6CjSKqX1JHZ6/R8e71ARyM7s=
-github.com/axonops/audit v0.1.11/go.mod h1:8xpwLDivtutu0bAnukCz09deMHVv50o3+hHR8LLW1bk=
+github.com/axonops/audit v0.1.12 h1:7teZMyLTd8bX0y4gvdHQ4BuTUr9lld/9UY5cgVWGBmI=
+github.com/axonops/audit v0.1.12/go.mod h1:Y7wAWK/t9eYPRV/6WKSA3OODuzLaa83xrWvzA43h6gM=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
@@ -11,8 +11,6 @@ github.com/kr/text v0.2.0 h1:5Nx0Ya0ZqY2ygV366QzturHI13Jq95ApcVaJBhpS+AY=
 github.com/kr/text v0.2.0/go.mod h1:eLer722TekiGuMkidMxC/pM04lWEeraHUUmBw8l2grE=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
-github.com/rgooding/go-syncmap v1.0.1 h1:FNG1ers6J1Y/IGHLd8Su8xrp0mVLNW1pxQhpvhJPFGE=
-github.com/rgooding/go-syncmap v1.0.1/go.mod h1:2A4vkLQnpUge7GRBXTMpu77N5JIV1yFPM4RdrY0e754=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 go.uber.org/goleak v1.3.0 h1:2K3zAYmnTNqV73imy9J1T3WC+gmCePx2hEGkimedGto=

@@ -3,7 +3,7 @@ module github.com/axonops/audit/secrets/file
 go 1.26.3
 
 require (
-	github.com/axonops/audit/secrets v0.1.11
+	github.com/axonops/audit/secrets v0.1.12
 	github.com/stretchr/testify v1.11.1
 )
 
