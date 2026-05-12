@@ -6,6 +6,47 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.13] - 2026-05-12
+
+Mostly release-engineering and example-hygiene. No library API changes.
+
+### Added
+
+- Standalone `go.mod` for every example under `examples/` (#437).
+  Examples 01-16, 18, 19 previously compiled only as part of the
+  parent `audit` module via `go.work`; now each is its own Go
+  module and gets transitive-dep updates via the nightly
+  `dependency-update` workflow. The first release where this
+  matters: example go.mods that require `audit v0.1.13` now
+  build standalone with `GOWORK=off`, because v0.1.13's audit
+  tarball excludes `examples/01-16/` (they have their own
+  go.mod at this tag's SHA).
+- New `make lint-examples` aggregate target that loops over
+  every `examples/*/go.mod`. Replaces the single-purpose
+  `make lint-capstone`; new examples with a `go.mod` are picked
+  up automatically.
+
+### Changed
+
+- `scripts/release/update-deps.sh` loops over `examples/*/go.mod`
+  rather than hardcoding `examples/17-capstone`. New examples
+  with a `go.mod` are picked up automatically at release time.
+- `.github/workflows/dependency-update.yml` MODULES list (5
+  occurrences) extended with all 20 example directories.
+- Go toolchain bumped to `1.26.3` for new stdlib vulnerabilities
+  GO-2026-4971 + GO-2026-4918 (#832).
+- Release workflow hardening discovered while cutting v0.1.12 —
+  see #841 for the catalogue of follow-up PRs and tracking of
+  proper App-signed commits.
+
+### Fixed
+
+- `outputconfig`: "unknown output type" error no longer embeds
+  the user-supplied type name unquoted in the suggested per-output
+  import path — found by `FuzzOutputConfigLoad` on a NUL byte
+  (#833). Regression test added to
+  `outputconfig/testdata/fuzz/FuzzOutputConfigLoad/`.
+
 ## [0.1.12] - 2026-05-07
 
 > See [`docs/v1-changes.md`](docs/v1-changes.md) for a consolidated
