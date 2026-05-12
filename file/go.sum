@@ -1,3 +1,5 @@
+github.com/axonops/audit v0.1.13 h1:GIZcbSTwzBPcUieI3GPA1XRhP7LnciA8Tf66EHkbcfA=
+github.com/axonops/audit v0.1.13/go.mod h1:aHsnr96RGIdmWBAgLWJYfyZPdLEgP7Su/KZJT+/w0rA=
 github.com/axonops/audit/iouring v0.0.0-20260504172742-a7311e23b1c6 h1:hSS66oOtqv3pduzG0rY3gNeAHDngWhVcjvJ3QIMfl+4=
 github.com/axonops/audit/iouring v0.0.0-20260504172742-a7311e23b1c6/go.mod h1:uOXtOGLXheRF1e3lQrTiCtTY0SipPH94czfKTv5sZsU=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
