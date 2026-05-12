@@ -3,7 +3,7 @@
        test-integration test-bdd test-bdd-core test-bdd-outputconfig test-bdd-file test-bdd-file-os test-bdd-syslog test-bdd-webhook test-bdd-loki test-bdd-fanout \
        test-bdd-verify \
        test-examples \
-       lint lint-all lint-core lint-file lint-syslog lint-webhook lint-loki lint-outputconfig lint-audit-gen lint-audit-validate lint-capstone \
+       lint lint-all lint-core lint-file lint-syslog lint-webhook lint-loki lint-outputconfig lint-audit-gen lint-audit-validate lint-examples \
        lint-secrets lint-secrets-openbao lint-secrets-vault \
        vet vet-all fmt fmt-check \
        build build-all bench bench-save bench-compare bench-baseline-check coverage \
@@ -37,7 +37,11 @@ SHELL      := bash
 .SHELLFLAGS := -e -o pipefail -c
 
 MODULES           := . file iouring syslog webhook loki outputconfig outputs cmd/audit-gen cmd/audit-validate secrets secrets/env secrets/file secrets/openbao secrets/vault
-WORKSPACE_MODULES := $(MODULES) examples/17-capstone examples/20-prometheus-reference
+# EXAMPLE_MODULES is auto-discovered from any examples/*/go.mod so new
+# examples are picked up without touching the Makefile. Sorted for
+# deterministic workspace generation.
+EXAMPLE_MODULES   := $(sort $(patsubst %/go.mod,%,$(wildcard examples/*/go.mod)))
+WORKSPACE_MODULES := $(MODULES) $(EXAMPLE_MODULES)
 GOBIN             := $(shell go env GOPATH)/bin
 GO_TOOLCHAIN      := go1.26.3
 
@@ -312,10 +316,17 @@ lint-secrets-openbao:
 lint-secrets-vault:
 	cd secrets/vault && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
 
-lint-capstone:
-	cd examples/17-capstone && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
+# Lint every example with its own go.mod. EXAMPLE_MODULES is
+# auto-discovered (see top of file). Replaces the single-example
+# lint-capstone target so new examples are linted without further
+# Makefile edits.
+lint-examples:
+	@for dir in $(EXAMPLE_MODULES); do \
+		echo "=== lint $$dir ==="; \
+		(cd $$dir && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...) || exit 1; \
+	done
 
-lint-all: lint-core lint-file lint-syslog lint-webhook lint-loki lint-outputconfig lint-audit-gen lint-audit-validate lint-secrets lint-secrets-openbao lint-secrets-vault lint-capstone
+lint-all: lint-core lint-file lint-syslog lint-webhook lint-loki lint-outputconfig lint-audit-gen lint-audit-validate lint-secrets lint-secrets-openbao lint-secrets-vault lint-examples
 lint: lint-all
 
 # --- Vet ---
