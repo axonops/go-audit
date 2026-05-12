@@ -115,9 +115,16 @@ signs:
     output: true
     certificate: '${artifact}.pem'
     args:
+      # Note: an explicit --oidc-issuer was previously passed here.
+      # Modern cosign (≥ v2.5) treats explicit service URLs as
+      # incompatible with the default signing-config and exits
+      # with "cannot specify service URLs and use signing config".
+      # In GitHub Actions the OIDC issuer is autodiscovered from
+      # ACTIONS_ID_TOKEN_REQUEST_URL + ACTIONS_ID_TOKEN_REQUEST_TOKEN,
+      # so dropping the flag yields identical behaviour and is
+      # forward-compatible.
       - sign-blob
       - '--yes'
-      - '--oidc-issuer=https://token.actions.githubusercontent.com'
       - '--output-certificate=${certificate}'
       - '--output-signature=${signature}'
       - '${artifact}'
