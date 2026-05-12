@@ -105,9 +105,15 @@ type TestContext struct { //nolint:govet // fieldalignment: readability preferre
 	envVarsSet    []string                  // env vars set by steps, cleaned up in After
 
 	// Real container provider state (for @docker scenarios).
-	realProviderAddr         string
-	realProviderToken        string
-	realProviderCAPath       string
+	realProviderAddr   string
+	realProviderToken  string
+	realProviderCAPath string
+	// realSecretsTempDir is a per-scenario temp dir used by both
+	// the @docker Vault/OpenBao steps (for the extracted CA cert)
+	// and the file:// secret-provider steps (for fixture files).
+	// Mutually exclusive in practice — a scenario uses one provider
+	// family or the other — but both code paths cooperate to set
+	// and to clean up via the After hook below.
 	realSecretsTempDir       string
 	realProviderPendingSeeds map[string]map[string]string
 	realProviderCleanup      []func()
@@ -175,6 +181,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	registerRealSecretSteps(ctx, tc)
 	registerSecretSteps(ctx, tc)
 	registerSecretsTLSNegativeSteps(ctx, tc)
+	registerEnvFileSecretSteps(ctx, tc)
 }
 
 func registerGivenSteps(ctx *godog.ScenarioContext, tc *TestContext) {
@@ -377,6 +384,14 @@ func registerThenSteps(ctx *godog.ScenarioContext, tc *TestContext) {
 
 	ctx.Step(`^the config load error should contain "([^"]*)"$`, func(substr string) error {
 		return assertError(tc, substr)
+	})
+
+	// Docstring variant: use when the substring contains literal
+	// double-quote characters, which Gherkin's `"..."` step-argument
+	// syntax cannot express (the embedded `\"` escape is not honoured
+	// by godog v0.15).
+	ctx.Step(`^the config load should fail with an error containing:$`, func(doc *godog.DocString) error {
+		return assertError(tc, doc.Content)
 	})
 
 	ctx.Step(`^the loki output formatter should be JSON$`, func() error {

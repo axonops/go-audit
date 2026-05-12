@@ -6,6 +6,8 @@ require (
 	github.com/axonops/audit v0.1.13
 	github.com/axonops/audit/file v0.1.13
 	github.com/axonops/audit/secrets v0.1.13
+	github.com/axonops/audit/secrets/env v0.1.13
+	github.com/axonops/audit/secrets/file v0.1.13
 	github.com/axonops/audit/secrets/openbao v0.1.13
 	github.com/axonops/audit/secrets/vault v0.1.13
 	github.com/cucumber/godog v0.15.1
