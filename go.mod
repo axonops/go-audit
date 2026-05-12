@@ -6,7 +6,6 @@ require (
 	github.com/axonops/audit/file v0.1.11
 	github.com/axonops/audit/loki v0.1.11
 	github.com/axonops/audit/outputconfig v0.1.11
-	github.com/axonops/audit/outputs v0.1.9
 	github.com/axonops/audit/secrets/openbao v0.1.11
 	github.com/axonops/audit/syslog v0.1.11
 	github.com/axonops/audit/webhook v0.1.11

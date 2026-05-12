@@ -53,7 +53,18 @@ while IFS='|' read -r dir module_path tag_prefix; do
   [[ "$dir" == "." ]] && continue
   targets+=("$dir")
 done < <(make -s --no-print-directory print-publish-modules)
-targets+=("examples/17-capstone")
+
+# Include every example with its own go.mod (#437). Examples are
+# not published, but their require directives still need to pin to
+# the new release version so the next dependency-update PR sees
+# them as up-to-date. The shell glob is non-fragile: a new example
+# directory with a go.mod is picked up automatically.
+for ex in examples/*/; do
+  ex="${ex%/}"
+  if [[ -f "$ex/go.mod" ]]; then
+    targets+=("$ex")
+  fi
+done
 
 # Version-pin semantics: workspace OFF so each module resolves on
 # its own go.mod, GOPROXY=direct so the script doesn't depend on
