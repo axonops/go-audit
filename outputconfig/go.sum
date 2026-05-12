@@ -1,5 +1,15 @@
+github.com/axonops/audit v0.1.13 h1:GIZcbSTwzBPcUieI3GPA1XRhP7LnciA8Tf66EHkbcfA=
+github.com/axonops/audit v0.1.13/go.mod h1:aHsnr96RGIdmWBAgLWJYfyZPdLEgP7Su/KZJT+/w0rA=
+github.com/axonops/audit/file v0.1.13 h1:iGMUnB5vSTPDwHiHRxSHrxkMl2pMyPmYJ00ZlD3SNQs=
+github.com/axonops/audit/file v0.1.13/go.mod h1:o7Uc+cmgZeXe1qX2BqdjsedLKCb6xq+RdK4v2OAENoA=
 github.com/axonops/audit/iouring v0.0.0-20260504172742-a7311e23b1c6 h1:hSS66oOtqv3pduzG0rY3gNeAHDngWhVcjvJ3QIMfl+4=
 github.com/axonops/audit/iouring v0.0.0-20260504172742-a7311e23b1c6/go.mod h1:uOXtOGLXheRF1e3lQrTiCtTY0SipPH94czfKTv5sZsU=
+github.com/axonops/audit/secrets v0.1.13 h1:hT6HTxalLrcUXss1GKE+T//kFxKMFZ5qY9lSaypoOWg=
+github.com/axonops/audit/secrets v0.1.13/go.mod h1:Z00RXS3xRYpPB+UFfnTJpHHjsfQW5L3PH4x+sxlAL0Q=
+github.com/axonops/audit/secrets/openbao v0.1.13 h1:C+Rwls8dRKC/Ng9cRfeFwahxBhQrZ5D71MPaUhmZQvA=
+github.com/axonops/audit/secrets/openbao v0.1.13/go.mod h1:pevJ6GlseB40V1yk1X3lJJrshu9BMgyr8/Od1jG4Bg8=
+github.com/axonops/audit/secrets/vault v0.1.13 h1:uYVH296LIKKQJs2VONIRFHwGAQwiZ4D53CcqU53rpKg=
+github.com/axonops/audit/secrets/vault v0.1.13/go.mod h1:mjoCCpxl463cEXhjisTixz8bZts2J3YtqsguVSnD/24=
 github.com/cpuguy83/go-md2man/v2 v2.0.2/go.mod h1:tgQtvFlXSQOSOSIRvRPT7W67SCa46tRHOmNcaadrF8o=
 github.com/cucumber/gherkin/go/v26 v26.2.0 h1:EgIjePLWiPeslwIWmNQ3XHcypPsWAHoMCz/YEBKP4GI=
 github.com/cucumber/gherkin/go/v26 v26.2.0/go.mod h1:t2GAPnB8maCT4lkHL99BDCVNzCh1d7dBhCLt150Nr/0=
