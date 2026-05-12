@@ -31,21 +31,21 @@ replace github.com/axonops/audit/secrets/file => ../../secrets/file
 replace github.com/axonops/audit/cmd/audit-gen => ../../cmd/audit-gen
 
 require (
-	github.com/axonops/audit v0.1.11
-	github.com/axonops/audit/outputconfig v0.1.11
-	github.com/axonops/audit/outputs v0.1.9
+	github.com/axonops/audit v0.1.13
+	github.com/axonops/audit/outputconfig v0.1.13
+	github.com/axonops/audit/outputs v0.1.13
 	github.com/prometheus/client_golang v1.23.2
 )
 
 require (
-	github.com/axonops/audit/file v0.1.11 // indirect
+	github.com/axonops/audit/file v0.1.13 // indirect
 	github.com/axonops/audit/iouring v0.0.0-20260420160236-1c23d72efb5a // indirect
-	github.com/axonops/audit/loki v0.1.11 // indirect
-	github.com/axonops/audit/secrets v0.1.11 // indirect
-	github.com/axonops/audit/secrets/openbao v0.1.11 // indirect
-	github.com/axonops/audit/secrets/vault v0.1.11 // indirect
-	github.com/axonops/audit/syslog v0.1.11 // indirect
-	github.com/axonops/audit/webhook v0.1.11 // indirect
+	github.com/axonops/audit/loki v0.1.13 // indirect
+	github.com/axonops/audit/secrets v0.1.13 // indirect
+	github.com/axonops/audit/secrets/openbao v0.1.13 // indirect
+	github.com/axonops/audit/secrets/vault v0.1.13 // indirect
+	github.com/axonops/audit/syslog v0.1.13 // indirect
+	github.com/axonops/audit/webhook v0.1.13 // indirect
 	github.com/axonops/srslog v1.0.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect

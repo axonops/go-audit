@@ -3,7 +3,7 @@ module github.com/axonops/audit/syslog
 go 1.26.3
 
 require (
-	github.com/axonops/audit v0.1.12
+	github.com/axonops/audit v0.1.13
 	github.com/axonops/srslog v1.0.1
 	github.com/goccy/go-yaml v1.19.2
 	github.com/stretchr/testify v1.11.1
