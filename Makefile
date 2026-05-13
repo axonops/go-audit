@@ -946,7 +946,8 @@ check-static:
 	for target in fmt-check tidy-check check-todos check-replace \
 	              check-insecure-skip-verify check-example-links \
 	              check-bdd-strict check-sync-comments bench-baseline-check \
-	              check-license-headers \
+	              check-license-headers check-release-scripts \
+	              check-skip-tidy-check-scope \
 	              regen-release-docs-check regen-schema-artifacts-check; do \
 	  echo "==> make $$target"; \
 	  $(MAKE) "$$target" || FAILED="$$FAILED $$target"; \
@@ -958,6 +959,39 @@ check-static:
 	fi; \
 	echo ""; \
 	echo "All static-analysis checks passed."
+
+# Parse-check every release script with `bash -n` (#841). Catches
+# syntax errors that would only surface at release time — the
+# scripts run on a privileged App token and a broken script
+# stalls the release flow.
+check-release-scripts:
+	@echo "==> check-release-scripts"
+	@for f in scripts/release/*.sh; do \
+	  bash -n "$$f" || { echo "PARSE ERROR in $$f" >&2; exit 1; }; \
+	done
+	@echo "OK: all scripts/release/*.sh parse cleanly"
+
+# Guard the SKIP_TIDY_CHECK invariant (#841 docs/releasing.md): the
+# variable is only honoured by the hygiene step in ci.yml when the
+# branch matches `release/*`. If a future change introduces
+# SKIP_TIDY_CHECK in any other context (a different workflow, a
+# Makefile target, a script), the guard fires.
+check-skip-tidy-check-scope:
+	@echo "==> check-skip-tidy-check-scope"
+	@MISUSE=$$(grep -rEl 'SKIP_TIDY_CHECK' \
+	    --include='*.yml' --include='*.yaml' --include='*.sh' \
+	    --include='Makefile' --include='*.go' --include='*.md' \
+	    . 2>/dev/null \
+	    | grep -v -E '^\./\.github/workflows/ci\.yml$$' \
+	    | grep -v -E '^\./Makefile$$' \
+	    | grep -v -E '^\./docs/releasing\.md$$' \
+	    || true); \
+	if [ -n "$$MISUSE" ]; then \
+	  echo "ERROR: SKIP_TIDY_CHECK referenced outside ci.yml / Makefile / docs:" >&2; \
+	  echo "$$MISUSE" >&2; \
+	  exit 1; \
+	fi; \
+	echo "OK: SKIP_TIDY_CHECK scope is contained to ci.yml"
 
 # Install only govulncheck — used by the security matrix to
 # avoid re-installing the full tool set 13 times across the

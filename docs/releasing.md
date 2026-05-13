@@ -83,6 +83,26 @@ every published `go.mod` references the released version. Drift is
 prevented structurally — there is no longer any commit window where modules
 disagree on the release.
 
+**Invariant: `SKIP_TIDY_CHECK` is honoured only on `release/*` branches.**
+The release PR's commit pins every `go.mod` to a tag that does not yet
+exist on origin — `tag-all` runs after the PR merges. As
+[`scripts/release/update-deps.sh`][update-deps-sh] states inline:
+"Tidy is intentionally NOT run — at this point in the release flow
+VERSION is not yet a tag on origin, so tidy would fail to resolve."
+CI's hygiene step in [`ci.yml`][ci-yml] sets `SKIP_TIDY_CHECK=1` for
+branch names matching `release/*` so the same skip applies to the
+release PR. The `invariants` job in [`release.yml`][release-yml] —
+which runs after `tag-all` in the same workflow execution — re-runs
+tidy and verifies correctness once the tag exists. Operators hitting
+a tidy failure on a `release/*` branch should confirm
+`SKIP_TIDY_CHECK=1` is being applied — the variable is intentionally
+not set anywhere else in the codebase (`make
+check-skip-tidy-check-scope` guards this).
+
+[ci-yml]: ../.github/workflows/ci.yml
+[release-yml]: ../.github/workflows/release.yml
+[update-deps-sh]: ../scripts/release/update-deps.sh
+
 ### v0.x Stability Contract
 
 This library is pre-release (`v0.x`). The Go module system treats v0 the same
@@ -791,6 +811,109 @@ restart the release until the App key has been rotated. Already-pushed
 tags are unaffected; resume from the recovery path with a freshly minted
 token.
 
+#### Tags pushed but the GitHub Release page has no binaries
+
+The library is consumable via the Go module proxy as soon as
+`tag-all` finishes — `go get github.com/axonops/audit@v0.1.13`
+works without the GitHub Release page artifacts. But the
+`goreleaser` job that produces `audit-gen` / `audit-validate`
+binaries, `checksums.txt`, the Sigstore signature pair, and the
+container image runs separately and can fail independently. The
+v0.1.12 release hit this exact mode: a `goreleaser-action`
+cosign-verification bug in the pinned v2.15.0 caused the
+goreleaser job to fail every retry, leaving the tag published but
+the GitHub Release page empty.
+
+If the goreleaser job is still retryable (no code bug — just a
+transient infra failure), see
+[GoReleaser failed but tags are pushed](#goreleaser-failed-but-tags-are-pushed)
+first; that's the canonical re-run path. If retries don't help
+(e.g. the underlying tool version is broken on the tag's SHA),
+pick one of the three options below:
+
+1. **Cut the next patch version forward** (preferred). This is
+   what v0.1.13 did. The failed-binary tag stays library-only;
+   the next tag's release-page artifacts are the canonical
+   distribution for binary consumers. This is the option v0.1.12
+   was accepted under: v0.1.12 is library-only on purpose, and
+   v0.1.13+ have full release-page artifacts. No retroactive
+   binary backfill was performed.
+
+2. **Manually backfill via a local goreleaser run**:
+
+   ```bash
+   # Check out the EXACT commit the tag points at
+   VERSION=v0.1.12
+   SHA=$(git rev-parse "$VERSION")
+   git checkout "$SHA"
+
+   # Build artifacts locally (no publish, no signing). GoReleaser
+   # v2 uses --skip=<comma-list>; v1's --skip-publish / --skip-sign
+   # flags are removed.
+   goreleaser release --clean --skip=publish,sign
+
+   # Upload to the existing GitHub Release page
+   gh release upload "$VERSION" dist/audit-gen_*.tar.gz \
+                                dist/audit-validate_*.tar.gz \
+                                dist/checksums.txt
+   ```
+
+   This produces binaries identical to what the workflow would
+   have, but without the Sigstore signature, the build-attestation
+   provenance, or the container image. Acceptable for emergency
+   backfill; not recommended for fresh releases.
+
+3. **Accept as library-only**: do nothing on the release page;
+   document in the project's release notes that binaries are not
+   available for this version and consumers should use the next
+   patch.
+
+See the [`release-smoke`][release-smoke] workflow for pre-flight
+checks (including the GoReleaser version-pin floor) that prevent
+the v0.1.12 failure mode from recurring.
+
+[release-smoke]: ../.github/workflows/release-smoke.yml
+
+### Lessons learned (v0.1.12 incident)
+
+Cutting v0.1.12 — the first real use of the unified release flow
+(#513) — required eight fixes across seven PRs because the flow
+had never been exercised end-to-end against a real tag. Grep this
+section by the error string you see in CI to find the precedent.
+
+See also [Example: releasing v0.1.12](#example-releasing-v0112)
+for the trigger commands.
+
+- **release.yml startup_failure (nested dependency-review)** →
+  `ci.yml`'s `dependency-review` job declares `pull-requests:
+  write`; the caller validated permissions before evaluating
+  `if:` → grant `pull-requests: write` on the `ci` call (#832).
+- **Go stdlib vulns GO-2026-4971 + GO-2026-4918** → go1.26.2
+  vulnerable → bump GOTOOLCHAIN to go1.26.3 across every go.mod,
+  the Makefile, and release.yml (#832, shipped together).
+- **FuzzOutputConfigLoad: NUL byte in error string** → "unknown
+  output type" error embedded user input unquoted → sanitise via
+  `isValidImportPathSegment` + generic fallback (#833).
+- **Bot rename release-bot → axonops-audit-release-bot** → org
+  has multiple projects → rename App + all hardcoded references
+  in release.yml, tag-all.sh, CONTRIBUTING, docs (#834).
+- **`gh repo view --json autoMergeAllowed` invalid field** → JSON
+  field name wrong on the `repo` resource → use
+  `gh api /repos/$REPO --jq '.allow_auto_merge'` (#835).
+- **update-deps.sh ran go mod tidy** → tag doesn't exist on
+  origin until `tag-all` runs → skip tidy and strip stale
+  go.sum entries; this is the `SKIP_TIDY_CHECK` invariant (#836).
+- **CI tidy-check failed on the release PR** → ci.yml didn't
+  honour the skip from #836 → add `SKIP_TIDY_CHECK` env on
+  `release/*` branches in ci.yml's hygiene step (#838).
+- **GoReleaser v2.15.0 cosign-verification bug** → ASN.1-encoded
+  signature error on every retry → bump goreleaser-action pin to
+  v2.15.4 (#840). v0.1.12's release-page binaries are
+  permanently missing because the tag's workflow SHA still
+  points at v2.15.0 (tags are immutable); v0.1.13+ ship from
+  the fixed pin on main — see [Tags pushed but the GitHub
+  Release page has no binaries](#tags-pushed-but-the-github-release-page-has-no-binaries).
+
 ### First Release: v0.1.1
 
 The first release for this repository is `v0.1.1`. Version `v0.1.0` was
@@ -864,6 +987,48 @@ Overview" above for the trigger semantics.
 If any step fails, the workflow stops. Tags that were already pushed
 cannot be undone — see [Release recovery playbook](#release-recovery-playbook)
 and [Retracting a Bad Release](#retracting-a-bad-release).
+
+### The release-smoke workflow
+
+The [release-smoke workflow](../.github/workflows/release-smoke.yml)
+is a validate-only pre-flight check for the release infrastructure.
+It is triggered manually via `workflow_dispatch` and has zero side
+effects — no tags, no branches, no commits, no PRs. Run it before
+cutting a real release (or on a schedule, if drift becomes a
+recurring problem) to surface any infrastructure regression.
+
+**What it checks (each as a pass/fail row in the run summary):**
+
+- `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` secrets are
+  configured and the App token mints successfully.
+- The App is installed on this specific repository (catches a
+  misconfigured secret pointing at a different installation).
+- The minted token has rate-limit budget remaining
+  (`/rate_limit` core resource > 100).
+- The repo has `allow_auto_merge: true` (catches the regression
+  PR #835 fixed).
+- The `main` branch has `required_signatures: enabled` (the whole
+  reason for the GraphQL migration in #841 — releases must not
+  silently disable this).
+- The GoReleaser version pin is at or above v2.15.4 (the floor
+  set by PR #840 to avoid the cosign-verification bug in v2.15.0
+  that caused v0.1.12's missing binaries).
+- Every script under `scripts/release/` parses cleanly via
+  `bash -n`.
+- `make print-publish-modules` returns a non-empty list.
+- The tag-protection rule on `refs/tags/v*` is queryable (or
+  absent on plain repos).
+
+**When to run:**
+
+```bash
+gh workflow run release-smoke.yml
+gh run watch
+```
+
+A green run means all the prerequisites the unified flow assumes
+are in place. A red run names the failed check in the summary —
+fix it before triggering a real release.
 
 ### Makefile Targets
 

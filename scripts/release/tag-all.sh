@@ -51,11 +51,6 @@ fi
 # idempotent mode (existing tags at the target SHA are fine).
 "$repo_root/scripts/release/check-tag-conflicts.sh" "$VERSION" "$SHA"
 
-# Configure committer for annotated tags (the message field uses the
-# release-bot identity).
-git config user.name  "axonops-audit-release-bot[bot]"
-git config user.email "axonops-audit-release-bot[bot]@users.noreply.github.com"
-
 failed=()
 remaining=()
 skipped=()
@@ -84,27 +79,22 @@ if (( ${#failed[@]} > 0 )); then
   exit 1
 fi
 
-# Create then push, in stable order. Annotated tags so the GitHub
-# UI shows the release-bot identity. Failures collected, not
-# fail-fast — operators get the full picture.
-created=()
-for tag in "${remaining[@]}"; do
-  if git tag -a "$tag" -m "Release $tag" "$SHA"; then
-    created+=("$tag")
-    echo "tag-all: created $tag at $SHA"
-  else
-    echo "tag-all: failed to CREATE $tag locally" >&2
-    failed+=("$tag")
-  fi
-done
-
+# Create each tag via gh-graphql-tag.sh (#841): one REST POST to
+# create the annotated tag object, then one POST to point
+# refs/tags/<tag> at it. The helper is App-signed end-to-end, so
+# required_signatures stays ON during a release. Failures are
+# collected per-tag; operators see the full picture instead of
+# fail-fast.
 pushed=()
-for tag in "${created[@]}"; do
-  if git push origin "$tag"; then
+for tag in "${remaining[@]}"; do
+  if "$repo_root/scripts/release/gh-graphql-tag.sh" \
+       --tag "$tag" \
+       --sha "$SHA" \
+       --message "Release $tag"; then
     pushed+=("$tag")
-    echo "tag-all: pushed $tag"
+    echo "tag-all: created and pushed $tag"
   else
-    echo "tag-all: failed to PUSH $tag" >&2
+    echo "tag-all: failed to create $tag via gh-graphql-tag.sh" >&2
     failed+=("$tag")
   fi
 done
@@ -138,4 +128,4 @@ if (( ${#failed[@]} > 0 )); then
   exit 1
 fi
 
-echo "tag-all: ${#pushed[@]} pushed; ${#created[@]} created, ${#skipped[@]} idempotent skips."
+echo "tag-all: ${#pushed[@]} pushed, ${#skipped[@]} idempotent skips."
