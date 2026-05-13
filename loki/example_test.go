@@ -40,6 +40,11 @@ func ExampleNew() {
 				"environment": "development",
 			},
 		},
+		// In production, keep verify_on_startup at its default (true)
+		// so misconfigured destinations fail fast at New(). The
+		// example disables it because godoc executes examples without
+		// a live Loki receiver.
+		DisableStartupVerification: true,
 	}
 
 	out, err := loki.New(cfg, nil)
