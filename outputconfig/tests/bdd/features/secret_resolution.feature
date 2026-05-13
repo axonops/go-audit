@@ -717,3 +717,318 @@ Feature: Secret reference resolution in output configuration
       """
     Then the config load should succeed
     And the HMAC config salt should equal the injection-safety fixture byte-for-byte
+
+  # ---------------------------------------------------------------------------
+  # Scenarios 29–37: real env:// and file:// providers (#720, follow-up to #604)
+  #
+  # Unit tests cover the env / file providers in isolation; these
+  # scenarios prove the providers integrate with outputconfig.Load
+  # end-to-end through the same resolver pipeline used by the mock
+  # provider scenarios above. Both providers are wired by the
+  # registration steps in env_file_secret_steps.go — no mocking of
+  # the audit/secrets/env or audit/secrets/file packages. File
+  # fixtures live in a per-scenario temp dir whose path is exported
+  # as the BDD_SECRETS_DIR env var so ref+file://${BDD_SECRETS_DIR}
+  # expansion works through the standard outputconfig envsubst path.
+  # ---------------------------------------------------------------------------
+
+  # ---------------------------------------------------------------------------
+  # Scenario 29: env:// resolves a set environment variable to its value
+  # ---------------------------------------------------------------------------
+  Scenario: env:// resolves a set environment variable
+    Given an env:// secret provider is registered
+    And the environment variable "BDD_ENV_SECRET_VALUE" is set to "env-secret-value-32-bytes!!!!!!!"
+    And the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        audit_log:
+          type: stdout
+          hmac:
+            enabled: true
+            salt:
+              version: v1
+              value: ref+env://BDD_ENV_SECRET_VALUE
+            algorithm: HMAC-SHA-256
+      """
+    Then the config load should succeed
+    And the HMAC config should have salt "env-secret-value-32-bytes!!!!!!!"
+
+  # ---------------------------------------------------------------------------
+  # Scenario 30: env:// returns a resolve-failure when the variable is unset.
+  # The provider wraps secrets.ErrSecretResolveFailed; the resolver
+  # propagates the diagnostic through outputconfig.Load.
+  # ---------------------------------------------------------------------------
+  Scenario: env:// returns ErrSecretResolveFailed when variable is unset
+    Given an env:// secret provider is registered
+    And the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        audit_log:
+          type: stdout
+          hmac:
+            enabled: true
+            salt:
+              version: v1
+              value: ref+env://BDD_DEFINITELY_NOT_SET_XYZ_720
+            algorithm: HMAC-SHA-256
+      """
+    Then the config load should fail with an error containing "variable not set"
+
+  # ---------------------------------------------------------------------------
+  # Scenario 31: env:// rejects a #fragment at ParseRef time.
+  # env:// has no key concept; a fragment is a structural error.
+  # ---------------------------------------------------------------------------
+  Scenario: env:// rejects a reference with a #fragment
+    Given an env:// secret provider is registered
+    And the environment variable "BDD_ENV_WITH_FRAGMENT" is set to "ignored"
+    And the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        audit_log:
+          type: stdout
+          hmac:
+            enabled: true
+            salt:
+              version: v1
+              value: ref+env://BDD_ENV_WITH_FRAGMENT#key
+            algorithm: HMAC-SHA-256
+      """
+    Then the config load should fail with an error containing "env:// must not have a #fragment"
+
+  # ---------------------------------------------------------------------------
+  # Scenario 32: file:// resolves a whole-file secret value.
+  # No #fragment → the entire file content (minus the trailing
+  # newline, per [file.Provider]'s contract) is the resolved value.
+  # ---------------------------------------------------------------------------
+  Scenario: file:// resolves a whole-file secret value
+    Given a file:// secret provider is registered
+    And a file in the temp dir named "salt.txt" with content "file-secret-value-32-bytes!!!!!!"
+    And the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        audit_log:
+          type: stdout
+          hmac:
+            enabled: true
+            salt:
+              version: v1
+              value: ref+file://${BDD_SECRETS_DIR}/salt.txt
+            algorithm: HMAC-SHA-256
+      """
+    Then the config load should succeed
+    And the HMAC config should have salt "file-secret-value-32-bytes!!!!!!"
+
+  # ---------------------------------------------------------------------------
+  # Scenario 33: file:// resolves a JSON file via a dotted-fragment path.
+  # The #fragment is parsed as a dotted JSON path; the terminal
+  # scalar string is returned. This mirrors vault/openbao KV-v2
+  # ergonomics for operators who store many secrets in one file.
+  # ---------------------------------------------------------------------------
+  Scenario: file:// resolves a JSON file with dotted-fragment path
+    Given a file:// secret provider is registered
+    And a JSON file in the temp dir named "secrets.json" with content:
+      """
+      {"hmac": {"v1": {"salt": "json-dotted-salt-32-bytes!!!!!!!"}}}
+      """
+    And the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        audit_log:
+          type: stdout
+          hmac:
+            enabled: true
+            salt:
+              version: v1
+              value: ref+file://${BDD_SECRETS_DIR}/secrets.json#hmac.v1.salt
+            algorithm: HMAC-SHA-256
+      """
+    Then the config load should succeed
+    And the HMAC config should have salt "json-dotted-salt-32-bytes!!!!!!!"
+
+  # ---------------------------------------------------------------------------
+  # Scenario 34: file:// rejects a relative path at ParseRef time.
+  # Forces operators to make filesystem ownership of secret material
+  # explicit — relative paths depend on process CWD and break the
+  # principle of least surprise.
+  # ---------------------------------------------------------------------------
+  Scenario: file:// rejects a relative path
+    Given a file:// secret provider is registered
+    And the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        audit_log:
+          type: stdout
+          hmac:
+            enabled: true
+            salt:
+              version: v1
+              value: ref+file://relative/path.txt
+            algorithm: HMAC-SHA-256
+      """
+    Then the config load should fail with an error containing "file:// path must be absolute"
+
+  # ---------------------------------------------------------------------------
+  # Scenario 35: file:// rejects a path containing a ".." segment.
+  # Defence-in-depth: even though the trust boundary is operator-
+  # controlled YAML, parent-directory traversal is rejected to
+  # contain damage from a misconfigured config file or a templating
+  # bug that builds the ref string from a less-trusted source.
+  # ---------------------------------------------------------------------------
+  Scenario: file:// rejects a path containing ".."
+    Given a file:// secret provider is registered
+    And the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        audit_log:
+          type: stdout
+          hmac:
+            enabled: true
+            salt:
+              version: v1
+              value: ref+file://${BDD_SECRETS_DIR}/../escape.txt
+            algorithm: HMAC-SHA-256
+      """
+    Then the config load should fail with an error containing:
+      """
+      path contains ".." segment
+      """
+
+  # ---------------------------------------------------------------------------
+  # Scenario 36: file:// rejects a file exceeding the 1 MiB cap.
+  # Bound on read amplification: a misconfigured ref to /dev/zero
+  # or a multi-GB file must not consume unbounded memory during
+  # config load. The bound is the hardcoded maxFileSize = 1<<20.
+  # ---------------------------------------------------------------------------
+  Scenario: file:// rejects an oversized file
+    Given a file:// secret provider is registered
+    And a file in the temp dir named "huge.txt" with 1048577 bytes of content
+    And the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        audit_log:
+          type: stdout
+          hmac:
+            enabled: true
+            salt:
+              version: v1
+              value: ref+file://${BDD_SECRETS_DIR}/huge.txt
+            algorithm: HMAC-SHA-256
+      """
+    Then the config load should fail with an error containing "file exceeds 1048576 bytes"
+
+  # ---------------------------------------------------------------------------
+  # Scenario 37: file:// follows a Kubernetes-style atomic-swap symlink.
+  # Kubernetes mounts secret volumes as a layered symlink chain:
+  #   <dir>/<name> → <dir>/..data/<name>
+  #   <dir>/..data → <dir>/..2026_..._timestamp_dir
+  # On rotation the kubelet creates a new timestamped dir, then
+  # atomically swaps the ..data symlink. Consumers reading through
+  # the public path observe a single atomic transition. The file
+  # provider MUST follow both indirections so it works under the
+  # standard Kubernetes secret-mount layout.
+  # ---------------------------------------------------------------------------
+  Scenario: file:// follows a Kubernetes-style atomic-swap symlink
+    Given a file:// secret provider is registered
+    And a Kubernetes-style atomic-swap secret named "salt" with content "k8s-atomic-swap-salt-32-bytes!!!"
+    And the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        audit_log:
+          type: stdout
+          hmac:
+            enabled: true
+            salt:
+              version: v1
+              value: ref+file://${BDD_SECRETS_DIR}/salt
+            algorithm: HMAC-SHA-256
+      """
+    Then the config load should succeed
+    And the HMAC config should have salt "k8s-atomic-swap-salt-32-bytes!!!"
+
+  # ---------------------------------------------------------------------------
+  # Scenario 38: env:// rejects a variable whose value is an empty string
+  #
+  # An env var that is set but resolves to "" is structurally
+  # distinct from one that is unset entirely. The provider emits a
+  # distinct diagnostic ("resolved to empty value") because operators
+  # commonly leak this case through Helm-template defaulting or
+  # k8s `env` mounts that always emit the key even when unconfigured.
+  # ---------------------------------------------------------------------------
+  Scenario: env:// rejects a variable that resolves to an empty string
+    Given an env:// secret provider is registered
+    And the environment variable "BDD_ENV_EMPTY_VALUE" is set to ""
+    And the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        audit_log:
+          type: stdout
+          hmac:
+            enabled: true
+            salt:
+              version: v1
+              value: ref+env://BDD_ENV_EMPTY_VALUE
+            algorithm: HMAC-SHA-256
+      """
+    Then the config load should fail with an error containing "resolved to empty value"
+
+  # ---------------------------------------------------------------------------
+  # Scenario 39: file:// rejects a JSON file whose terminal node is non-string
+  #
+  # The dotted-fragment path traversal lands on a JSON value that
+  # is not a string (number, object, array, bool, null). HMAC salts
+  # are byte strings; emitting a coerced "12345" or "true" would
+  # silently break HMAC verification. The provider rejects the load
+  # with a distinctive diagnostic.
+  # ---------------------------------------------------------------------------
+  Scenario: file:// rejects a JSON file whose terminal value is not a string
+    Given a file:// secret provider is registered
+    And a JSON file in the temp dir named "non-string.json" with content:
+      """
+      {"hmac": {"salt": 42}}
+      """
+    And the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        audit_log:
+          type: stdout
+          hmac:
+            enabled: true
+            salt:
+              version: v1
+              value: ref+file://${BDD_SECRETS_DIR}/non-string.json#hmac.salt
+            algorithm: HMAC-SHA-256
+      """
+    Then the config load should fail with an error containing "terminal value is not a string"
