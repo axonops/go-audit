@@ -321,6 +321,7 @@ for the full table of 31 names, types, and CEF mappings.
 | 📘 [API Reference](https://pkg.go.dev/github.com/axonops/audit) | pkg.go.dev documentation |
 | 🏗️ [Architecture](ARCHITECTURE.md) | Pipeline design, module boundaries, thread safety |
 | 🤝 [Contributing](CONTRIBUTING.md) | Development setup, PR process, code standards |
+| 🛠 [Development Workflow](docs/development-workflow.md) | Multi-module monorepo workflow — `make workspace`, `go.work`, release-flow implications, build/workspace troubleshooting |
 | 🚀 [Deployment Guide](docs/deployment.md) | systemd, Kubernetes, Docker Compose; capacity planning; file-output parent-directory behaviour; secret injection patterns |
 | 📝 [Changelog](CHANGELOG.md) | Release history and breaking changes |
 | ❌ [Error Reference](docs/error-reference.md) | Every error explained with recovery guidance |

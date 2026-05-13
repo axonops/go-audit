@@ -985,6 +985,7 @@ check-skip-tidy-check-scope:
 	    | grep -v -E '^\./\.github/workflows/ci\.yml$$' \
 	    | grep -v -E '^\./Makefile$$' \
 	    | grep -v -E '^\./docs/releasing\.md$$' \
+	    | grep -v -E '^\./docs/development-workflow\.md$$' \
 	    || true); \
 	if [ -n "$$MISUSE" ]; then \
 	  echo "ERROR: SKIP_TIDY_CHECK referenced outside ci.yml / Makefile / docs:" >&2; \

@@ -19,6 +19,14 @@ make check-static    # all 8 static-analysis guards in one shot
 make check           # runs the full quality gate locally
 ```
 
+> **First time?** Read
+> [docs/development-workflow.md](docs/development-workflow.md) for
+> the full multi-module workflow story — what `make workspace`
+> does, why every sub-module has its own `go.mod`, how releases
+> rewrite versions, and a troubleshooting section for the
+> common failure modes (`unknown revision`, `go mod tidy`
+> rewriting files, Docker build can't find module).
+
 `make check-static` runs the same eight checks the CI hygiene job
 runs (formatting, module tidiness, replace directives, orphaned
 TODOs, InsecureSkipVerify production-code guard, example
@@ -487,12 +495,12 @@ file parser beyond what already exists.
 
 ## Multi-Module Development
 
-The repository contains multiple Go modules (core, file, syslog,
-webhook, outputconfig). Each has its own `go.mod`.
-
-- `make workspace` creates a `go.work` file for IDE cross-module navigation
-- `make tidy` runs `go mod tidy` on all modules
-- `make tidy-check` verifies tidy produces no diff (CI enforces this)
+Workspace setup, the `go.work` lifecycle, day-to-day inner-loop
+commands, the release-flow implications, Docker / consumer
+caveats, and the troubleshooting playbook are all in
+[docs/development-workflow.md](docs/development-workflow.md).
+Start there if `make check` produces resolution errors or if
+`go.mod` files look stale on your branch.
 
 ## Project Layout
 
@@ -515,9 +523,9 @@ Key points for contributors:
   tag-protected; only the release-bot App can create them. The full list
   of protected patterns is in `docs/releasing.md`.
 - Do not add `replace` directives to `go.mod` on any branch intended for
-  merge — `make check-replace` enforces this in CI.
-- Use `make workspace` to create a `go.work` file for local cross-module
-  development. It is gitignored and does not affect published modules.
+  merge — `make check-replace` enforces this in CI. Use the workspace
+  (see [docs/development-workflow.md](docs/development-workflow.md))
+  for local cross-module work instead.
 
 ## Code of Conduct
 

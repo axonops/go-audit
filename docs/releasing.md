@@ -97,7 +97,9 @@ tidy and verifies correctness once the tag exists. Operators hitting
 a tidy failure on a `release/*` branch should confirm
 `SKIP_TIDY_CHECK=1` is being applied — the variable is intentionally
 not set anywhere else in the codebase (`make
-check-skip-tidy-check-scope` guards this).
+check-skip-tidy-check-scope` guards this). The
+contributor-facing view of this invariant is documented in
+[development-workflow.md](development-workflow.md#the-release-cycle).
 
 [ci-yml]: ../.github/workflows/ci.yml
 [release-yml]: ../.github/workflows/release.yml
