@@ -124,6 +124,65 @@ batch — up to roughly 130 KiB of events at typical sizes, or
 this is comfortably inside compliance SLAs, which are typically
 measured in seconds or minutes.
 
+#### How to eliminate the crash window: `fsync_each_batch`
+
+Regulated
+workloads (financial transactions, healthcare PHI, government
+audit) that require per-batch durability can set
+`fsync_each_batch: true` (YAML) or
+`Config.FsyncEachBatch: true` (Go). Each batch is then
+`fsync(2)`'d to stable storage before the writeLoop iteration
+returns; `LastDeliveryNanos` updates after fsync succeeds, not
+before. The throughput cost depends on storage:
+
+| Storage      | Approx fsync latency per batch |
+|--------------|-------------------------------|
+| NVMe SSD     | 0.1–1 ms                      |
+| SATA SSD     | 1–5 ms                        |
+| Spinning HDD | 5–50 ms (worse under contention) |
+| tmpfs        | sub-µs (in-memory; no durability) |
+
+Enabling `fsync_each_batch` couples the drain goroutine's
+throughput to disk fsync latency. The sustained event rate the
+output can keep up with is approximately:
+
+```
+max_rate ≈ batch_size / (writev_latency + fsync_latency)
+```
+
+For 256-event batches on a SATA SSD at 3 ms fsync, that's about
+85 k events/s sustained. Higher producer rates surface as
+buffer-full drops via `RecordDrop()`. Operators sizing for
+durable throughput on spinning disks should raise `buffer_size`,
+accept the drops, or co-locate the audit log on faster storage.
+
+`RecordFlush` duration includes both `writev(2)` and `fsync(2)`
+time when `fsync_each_batch` is enabled. Flush-duration metrics
+reflect on-disk commit latency, not just page-cache write
+latency — factor this in when setting Prometheus histogram
+alerting thresholds on the flush metric.
+
+**Partial guarantee**: `fsync_each_batch` does NOT `fsync(2)`
+the parent directory on file creation or rotation. A power loss
+during the brief window between `rename(2)` (rotation) or
+`creat(2)` (initial file) and the next directory-entry writeback
+can lose the just-created file's directory entry — even with
+`fsync_each_batch` enabled. For workloads that need
+directory-level durability, mount the audit-log directory with
+`dirsync`, or schedule explicit `fsync(2)` of the parent dir
+at the filesystem layer.
+
+`fsync_each_batch` is best-effort. Linux `fsync(2)` may return
+an error and clear the kernel error state on the first read
+(the "fsync-gate" semantic). The audit library logs the error
+via `OutputMetrics.RecordError()` and the batch is considered
+failed — events that reached only the page cache are lost, but
+no silent corruption.
+
+This is **distinct from** `rotate.Config.SyncOnWrite`, which
+only governs the bufio `Write()` path and is bypassed by the
+`writev(2)` path used here.
+
 ### What about io_uring?
 
 The library ships the [iouring submodule][iouring] with both
@@ -160,6 +219,7 @@ for the complete pipeline architecture.
 | `group_readable` | bool | `false` | — | If `true`, mode is `0o640` (owner read/write + group read). If absent or `false`, mode is `0o600` (owner only). See [Permissions and Security](#permissions-and-security) for the rationale. |
 | `compress` | bool | `true` | — | Gzip compress rotated backup files |
 | `buffer_size` | int | `10000` | 1–100,000 | Internal async buffer capacity. Events dropped when full |
+| `fsync_each_batch` | bool | `false` | — | Call `fsync(2)` after each batched `writev(2)` to eliminate the page-cache crash window. Trades ~0.1–50 ms of fsync latency per batch (depending on storage) for per-batch durability. See [Durability contract](#durability-contract). |
 
 ### Validation Rules
 
@@ -472,6 +532,7 @@ signature to each event, providing evidence of modification.
 | `unknown field "permissions"` | Old YAML still uses pre-#436 `permissions:` key | Remove the line (default is `0o600`) or replace with `group_readable: true` for `0o640` |
 | File not rotating | `max_size_mb` too large for event volume | Reduce `max_size_mb` or check disk space |
 | Disk filling up | Too many backups or age limit too high | Reduce `max_backups` and `max_age_days` |
+| `audit: output file: sync failed` | `fsync_each_batch: true` and `fsync(2)` returned an error (ENOSPC, EIO, EROFS) | Check disk space (`df -h`), device health (`dmesg`, `smartctl`); see [fsync failures](error-reference.md#file-output-fsync_each_batch-failures-678) |
 
 ## Related Documentation
 

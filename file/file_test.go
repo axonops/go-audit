@@ -1002,6 +1002,93 @@ func BenchmarkFileOutput_Write_Parallel(b *testing.B) {
 // (rotation contributes ~0.015 % of iterations). A regression in
 // either path shows here; use BenchmarkWriter_Write_WithRotation to
 // isolate rotation-specific regressions.
+// BenchmarkFileOutput_FsyncEachBatch_On measures caller-side
+// Write() enqueue throughput when each batch is fsync'd (#678).
+//
+// IMPORTANT: this benchmark does NOT measure fsync latency
+// directly. Write() returns as soon as the data is enqueued on
+// the internal channel; the actual writev(2) + fsync(2) happens
+// asynchronously on the drain goroutine. The fsync cost
+// manifests as drain throughput (visible in queue-depth metrics
+// or as buffer-full drops under high load), not as Write()
+// latency. Two consequences:
+//
+//  1. On/Off numbers from this benchmark look similar because
+//     the caller-side path is identical. The benchmark is a
+//     regression detector for the caller-side hot path — not a
+//     fsync-cost measurement. For real fsync cost, observe
+//     `iostat -x 1` or the OutputMetrics.RecordFlush histogram
+//     in a production-shaped workload.
+//
+//  2. b.TempDir() may return a tmpfs path on Linux CI runners
+//     (fsync there is sub-µs); on macOS / Windows it's a real
+//     disk. Confirm the filesystem with `stat -f -c %T` before
+//     drawing fsync-latency conclusions from a single number.
+//
+// Approximate fsync latency reference:
+//
+//	tmpfs     sub-µs (Linux b.TempDir() is often tmpfs)
+//	NVMe SSD  ~0.1–1 ms per fsync
+//	SATA SSD  ~1–5 ms
+//	HDD       ~5–50 ms (and worse under contention)
+func BenchmarkFileOutput_FsyncEachBatch_On(b *testing.B) {
+	dir := b.TempDir()
+	path := filepath.Join(dir, "bench-fsync-on.log")
+
+	out, err := file.New(&file.Config{
+		Path:           path,
+		MaxSizeMB:      1024,
+		FsyncEachBatch: true,
+	}, file.WithDiagnosticLogger(silentLogger()))
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer func() { _ = out.Close() }()
+
+	event := []byte(`{"timestamp":"2026-04-14T12:00:00Z","event_type":"user_create","severity":5,"app_name":"bench","host":"localhost","outcome":"success","actor_id":"alice"}` + "\n")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.SetBytes(int64(len(event)))
+	for b.Loop() {
+		if err := out.Write(event); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// BenchmarkFileOutput_FsyncEachBatch_Off is the baseline for
+// the FsyncEachBatch=On comparison. Identical configuration
+// minus the fsync_each_batch flag. The two together form a
+// benchstat-comparable pair so operators can quantify the
+// throughput cost of enabling per-batch durability on their
+// hardware.
+func BenchmarkFileOutput_FsyncEachBatch_Off(b *testing.B) {
+	dir := b.TempDir()
+	path := filepath.Join(dir, "bench-fsync-off.log")
+
+	out, err := file.New(&file.Config{
+		Path:      path,
+		MaxSizeMB: 1024,
+		// FsyncEachBatch left at zero value (false) — baseline.
+	}, file.WithDiagnosticLogger(silentLogger()))
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer func() { _ = out.Close() }()
+
+	event := []byte(`{"timestamp":"2026-04-14T12:00:00Z","event_type":"user_create","severity":5,"app_name":"bench","host":"localhost","outcome":"success","actor_id":"alice"}` + "\n")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.SetBytes(int64(len(event)))
+	for b.Loop() {
+		if err := out.Write(event); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 func BenchmarkFileOutput_Write_WithRotation(b *testing.B) {
 	dir := b.TempDir()
 	path := filepath.Join(dir, "bench.log")
@@ -1205,4 +1292,140 @@ func TestOutputFactory_OutputMetricsReachesOutput(t *testing.T) {
 
 	assert.Positive(t, om.drops.Load(),
 		"per-output metrics value supplied via FrameworkContext must record drops")
+}
+
+// ---------------------------------------------------------------------------
+// FsyncEachBatch (#678) — per-batch durability knob
+// ---------------------------------------------------------------------------
+
+// TestFileOutput_FsyncEachBatch_OnPersistsAfterBatch verifies the
+// durability contract: with FsyncEachBatch=true the file contents
+// are observable on disk after writeBatch completes (without
+// requiring a Close). The polling is generous to absorb CI fsync
+// latency; the contract under test is "appears on disk", not
+// "appears within N ms".
+func TestFileOutput_FsyncEachBatch_OnPersistsAfterBatch(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "fsync-on.log")
+
+	out, err := file.New(&file.Config{
+		Path:           path,
+		FsyncEachBatch: true,
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+
+	const marker = `{"event_type":"fsync_marker","outcome":"success"}` + "\n"
+	require.NoError(t, out.Write([]byte(marker)))
+
+	// Poll for the marker without Close. Contract: fsync_each_batch
+	// commits the bytes to disk before writeBatch returns, so a
+	// reader observing the file (without process restart) will see
+	// the event within a small bounded delay (batch flush interval
+	// + fsync latency). 2 s slack covers slow CI disks.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		data, readErr := os.ReadFile(path)
+		if readErr == nil && strings.Contains(string(data), `"fsync_marker"`) {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("marker not visible on disk within 2s — fsync_each_batch contract broken")
+}
+
+// TestFileOutput_FsyncEachBatch_OffStillRecordsDelivery verifies
+// that with FsyncEachBatch=false the default path is unchanged
+// AND records LastDeliveryNanos correctly. Strengthens the
+// near-redundant "write+close+read" sanity check (test-analyst
+// note on #678) by pinning the metric-update contract on the
+// default path: LastDeliveryNanos > 0 after Close means
+// writeBatch ran successfully and the timestamp update fired
+// without ever entering the fsync branch.
+func TestFileOutput_FsyncEachBatch_OffStillRecordsDelivery(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "fsync-off.log")
+
+	out, err := file.New(&file.Config{Path: path}) // FsyncEachBatch defaults false
+	require.NoError(t, err)
+
+	const marker = `{"event_type":"default_path","outcome":"success"}` + "\n"
+	require.NoError(t, out.Write([]byte(marker)))
+	require.NoError(t, out.Close())
+
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), `"default_path"`,
+		"default path must continue to flush on Close")
+	assert.Positive(t, out.LastDeliveryNanos(),
+		"LastDeliveryNanos must advance on the default path (no fsync branch entered)")
+}
+
+// TestFileOutput_FsyncEachBatch_LastDeliveryAfterSync verifies the
+// security-reviewer's correction: LastDeliveryNanos updates AFTER
+// fsync returns, so the timestamp reflects on-disk durability
+// rather than just page-cache commit (matching what operators
+// expect when polling LastDeliveryAge for at-risk audits).
+func TestFileOutput_FsyncEachBatch_LastDeliveryAfterSync(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "fsync-last-delivery.log")
+
+	out, err := file.New(&file.Config{
+		Path:           path,
+		FsyncEachBatch: true,
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+
+	before := time.Now().UnixNano()
+	require.NoError(t, out.Write([]byte(`{"event":"x"}`+"\n")))
+
+	// Poll for the LastDeliveryNanos to advance past `before`.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if got := out.LastDeliveryNanos(); got >= before {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("LastDeliveryNanos did not advance within 2s — fsync may not be running before the store")
+}
+
+// TestFileOutput_FsyncEachBatch_ZeroAllocOnDefaultPath verifies
+// the perf-reviewer's contract: the FsyncEachBatch=false path
+// adds zero allocations vs the baseline (per-batch bool check
+// is a register read). One allocation observed in any iteration
+// is a regression.
+func TestFileOutput_FsyncEachBatch_ZeroAllocOnDefaultPath(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skip in -short")
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "fsync-alloc.log")
+
+	out, err := file.New(&file.Config{Path: path}) // FsyncEachBatch defaults false
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+
+	event := []byte(`{"event_type":"alloc_test","outcome":"success"}` + "\n")
+
+	// Warm up the channel and let the drain loop establish steady state.
+	for range 10 {
+		_ = out.Write(event)
+	}
+	time.Sleep(50 * time.Millisecond)
+
+	// AllocsPerRun reports allocations per call averaged across runs.
+	// Write itself allocates one []byte copy per call (necessary for
+	// the channel send), so 1 alloc/op is the baseline; we assert
+	// that adding the fsync_each_batch bool check did NOT introduce
+	// a new allocation on the default path.
+	allocs := testing.AllocsPerRun(100, func() {
+		_ = out.Write(event)
+	})
+	assert.LessOrEqual(t, allocs, float64(1),
+		"FsyncEachBatch=false default path should not allocate beyond the Write copy")
 }

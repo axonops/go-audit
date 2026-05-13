@@ -133,12 +133,70 @@ type Config struct {
 	// When nil, defaults to true.
 	Compress *bool
 
+	// --- Buffering ---
+
 	// BufferSize is the internal async buffer capacity. When full,
 	// new events are dropped and [audit.OutputMetrics.RecordDrop] is
 	// called. Zero defaults to [DefaultBufferSize] (10,000). Values
 	// above [MaxOutputBufferSize] (100,000) cause [New] to return an
 	// error wrapping [audit.ErrConfigInvalid].
 	BufferSize int
+
+	// --- Durability ---
+
+	// FsyncEachBatch controls whether each batched write is fsync(2)'d
+	// to stable storage before the writeBatch iteration returns.
+	// Default false.
+	//
+	// When false, each batch is one writev(2) syscall that commits
+	// the bytes to the OS page cache. Persistence to stable storage
+	// happens on the OS writeback schedule (5–30 s on Linux for
+	// ext4 defaults). A power loss within that window loses the
+	// most recent in-flight batch.
+	//
+	// When true, each batch is writev(2) + fsync(2). Approximate
+	// fsync latencies per batch:
+	//
+	//	NVMe SSD     ~0.1–1 ms
+	//	SATA SSD     ~1–5 ms
+	//	Spinning HDD ~5–50 ms (and more under contention)
+	//	tmpfs        sub-µs (the bytes are in RAM)
+	//
+	// Enabling FsyncEachBatch couples the drain goroutine's
+	// throughput to disk fsync latency. The sustained event rate
+	// the output can keep up with is approximately:
+	//
+	//	max_rate ≈ batch_size / (writev_latency + fsync_latency)
+	//
+	// Operators sizing for high throughput on spinning disks should
+	// either raise BufferSize, accept buffer-full drops surfaced by
+	// [audit.OutputMetrics.RecordDrop], or co-locate the audit log
+	// on faster storage.
+	//
+	// LastDeliveryNanos is updated AFTER a successful fsync, so the
+	// timestamp reflects on-disk durability rather than just
+	// page-cache commit.
+	//
+	// Partial guarantee: FsyncEachBatch does NOT fsync the parent
+	// directory on file creation / rotation. A power loss during
+	// the brief window between rename(2) (rotation) or the
+	// O_CREAT openat(2) (initial file) and the next directory-entry
+	// writeback can lose the just-created file's directory entry —
+	// even with FsyncEachBatch enabled. For workloads that need
+	// directory-level durability, mount the audit-log directory
+	// with `dirsync`, or schedule explicit fsync(2) of the parent
+	// dir at the filesystem layer.
+	//
+	// fsync is best-effort. Linux fsync may return an error and
+	// clear the kernel error state after the first read (the
+	// "fsync-gate" semantic). The audit library logs the error
+	// via [audit.OutputMetrics.RecordError] and the batch is
+	// considered failed.
+	//
+	// Note: this is distinct from rotate.Config.SyncOnWrite (#461),
+	// which only governs the bufio-Write path and is bypassed by
+	// the Writev path used by writeBatch.
+	FsyncEachBatch bool
 }
 
 // dropWarnInterval is the minimum interval between slog.Warn calls
@@ -176,6 +234,10 @@ type Output struct {
 	drops             dropLimiter
 	closed            atomic.Bool
 	mu                sync.Mutex
+	// fsyncEachBatch is the per-Output copy of Config.FsyncEachBatch
+	// captured at construction (#678). Read on every batch; never
+	// mutated after New() returns.
+	fsyncEachBatch bool
 }
 
 // resolvePath normalises the path to an absolute form, resolving
@@ -252,13 +314,14 @@ func New(cfg *Config, opts ...Option) (*Output, error) { //nolint:gocyclo,cyclop
 	}
 
 	out := &Output{
-		path:          cfg.Path,
-		name:          "file:" + cfg.Path,
-		ch:            make(chan []byte, cfg.BufferSize),
-		closeCh:       make(chan struct{}),
-		done:          make(chan struct{}),
-		logger:        logger,
-		outputMetrics: o.outputMetrics,
+		path:           cfg.Path,
+		name:           "file:" + cfg.Path,
+		ch:             make(chan []byte, cfg.BufferSize),
+		closeCh:        make(chan struct{}),
+		done:           make(chan struct{}),
+		logger:         logger,
+		outputMetrics:  o.outputMetrics,
+		fsyncEachBatch: cfg.FsyncEachBatch,
 	}
 	// Detect optional RotationRecorder via structural typing.
 	if rr, ok := o.outputMetrics.(RotationRecorder); ok {
@@ -435,13 +498,26 @@ func (f *Output) writeBatch(batch [][]byte) {
 	start := time.Now()
 	if _, err := f.writer.Writev(batch); err != nil {
 		logger.Error("audit: output file: delivery failed",
-			"error", err, "batch_size", len(batch))
+			"error", err, "path", f.path, "batch_size", len(batch))
 		om.RecordError()
 		return
 	}
-	// Successful flush: record the delivery timestamp for #753
-	// LastDeliveryReporter. Updated AFTER Writev returns nil so a
-	// failing flush leaves the timestamp frozen.
+	// fsync-each-batch (#678). When configured, fsync(2) before
+	// declaring the batch delivered. The LastDeliveryNanos
+	// timestamp is set BELOW so it reflects on-disk durability
+	// (not just page-cache commit).
+	if f.fsyncEachBatch {
+		if err := f.writer.Sync(); err != nil {
+			logger.Error("audit: output file: sync failed",
+				"error", err, "path", f.path, "batch_size", len(batch))
+			om.RecordError()
+			return
+		}
+	}
+	// Successful delivery: record the timestamp for #753
+	// LastDeliveryReporter. Updated AFTER Writev (and Sync when
+	// fsync_each_batch is enabled) returns nil so a failing
+	// delivery leaves the timestamp frozen.
 	f.lastDeliveryNanos.Store(time.Now().UnixNano())
 	om.RecordFlush(len(batch), time.Since(start))
 }

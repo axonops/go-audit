@@ -91,6 +91,17 @@ func registerFileGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^an auditor with file output at a temporary path and short drain timeout$`, func() error {
 		return createFileAuditorWithExtraOpts(tc, file.Config{}, audit.WithShutdownTimeout(100*time.Millisecond))
 	})
+	ctx.Step(`^an auditor with file output and fsync_each_batch enabled$`, func() error {
+		return createFileAuditor(tc, file.Config{FsyncEachBatch: true})
+	})
+
+	ctx.Step(`^I audit (\d+) uniquely marked "([^"]*)" events$`, func(count int, eventType string) error {
+		return auditNMarkedEvents(tc, count, eventType)
+	})
+
+	ctx.Step(`^the file should contain all (\d+) markers within (\d+) seconds$`, func(n, timeoutSec int) error {
+		return assertFileContainsAllMarkersWithin(tc, n, timeoutSec)
+	})
 	ctx.Step(`^closing the auditor should complete within (\d+) seconds$`, func(maxSecs int) error {
 		if tc.Auditor == nil {
 			return fmt.Errorf("no auditor to close")
@@ -713,4 +724,52 @@ func (m *MockFileMetrics) Rotations() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.rotations
+}
+
+// auditNMarkedEvents emits N events of the given type, each
+// tagged with a unique marker recorded in tc.Markers (#678).
+// Used by the fsync_each_batch BDD scenario to enable
+// post-write reader assertion via assertFileContainsAllMarkersWithin.
+func auditNMarkedEvents(tc *AuditTestContext, count int, eventType string) error {
+	if tc.Auditor == nil {
+		return fmt.Errorf("auditor is nil (construction may have failed: %w)", tc.LastErr)
+	}
+	for i := range count {
+		m := marker("FSYNC")
+		tc.Markers[fmt.Sprintf("fsync_%d", i)] = m
+		fields := defaultRequiredFields(tc.Taxonomy, eventType)
+		fields["marker"] = m
+		if err := tc.Auditor.AuditEvent(audit.NewEvent(eventType, fields)); err != nil {
+			return fmt.Errorf("audit event %d: %w", i, err)
+		}
+	}
+	return nil
+}
+
+// assertFileContainsAllMarkersWithin polls the file for every
+// marker in tc.Markers, returning nil once the count of present
+// markers reaches n or the timeout expires. Critical contract:
+// this DOES NOT close the auditor — the fsync_each_batch property
+// under test is exactly "events on disk while the auditor is
+// still running, no explicit Close required".
+func assertFileContainsAllMarkersWithin(tc *AuditTestContext, n, timeoutSec int) error {
+	deadline := time.Now().Add(time.Duration(timeoutSec) * time.Second)
+	for time.Now().Before(deadline) {
+		if countFileMarkersPresent(tc) >= n {
+			return nil
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return fmt.Errorf("file contains %d of %d expected markers after %ds",
+		countFileMarkersPresent(tc), n, timeoutSec)
+}
+
+func countFileMarkersPresent(tc *AuditTestContext) int {
+	count := 0
+	for _, m := range tc.Markers {
+		if err := assertFileContainsText(tc, "default", m); err == nil {
+			count++
+		}
+	}
+	return count
 }

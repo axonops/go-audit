@@ -189,3 +189,17 @@ Feature: File Output
   Scenario: File output records RecordError on ENOSPC
     Given the file-os tmpfs container is up
     When I run the ENOSPC test inside the file-os container
+
+  # --- fsync_each_batch (#678) ---
+  #
+  # FsyncEachBatch=true forces fsync(2) after every batched
+  # writev(2), so the events land on stable storage before the
+  # writeBatch iteration returns. The contract under test is
+  # observability without an explicit Close — the asserting reader
+  # opens the file with the auditor still alive and sees every
+  # event.
+
+  Scenario: fsync_each_batch persists events without an explicit close
+    Given an auditor with file output and fsync_each_batch enabled
+    When I audit 5 uniquely marked "user_create" events
+    Then the file should contain all 5 markers within 5 seconds
