@@ -529,6 +529,25 @@ audit/syslog: startup verification failed for tcp+tls://siem.example.com:6514: d
 
 The probe budget is controlled by `verify_on_startup_timeout` (default `5s`). Operators on slow WAN paths can raise this; CI/local development is fine with the default.
 
+### File output fsync_each_batch failures (#678)
+
+```
+audit: output file: sync failed
+```
+
+(emitted via `slog.Error` with `error="rotate: sync: <os error>"`
+and `batch_size=<n>`; example:
+`error="rotate: sync: write /var/log/audit/events.log: no space left on device"`)
+
+| | |
+|---|---|
+| **When** | `fsync_each_batch: true` is configured (YAML) or `Config.FsyncEachBatch: true` (Go), the writeLoop completes a `writev(2)` successfully, and the subsequent `fsync(2)` returns an error. |
+| **Meaning** | The kernel could not commit the page-cache pages to stable storage. Possible causes: ENOSPC (disk full), EIO (underlying device error), EBUSY/EROFS (filesystem remounted read-only), or the Linux "fsync-gate" behaviour where the kernel clears the error state after the first read. The batch is considered failed; events that reached only the page cache may be lost. The failure is reported via `RecordError()` — there is no silent data loss. `LastDeliveryNanos` is NOT advanced (the durability contract was not met). |
+| **Transient?** | Depends on the underlying cause. ENOSPC is transient once disk space is freed. EIO usually indicates hardware degradation — investigate disk health. The audit library does not retry inside `writeBatch`; the next batch attempts a fresh `writev(2)` + `fsync(2)`. |
+| **What to do** | (1) Check disk space and the audit log filesystem health (`dmesg`, `smartctl`, cloud-provider disk-health alerts). (2) If the failure is `EROFS`, investigate why the filesystem went read-only. (3) Consider whether `fsync_each_batch` is the right choice for the deployment — if storage is unreliable, the per-batch fsync increases the surface for errors; you may prefer to accept the page-cache crash window and run with the default (`fsync_each_batch: false`). (4) If the underlying storage is contended (noisy-neighbour on shared infrastructure), the latency surge from a slow fsync can back-pressure the drain goroutine and cause buffer-full drops; raise `buffer_size` or co-locate the audit log on dedicated storage. |
+
+The path appears in the wrapped `*PathError` from `os.File.Sync` — same redaction posture as `audit: output file: delivery failed` (operator-controlled config; not sensitive).
+
 ---
 
 ## 📚 Further Reading

@@ -70,6 +70,11 @@ type yamlFileConfig struct { //nolint:govet // fieldalignment: readability prefe
 	MaxAgeDays    int    `yaml:"max_age_days"`
 	Compress      *bool  `yaml:"compress"`
 	BufferSize    *int   `yaml:"buffer_size"`
+	// FsyncEachBatch maps to [Config.FsyncEachBatch] (#678). When
+	// true, each batch is fsync(2)'d to stable storage. Default
+	// false. See [Config.FsyncEachBatch] for the durability /
+	// throughput tradeoff and partial-guarantee notes.
+	FsyncEachBatch bool `yaml:"fsync_each_batch"`
 }
 
 // intPtrOrDefault returns the pointed-to value if non-nil, or the
@@ -106,13 +111,14 @@ func buildOutput(name string, rawConfig []byte, om audit.OutputMetrics, logger *
 	}
 
 	cfg := Config{
-		Path:          yc.Path,
-		GroupReadable: yc.GroupReadable,
-		MaxSizeMB:     yc.MaxSizeMB,
-		MaxBackups:    yc.MaxBackups,
-		MaxAgeDays:    yc.MaxAgeDays,
-		Compress:      yc.Compress,
-		BufferSize:    intPtrOrDefault(yc.BufferSize, DefaultBufferSize),
+		Path:           yc.Path,
+		GroupReadable:  yc.GroupReadable,
+		MaxSizeMB:      yc.MaxSizeMB,
+		MaxBackups:     yc.MaxBackups,
+		MaxAgeDays:     yc.MaxAgeDays,
+		Compress:       yc.Compress,
+		BufferSize:     intPtrOrDefault(yc.BufferSize, DefaultBufferSize),
+		FsyncEachBatch: yc.FsyncEachBatch,
 	}
 
 	opts := []Option{WithDiagnosticLogger(logger)}
