@@ -84,6 +84,12 @@ type yamlSyslogConfig struct { //nolint:govet // fieldalignment: readability pre
 	FlushInterval string         `yaml:"flush_interval"`
 	MaxBatchBytes *int           `yaml:"max_batch_bytes"`
 	MaxEventBytes *int           `yaml:"max_event_bytes"`
+	// VerifyOnStartup is the positive YAML surface for the inverted
+	// Config.DisableStartupVerification field. A nil pointer (key
+	// omitted) maps to verification ON; an explicit `true` keeps it
+	// ON; an explicit `false` opts out. See [Config.DisableStartupVerification].
+	VerifyOnStartup        *bool  `yaml:"verify_on_startup"`
+	VerifyOnStartupTimeout string `yaml:"verify_on_startup_timeout"`
 }
 
 // intPtrOrDefault returns the pointed-to value if non-nil, or the
@@ -119,6 +125,26 @@ func buildOutput(name string, rawConfig []byte, om audit.OutputMetrics, logger *
 		return nil, fmt.Errorf("audit/syslog: output %q: %w", name, audit.WrapUnknownFieldError(err, yc))
 	}
 
+	cfg, err := yamlToSyslogConfig(name, &yc)
+	if err != nil {
+		return nil, err
+	}
+
+	opts := []Option{WithDiagnosticLogger(logger)}
+	if om != nil {
+		opts = append(opts, WithOutputMetrics(om))
+	}
+
+	out, err := New(cfg, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("audit/syslog: output %q: %w", name, err)
+	}
+	return audit.WrapOutput(out, name), nil
+}
+
+// yamlToSyslogConfig converts the YAML decoder struct into the typed
+// Config, applying defaults and parsing duration strings.
+func yamlToSyslogConfig(name string, yc *yamlSyslogConfig) (*Config, error) {
 	cfg := &Config{
 		Network:       yc.Network,
 		Address:       yc.Address,
@@ -141,21 +167,23 @@ func buildOutput(name string, rawConfig []byte, om audit.OutputMetrics, logger *
 		}
 		cfg.FlushInterval = d
 	}
+	if yc.VerifyOnStartupTimeout != "" {
+		d, err := time.ParseDuration(yc.VerifyOnStartupTimeout)
+		if err != nil {
+			return nil, fmt.Errorf("audit/syslog: output %q: verify_on_startup_timeout %q: %w", name, yc.VerifyOnStartupTimeout, audit.ErrConfigInvalid)
+		}
+		cfg.StartupVerificationTimeout = d
+	}
+	// YAML verify_on_startup → inverted internal DisableStartupVerification.
+	// Default (key omitted) leaves DisableStartupVerification = false → verify ON.
+	if yc.VerifyOnStartup != nil && !*yc.VerifyOnStartup {
+		cfg.DisableStartupVerification = true
+	}
 	if yc.TLSPolicy != nil {
 		cfg.TLSPolicy = &audit.TLSPolicy{
 			AllowTLS12:       yc.TLSPolicy.AllowTLS12,
 			AllowWeakCiphers: yc.TLSPolicy.AllowWeakCiphers,
 		}
 	}
-
-	opts := []Option{WithDiagnosticLogger(logger)}
-	if om != nil {
-		opts = append(opts, WithOutputMetrics(om))
-	}
-
-	out, err := New(cfg, opts...)
-	if err != nil {
-		return nil, fmt.Errorf("audit/syslog: output %q: %w", name, err)
-	}
-	return audit.WrapOutput(out, name), nil
+	return cfg, nil
 }

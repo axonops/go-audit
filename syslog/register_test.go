@@ -65,6 +65,64 @@ func TestSyslogFactory_InvalidConfig_EmptyAddress(t *testing.T) {
 	assert.Contains(t, err.Error(), "bad_syslog")
 }
 
+// TestSyslogFactory_VerifyOnStartupYAMLRoundTrip verifies that the
+// positive YAML field `verify_on_startup: false` maps to
+// Config.DisableStartupVerification = true, so the factory
+// succeeds against an unreachable address (#286).
+func TestSyslogFactory_VerifyOnStartupYAMLRoundTrip(t *testing.T) {
+	yaml := []byte(
+		"network: tcp\n" +
+			"address: 127.0.0.1:1\n" +
+			"verify_on_startup: false\n",
+	)
+
+	factory := audit.LookupOutputFactory("syslog")
+	require.NotNil(t, factory)
+
+	out, err := factory("lazy_syslog", yaml, audit.FrameworkContext{})
+	require.NoError(t, err, "verify_on_startup: false should defer the dial; got: %v", err)
+	t.Cleanup(func() { _ = out.Close() })
+}
+
+// TestSyslogFactory_VerifyOnStartupTimeoutYAMLRoundTrip verifies
+// the duration field parses (#286). The actual timeout bound is
+// covered in webhook/loki where the probe uses a ctx-aware dialer;
+// here we only assert YAML parsing succeeds.
+func TestSyslogFactory_VerifyOnStartupTimeoutYAMLRoundTrip(t *testing.T) {
+	yaml := []byte(
+		"network: tcp\n" +
+			"address: 127.0.0.1:1\n" +
+			"verify_on_startup: false\n" +
+			"verify_on_startup_timeout: 2s\n",
+	)
+
+	factory := audit.LookupOutputFactory("syslog")
+	require.NotNil(t, factory)
+
+	out, err := factory("syslog_timeout_parsed", yaml, audit.FrameworkContext{})
+	require.NoError(t, err, "duration parsing must succeed for verify_on_startup_timeout")
+	t.Cleanup(func() { _ = out.Close() })
+}
+
+// TestSyslogFactory_VerifyOnStartupTimeoutInvalidString rejects a
+// non-duration value with a clear error.
+func TestSyslogFactory_VerifyOnStartupTimeoutInvalidString(t *testing.T) {
+	yaml := []byte(
+		"network: tcp\n" +
+			"address: 127.0.0.1:1\n" +
+			"verify_on_startup: false\n" +
+			"verify_on_startup_timeout: \"banana\"\n",
+	)
+
+	factory := audit.LookupOutputFactory("syslog")
+	require.NotNil(t, factory)
+
+	_, err := factory("bad_timeout", yaml, audit.FrameworkContext{})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
+	assert.Contains(t, err.Error(), "verify_on_startup_timeout")
+}
+
 func TestSyslogFactory_UnknownYAMLField_Rejected(t *testing.T) {
 	yaml := []byte("network: tcp\naddress: localhost:514\nbogus: true\n")
 

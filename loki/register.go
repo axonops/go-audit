@@ -78,6 +78,12 @@ type yamlLokiConfig struct { //nolint:govet // fieldalignment: readability prefe
 	Gzip       *bool             `yaml:"gzip"`
 	AllowHTTP  bool              `yaml:"allow_insecure_http"`
 	AllowPriv  bool              `yaml:"allow_private_ranges"`
+	// VerifyOnStartup is the positive YAML surface for the inverted
+	// Config.DisableStartupVerification field. A nil pointer (key
+	// omitted) maps to verification ON; an explicit `true` keeps it
+	// ON; an explicit `false` opts out. See [Config.DisableStartupVerification].
+	VerifyOnStartup        *bool        `yaml:"verify_on_startup"`
+	VerifyOnStartupTimeout yamlDuration `yaml:"verify_on_startup_timeout"`
 }
 
 type yamlBasicAuth struct {
@@ -166,22 +172,28 @@ func parseLokiConfig(name string, rawConfig []byte) (*Config, error) {
 	}
 
 	cfg := &Config{
-		URL:                yc.URL,
-		BearerToken:        yc.BearerTkn,
-		TenantID:           yc.TenantID,
-		Headers:            yc.Headers,
-		TLSCA:              yc.TLSCA,
-		TLSCert:            yc.TLSCert,
-		TLSKey:             yc.TLSKey,
-		BatchSize:          intPtrOrDefault(yc.BatchSize, DefaultBatchSize),
-		MaxBatchBytes:      intPtrOrDefault(yc.MaxBatchB, DefaultMaxBatchBytes),
-		MaxEventBytes:      intPtrOrDefault(yc.MaxEventB, DefaultMaxEventBytes),
-		FlushInterval:      time.Duration(yc.FlushIvl),
-		BufferSize:         intPtrOrDefault(yc.BufferSize, DefaultBufferSize),
-		Timeout:            time.Duration(yc.Timeout),
-		MaxRetries:         intPtrOrDefault(yc.MaxRetries, DefaultMaxRetries),
-		AllowInsecureHTTP:  yc.AllowHTTP,
-		AllowPrivateRanges: yc.AllowPriv,
+		URL:                        yc.URL,
+		BearerToken:                yc.BearerTkn,
+		TenantID:                   yc.TenantID,
+		Headers:                    yc.Headers,
+		TLSCA:                      yc.TLSCA,
+		TLSCert:                    yc.TLSCert,
+		TLSKey:                     yc.TLSKey,
+		BatchSize:                  intPtrOrDefault(yc.BatchSize, DefaultBatchSize),
+		MaxBatchBytes:              intPtrOrDefault(yc.MaxBatchB, DefaultMaxBatchBytes),
+		MaxEventBytes:              intPtrOrDefault(yc.MaxEventB, DefaultMaxEventBytes),
+		FlushInterval:              time.Duration(yc.FlushIvl),
+		BufferSize:                 intPtrOrDefault(yc.BufferSize, DefaultBufferSize),
+		Timeout:                    time.Duration(yc.Timeout),
+		MaxRetries:                 intPtrOrDefault(yc.MaxRetries, DefaultMaxRetries),
+		AllowInsecureHTTP:          yc.AllowHTTP,
+		AllowPrivateRanges:         yc.AllowPriv,
+		StartupVerificationTimeout: time.Duration(yc.VerifyOnStartupTimeout),
+	}
+	// YAML verify_on_startup → inverted internal DisableStartupVerification.
+	// Default (key omitted) leaves DisableStartupVerification = false → verify ON.
+	if yc.VerifyOnStartup != nil && !*yc.VerifyOnStartup {
+		cfg.DisableStartupVerification = true
 	}
 
 	if yc.BasicAuth != nil {

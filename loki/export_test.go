@@ -63,17 +63,21 @@ type TestPayloadInput struct { //nolint:govet // fieldalignment: readability pre
 }
 
 // buildTestConfig creates a Config from test input parameters.
+// DisableStartupVerification is set so the build-payload helpers can
+// be invoked without requiring a live Loki receiver — these tests
+// exercise serialisation logic, not connectivity.
 func buildTestConfig(input TestPayloadInput) *Config { //nolint:gocritic // hugeParam: test helper
 	cfg := &Config{
-		URL:                "http://localhost:3100/loki/api/v1/push",
-		AllowInsecureHTTP:  true,
-		AllowPrivateRanges: true,
-		BatchSize:          1000,
-		FlushInterval:      10 * time.Second, // 10s in nanoseconds
-		Timeout:            5 * time.Second,
-		MaxRetries:         1,
-		BufferSize:         1000,
-		Gzip:               input.Gzip,
+		URL:                        "http://localhost:3100/loki/api/v1/push",
+		AllowInsecureHTTP:          true,
+		AllowPrivateRanges:         true,
+		BatchSize:                  1000,
+		FlushInterval:              10 * time.Second, // 10s in nanoseconds
+		Timeout:                    5 * time.Second,
+		MaxRetries:                 1,
+		BufferSize:                 1000,
+		Gzip:                       input.Gzip,
+		DisableStartupVerification: true,
 	}
 	if input.StaticLabels != nil {
 		cfg.Labels.Static = input.StaticLabels

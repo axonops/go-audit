@@ -53,17 +53,22 @@ func validConfig() *loki.Config {
 }
 
 // validConfigWithURL returns a Config pointing at the given URL.
+// DisableStartupVerification is set so existing tests that point at
+// arbitrary (sometimes unreachable) URLs continue to exercise the
+// constructor without contacting the destination — the probe-time
+// behaviour has its own dedicated coverage in TestNew_StartupProbe_*.
 func validConfigWithURL(url string) *loki.Config {
 	return &loki.Config{
-		URL:                url,
-		AllowInsecureHTTP:  true,
-		AllowPrivateRanges: true,
-		BatchSize:          100,
-		FlushInterval:      1 * time.Second,
-		Timeout:            5 * time.Second,
-		MaxRetries:         1,
-		BufferSize:         1000,
-		Gzip:               true,
+		URL:                        url,
+		AllowInsecureHTTP:          true,
+		AllowPrivateRanges:         true,
+		BatchSize:                  100,
+		FlushInterval:              1 * time.Second,
+		Timeout:                    5 * time.Second,
+		MaxRetries:                 1,
+		BufferSize:                 1000,
+		Gzip:                       true,
+		DisableStartupVerification: true,
 	}
 }
 
@@ -586,6 +591,7 @@ func TestOutputFactory_LoggerReachesOutput(t *testing.T) {
 
 	yaml := []byte(
 		"url: https://loki.example.com/loki/api/v1/push\n" +
+			"verify_on_startup: false\n" +
 			"tls_policy:\n" +
 			"  allow_tls12: true\n" +
 			"  allow_weak_ciphers: true\n" +

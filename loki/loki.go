@@ -187,10 +187,7 @@ func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) {
 		resolved.logger.Warn(w, "output", "loki", "url", sanitizeURLForLog(cfg.URL))
 	}
 
-	var ssrfOpts []audit.SSRFOption
-	if cfg.AllowPrivateRanges {
-		ssrfOpts = append(ssrfOpts, audit.AllowPrivateRanges())
-	}
+	ssrfOpts := ssrfOptsFromConfig(cfg)
 
 	transport := &http.Transport{
 		DialContext: (&net.Dialer{
@@ -249,6 +246,17 @@ func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) {
 		pidStr:   pidStr,
 	})
 	o.compressDest = &o.compressBuf // default; overridden in tests
+
+	// Construction-time connectivity probe (#286). Runs BEFORE the
+	// batch goroutine is started so a failed probe never leaks a
+	// goroutine. SSRF and TLS verification share their config with
+	// the runtime transport — any divergence would be a regression.
+	if !cfg.DisableStartupVerification {
+		if err := probeEndpoint(cfg.URL, tlsCfg, cfg); err != nil {
+			cancel()
+			return nil, err
+		}
+	}
 
 	go o.batchLoop(ctx)
 	return o, nil

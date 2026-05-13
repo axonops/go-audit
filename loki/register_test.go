@@ -15,7 +15,9 @@
 package loki_test
 
 import (
+	"net"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -66,7 +68,7 @@ func TestLokiFactory_UnknownField(t *testing.T) {
 	factory := audit.LookupOutputFactory("loki")
 	require.NotNil(t, factory)
 
-	rawYAML := []byte("url: https://loki.example.com/loki/api/v1/push\nunknown_field: oops\n")
+	rawYAML := []byte("url: https://loki.example.com/loki/api/v1/push\nverify_on_startup: false\nunknown_field: oops\n")
 	_, err := factory("strict_loki", rawYAML, audit.FrameworkContext{})
 	require.Error(t, err)
 	// text-only: register.go:154 wraps yaml.UnknownFieldError via WrapUnknownFieldError, not an audit sentinel.
@@ -94,35 +96,35 @@ func TestLokiFactory_DurationParsing(t *testing.T) {
 	}{
 		{
 			name:    "seconds suffix accepted",
-			yaml:    "url: https://loki.example.com/loki/api/v1/push\nflush_interval: 5s\n",
+			yaml:    "url: https://loki.example.com/loki/api/v1/push\nverify_on_startup: false\nflush_interval: 5s\n",
 			wantErr: false,
 		},
 		{
 			name:    "milliseconds suffix accepted",
-			yaml:    "url: https://loki.example.com/loki/api/v1/push\nflush_interval: 500ms\n",
+			yaml:    "url: https://loki.example.com/loki/api/v1/push\nverify_on_startup: false\nflush_interval: 500ms\n",
 			wantErr: false,
 		},
 		{
 			name:    "minutes suffix accepted",
-			yaml:    "url: https://loki.example.com/loki/api/v1/push\nflush_interval: 1m\n",
+			yaml:    "url: https://loki.example.com/loki/api/v1/push\nverify_on_startup: false\nflush_interval: 1m\n",
 			wantErr: false,
 		},
 		{
 			name: "zero duration string accepted",
 			// 0s is a valid Go duration; validateLokiConfig replaces zero
 			// flush_interval with the default, so this should not error.
-			yaml:    "url: https://loki.example.com/loki/api/v1/push\nflush_interval: 0s\n",
+			yaml:    "url: https://loki.example.com/loki/api/v1/push\nverify_on_startup: false\nflush_interval: 0s\n",
 			wantErr: false,
 		},
 		{
 			name:    "non-duration string rejected",
-			yaml:    "url: https://loki.example.com/loki/api/v1/push\nflush_interval: banana\n",
+			yaml:    "url: https://loki.example.com/loki/api/v1/push\nverify_on_startup: false\nflush_interval: banana\n",
 			wantErr: true,
 		},
 		{
 			name: "bare integer without suffix rejected",
 			// Go time.ParseDuration requires a unit suffix; "5" is not valid.
-			yaml:    "url: https://loki.example.com/loki/api/v1/push\nflush_interval: 5\n",
+			yaml:    "url: https://loki.example.com/loki/api/v1/push\nverify_on_startup: false\nflush_interval: 5\n",
 			wantErr: true,
 		},
 	}
@@ -161,6 +163,7 @@ func TestLokiFactory_BasicAuthAndBearerToken_Rejected(t *testing.T) {
 
 	rawYAML := []byte(`
 url: https://loki.example.com/loki/api/v1/push
+verify_on_startup: false
 basic_auth:
   username: alice
   password: secret
@@ -172,6 +175,56 @@ bearer_token: tok-should-not-coexist
 		"auth conflict must wrap audit.ErrConfigInvalid")
 	assert.Contains(t, err.Error(), "mutually exclusive",
 		"basic_auth + bearer_token must be rejected with 'mutually exclusive', got: %q", err.Error())
+}
+
+// ---------------------------------------------------------------------------
+// verify_on_startup YAML round-trip (#286)
+// ---------------------------------------------------------------------------
+
+// TestLokiFactory_VerifyOnStartupYAMLRoundTrip verifies that the
+// positive YAML field `verify_on_startup: false` maps to
+// Config.DisableStartupVerification = true.
+func TestLokiFactory_VerifyOnStartupYAMLRoundTrip(t *testing.T) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := l.Addr().String()
+	require.NoError(t, l.Close())
+
+	yaml := []byte(
+		"url: http://" + addr + "/loki/api/v1/push\n" +
+			"allow_insecure_http: true\n" +
+			"allow_private_ranges: true\n" +
+			"verify_on_startup: false\n",
+	)
+
+	factory := audit.LookupOutputFactory("loki")
+	require.NotNil(t, factory)
+
+	out, err := factory("lazy_loki", yaml, audit.FrameworkContext{})
+	require.NoError(t, err, "verify_on_startup: false should skip the probe; got: %v", err)
+	t.Cleanup(func() { _ = out.Close() })
+}
+
+// TestLokiFactory_VerifyOnStartupTimeoutYAMLRoundTrip verifies the
+// duration field parses and bounds the probe.
+func TestLokiFactory_VerifyOnStartupTimeoutYAMLRoundTrip(t *testing.T) {
+	yaml := []byte(
+		"url: http://240.0.0.1:80/loki/api/v1/push\n" +
+			"allow_insecure_http: true\n" +
+			"allow_private_ranges: true\n" +
+			"verify_on_startup_timeout: 200ms\n",
+	)
+
+	factory := audit.LookupOutputFactory("loki")
+	require.NotNil(t, factory)
+
+	start := time.Now()
+	_, err := factory("probe-bounded-loki", yaml, audit.FrameworkContext{})
+	elapsed := time.Since(start)
+
+	require.Error(t, err, "probe must reject the unreachable URL")
+	assert.Less(t, elapsed, 2*time.Second,
+		"200 ms verify_on_startup_timeout must bound the probe; took %s", elapsed)
 }
 
 // ---------------------------------------------------------------------------
@@ -188,7 +241,7 @@ func TestLokiFactory_GzipDefaultTrue(t *testing.T) {
 	factory := audit.LookupOutputFactory("loki")
 	require.NotNil(t, factory)
 
-	rawYAML := []byte("url: https://loki.example.com/loki/api/v1/push\n")
+	rawYAML := []byte("url: https://loki.example.com/loki/api/v1/push\nverify_on_startup: false\n")
 	out, err := factory("gzip_default", rawYAML, audit.FrameworkContext{})
 	require.NoError(t, err, "valid config with default gzip should succeed")
 	require.NotNil(t, out)
@@ -204,7 +257,7 @@ func TestLokiFactory_GzipExplicitFalse(t *testing.T) {
 	factory := audit.LookupOutputFactory("loki")
 	require.NotNil(t, factory)
 
-	rawYAML := []byte("url: https://loki.example.com/loki/api/v1/push\ngzip: false\n")
+	rawYAML := []byte("url: https://loki.example.com/loki/api/v1/push\nverify_on_startup: false\ngzip: false\n")
 	out, err := factory("gzip_explicit_false", rawYAML, audit.FrameworkContext{})
 	require.NoError(t, err, "gzip: false should be accepted")
 	require.NotNil(t, out)
@@ -226,6 +279,7 @@ func TestLokiFactory_DynamicLabels_UnknownName(t *testing.T) {
 
 	rawYAML := []byte(`
 url: https://loki.example.com/loki/api/v1/push
+verify_on_startup: false
 labels:
   dynamic:
     actor_id: true
@@ -265,7 +319,7 @@ func TestLokiFactory_StaticLabels_InvalidName(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			rawYAML := []byte("url: https://loki.example.com/loki/api/v1/push\nlabels:\n  static:\n    " + tt.labelName + ": somevalue\n")
+			rawYAML := []byte("url: https://loki.example.com/loki/api/v1/push\nverify_on_startup: false\nlabels:\n  static:\n    " + tt.labelName + ": somevalue\n")
 			_, err := factory("invalid_label_"+tt.name, rawYAML, audit.FrameworkContext{})
 			require.Error(t, err)
 			assert.ErrorIs(t, err, audit.ErrConfigInvalid,
@@ -290,6 +344,7 @@ func TestLokiFactory_ValidConfig_ReturnsOutput(t *testing.T) {
 
 	rawYAML := []byte(`
 url: https://loki.example.com/loki/api/v1/push
+verify_on_startup: false
 batch_size: 50
 flush_interval: 10s
 timeout: 5s
@@ -318,15 +373,15 @@ func TestLokiFactory_ValidConfig_WithAllAuthOptions(t *testing.T) {
 	}{
 		{
 			name: "no auth",
-			yaml: "url: https://loki.example.com/loki/api/v1/push\n",
+			yaml: "url: https://loki.example.com/loki/api/v1/push\nverify_on_startup: false\n",
 		},
 		{
 			name: "basic auth",
-			yaml: "url: https://loki.example.com/loki/api/v1/push\nbasic_auth:\n  username: alice\n  password: s3cr3t\n",
+			yaml: "url: https://loki.example.com/loki/api/v1/push\nverify_on_startup: false\nbasic_auth:\n  username: alice\n  password: s3cr3t\n",
 		},
 		{
 			name: "bearer token",
-			yaml: "url: https://loki.example.com/loki/api/v1/push\nbearer_token: tok-abc123\n",
+			yaml: "url: https://loki.example.com/loki/api/v1/push\nverify_on_startup: false\nbearer_token: tok-abc123\n",
 		},
 	}
 
@@ -361,7 +416,7 @@ func TestLokiFactory_NewFactory_NilMetrics(t *testing.T) {
 	factory := audit.LookupOutputFactory("loki")
 	require.NotNil(t, factory)
 
-	out, err := factory("nil_metrics_path", []byte("url: https://loki.example.com/loki/api/v1/push\n"), audit.FrameworkContext{})
+	out, err := factory("nil_metrics_path", []byte("url: https://loki.example.com/loki/api/v1/push\nverify_on_startup: false\n"), audit.FrameworkContext{})
 	require.NoError(t, err, "nil coreMetrics must not panic")
 	require.NotNil(t, out)
 	require.NoError(t, out.Close())
@@ -395,7 +450,7 @@ func TestLokiFactory_DynamicLabels_ExcludeFields(t *testing.T) {
 		t.Run("exclude_"+labelName, func(t *testing.T) {
 			t.Parallel()
 
-			rawYAML := []byte("url: https://loki.example.com/loki/api/v1/push\nlabels:\n  dynamic:\n    " + labelName + ": false\n")
+			rawYAML := []byte("url: https://loki.example.com/loki/api/v1/push\nverify_on_startup: false\nlabels:\n  dynamic:\n    " + labelName + ": false\n")
 			out, err := factory("dyn_"+labelName, rawYAML, audit.FrameworkContext{})
 			require.NoError(t, err,
 				"disabling dynamic label %q should produce output", labelName)
@@ -415,6 +470,7 @@ func TestLokiFactory_DynamicLabels_IncludeFields(t *testing.T) {
 
 	rawYAML := []byte(`
 url: https://loki.example.com/loki/api/v1/push
+verify_on_startup: false
 labels:
   dynamic:
     app_name: true
@@ -438,7 +494,7 @@ func TestLokiNewFactory_WithMetricsFactory(t *testing.T) {
 	}
 	factory := loki.NewFactory(mf)
 
-	rawYAML := []byte("url: https://loki.example.com/loki/api/v1/push\nbatch_size: 10\nflush_interval: 1s\ntimeout: 5s\n")
+	rawYAML := []byte("url: https://loki.example.com/loki/api/v1/push\nverify_on_startup: false\nbatch_size: 10\nflush_interval: 1s\ntimeout: 5s\n")
 	out, err := factory("with_metrics", rawYAML, audit.FrameworkContext{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
@@ -454,7 +510,7 @@ func TestLokiNewFactory_WithMetricsFactory(t *testing.T) {
 func TestLokiNewFactory_NilFactory(t *testing.T) {
 	factory := loki.NewFactory(nil)
 
-	rawYAML := []byte("url: https://loki.example.com/loki/api/v1/push\nbatch_size: 10\nflush_interval: 1s\ntimeout: 5s\n")
+	rawYAML := []byte("url: https://loki.example.com/loki/api/v1/push\nverify_on_startup: false\nbatch_size: 10\nflush_interval: 1s\ntimeout: 5s\n")
 	out, err := factory("nil_metrics", rawYAML, audit.FrameworkContext{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
@@ -471,7 +527,7 @@ func TestLokiNewFactory_FactoryReturnsNil(t *testing.T) {
 		return nil
 	})
 
-	rawYAML := []byte("url: https://loki.example.com/loki/api/v1/push\nbatch_size: 10\nflush_interval: 1s\ntimeout: 5s\n")
+	rawYAML := []byte("url: https://loki.example.com/loki/api/v1/push\nverify_on_startup: false\nbatch_size: 10\nflush_interval: 1s\ntimeout: 5s\n")
 	out, err := factory("nil_return", rawYAML, audit.FrameworkContext{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })

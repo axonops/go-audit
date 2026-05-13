@@ -276,6 +276,10 @@ func registerLokiReceiverLoggerRetrySteps(ctx *godog.ScenarioContext, tc *AuditT
 			BatchSize:          1,
 			MaxRetries:         1,
 			Gzip:               true,
+			// The runtime unreachable-drop behaviour is the property
+			// under test; the construction-time probe would block
+			// this scenario at New().
+			DisableStartupVerification: true,
 		}
 		return createLokiAuditorFromConfig(tc, cfg)
 	})
@@ -297,6 +301,10 @@ func registerLokiReceiverLoggerSSRFSteps(ctx *godog.ScenarioContext, tc *AuditTe
 			Timeout:            5 * time.Second,
 			BufferSize:         100,
 			Gzip:               true,
+			// Runtime SSRF-block-at-write is the property under test;
+			// the probe enforces the same SSRF policy and would reject
+			// at construction.
+			DisableStartupVerification: true,
 		}
 		return createLokiAuditorFromConfig(tc, cfg)
 	})

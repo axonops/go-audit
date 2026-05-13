@@ -214,6 +214,8 @@ NDJSON is:
 | `tls_policy.allow_weak_ciphers` | bool | `false` | — | Allow weaker cipher suites with TLS 1.2 |
 | `allow_insecure_http` | bool | `false` | — | Permit `http://` URLs. MUST NOT be true in production |
 | `allow_private_ranges` | bool | `false` | — | Disable SSRF protection for private/loopback ranges |
+| `verify_on_startup` | bool | `true` | `true` or `false` | When `true` (default), `New()` performs a TCP dial — and, for `https://` URLs, a TLS handshake — against the webhook endpoint before returning, so a misconfigured or unreachable destination fails fast at startup rather than silently dropping events at the first flush. Set to `false` for sidecar/lazy-start deployments where the receiver may not yet be running when the application starts; the runtime retry path handles delivery once the receiver becomes available. The probe applies the SAME SSRF policy as the runtime transport: `allow_private_ranges: false` rejects loopback / RFC 1918 at probe time too. |
+| `verify_on_startup_timeout` | duration | `5s` | any positive duration | Bounds the construction-time probe. Independent of `timeout` (which governs runtime requests). Operators on slow WAN paths can raise this; CI/local development is fine with the default. Ignored when `verify_on_startup: false`. |
 
 ### Validation Rules
 

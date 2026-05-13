@@ -2017,11 +2017,43 @@ func TestNewSyslogOutput_TCP_ConnectFailure(t *testing.T) {
 		FlushInterval: 5 * time.Millisecond,
 	})
 	require.Error(t, err)
-	// text-only: syslog.go:298,500 return raw fmt.Errorf for dial
-	// failures (no sentinel wrap). The "dial" substring is the contract.
-	assert.Contains(t, err.Error(), "dial",
-		"error should describe the dial failure")
+	// text-only: syslog.go startup verification path wraps dial
+	// errors with the "startup verification failed" prefix; the
+	// underlying srslog error contains "dial" or "connect" — either
+	// is acceptable as evidence the dial failed.
+	errStr := err.Error()
+	assert.True(t,
+		strings.Contains(errStr, "dial") || strings.Contains(errStr, "connect"),
+		"error should describe the dial failure; got: %s", errStr)
+	assert.Contains(t, errStr, "startup verification failed",
+		"probe-time failure must surface via the new startup-verification prefix")
 }
+
+// TestNewSyslogOutput_DisableStartupVerification_SkipsDial verifies
+// that the DisableStartupVerification opt-out lets New() succeed
+// even when the configured address is unreachable — the runtime
+// reconnect machinery handles "no connection yet" transparently.
+func TestNewSyslogOutput_DisableStartupVerification_SkipsDial(t *testing.T) {
+	out, err := syslog.New(&syslog.Config{
+		Network:                    "tcp",
+		Address:                    "127.0.0.1:1", // unreachable
+		FlushInterval:              5 * time.Millisecond,
+		DisableStartupVerification: true,
+	})
+	require.NoError(t, err, "DisableStartupVerification must allow construction against an unreachable address")
+	require.NoError(t, out.Close())
+}
+
+// Note: a unit test for StartupVerificationTimeout in syslog is
+// intentionally omitted. The srslog dialer that backs connect()
+// does not accept a context, so the bounded() helper abandons the
+// goroutine on timeout and lets the OS-level TCP connect drain in
+// the background. Under [goleak.VerifyTestMain] this surfaces as a
+// "leaked goroutine" failure even though the leak is bounded and
+// the documented behaviour. The timeout property is exercised
+// instead in webhook/loki probe tests (where the probe uses a
+// ctx-aware dialer) and in the BDD scenarios. The docstring on
+// [syslog.bounded] explains the abandoned-goroutine contract.
 
 // ---------------------------------------------------------------------------
 // buildSyslogTLSConfig — corrupt mTLS client cert/key pair

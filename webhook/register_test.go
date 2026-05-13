@@ -15,7 +15,9 @@
 package webhook_test
 
 import (
+	"net"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -40,6 +42,56 @@ func TestWebhookFactory_ValidConfig(t *testing.T) {
 	t.Cleanup(func() { _ = out.Close() })
 
 	assert.Equal(t, "splunk_hec", out.Name(), "name should be the YAML-configured name")
+}
+
+// TestWebhookFactory_VerifyOnStartupYAMLRoundTrip verifies that the
+// positive YAML field `verify_on_startup: false` maps to
+// Config.DisableStartupVerification = true — proven indirectly by
+// observing that the factory succeeds against an otherwise
+// unreachable URL.
+func TestWebhookFactory_VerifyOnStartupYAMLRoundTrip(t *testing.T) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := l.Addr().String()
+	require.NoError(t, l.Close())
+
+	yaml := []byte(
+		"url: http://" + addr + "/events\n" +
+			"allow_insecure_http: true\n" +
+			"allow_private_ranges: true\n" +
+			"verify_on_startup: false\n",
+	)
+
+	factory := audit.LookupOutputFactory("webhook")
+	require.NotNil(t, factory)
+
+	out, err := factory("lazy", yaml, audit.FrameworkContext{})
+	require.NoError(t, err, "verify_on_startup: false should skip the probe; got: %v", err)
+	t.Cleanup(func() { _ = out.Close() })
+}
+
+// TestWebhookFactory_VerifyOnStartupTimeoutYAMLRoundTrip verifies
+// that `verify_on_startup_timeout` parses as a duration and bounds
+// the probe.
+func TestWebhookFactory_VerifyOnStartupTimeoutYAMLRoundTrip(t *testing.T) {
+	// 240.0.0.0/4 reserved — the kernel sends but receives nothing.
+	yaml := []byte(
+		"url: http://240.0.0.1:80/events\n" +
+			"allow_insecure_http: true\n" +
+			"allow_private_ranges: true\n" +
+			"verify_on_startup_timeout: 200ms\n",
+	)
+
+	factory := audit.LookupOutputFactory("webhook")
+	require.NotNil(t, factory)
+
+	start := time.Now()
+	_, err := factory("probe-bounded", yaml, audit.FrameworkContext{})
+	elapsed := time.Since(start)
+
+	require.Error(t, err, "probe must reject the unreachable URL")
+	assert.Less(t, elapsed, 2*time.Second,
+		"200 ms verify_on_startup_timeout must bound the probe; took %s", elapsed)
 }
 
 // TestWebhookFactory_MaxBatchBytesKey verifies the new

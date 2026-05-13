@@ -426,3 +426,19 @@ Feature: Loki Output
     Given a loki receiver that returns 404 tenant-not-found
     When I send 1 loki event with tenant "nonexistent-tenant" to the configured failure-mode receiver within 3 seconds
     Then the failure-mode receiver should have received between 1 and 5 requests
+
+  # --- Startup connectivity check (#286) ---
+  #
+  # The loki output defaults to verify_on_startup: true. New()
+  # performs a TCP dial — and, for https URLs, a TLS handshake —
+  # before returning, so a misconfigured or down Loki endpoint fails
+  # the application at startup rather than silently dropping every
+  # event at the first push.
+
+  Scenario: Loki construction fails fast when the endpoint is unreachable (default)
+    When I try to create a loki output to an unreachable URL
+    Then the loki construction should fail with an error containing "startup verification failed"
+
+  Scenario: Loki construction with verify_on_startup false succeeds even when unreachable
+    When I try to create a loki output to an unreachable URL with verify_on_startup false
+    Then the loki construction should succeed

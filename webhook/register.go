@@ -75,6 +75,14 @@ type yamlWebhookConfig struct { //nolint:govet // fieldalignment: readability pr
 	MaxRetries         *int              `yaml:"max_retries"`
 	AllowInsecureHTTP  bool              `yaml:"allow_insecure_http"`
 	AllowPrivateRanges bool              `yaml:"allow_private_ranges"`
+	// VerifyOnStartup is the positive YAML surface for the inverted
+	// Config.DisableStartupVerification field. A nil pointer (key
+	// omitted) maps to verification ON; an explicit `true` keeps it
+	// ON; an explicit `false` opts out. See [Config.DisableStartupVerification].
+	VerifyOnStartup *bool `yaml:"verify_on_startup"`
+	// VerifyOnStartupTimeout overrides
+	// [DefaultStartupVerificationTimeout] (5s) when set.
+	VerifyOnStartupTimeout yamlDuration `yaml:"verify_on_startup_timeout"`
 }
 
 // yamlTLSPolicy maps TLS policy fields from YAML.
@@ -134,20 +142,26 @@ func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, om au
 	}
 
 	cfg := &Config{
-		URL:                yc.URL,
-		Headers:            yc.Headers,
-		TLSCA:              yc.TLSCA,
-		TLSCert:            yc.TLSCert,
-		TLSKey:             yc.TLSKey,
-		FlushInterval:      time.Duration(yc.FlushInterval),
-		Timeout:            time.Duration(yc.Timeout),
-		BatchSize:          intPtrOrDefault(yc.BatchSize, DefaultBatchSize),
-		MaxBatchBytes:      intPtrOrDefault(yc.MaxBatchBytes, DefaultMaxBatchBytes),
-		MaxEventBytes:      intPtrOrDefault(yc.MaxEventBytes, DefaultMaxEventBytes),
-		BufferSize:         intPtrOrDefault(yc.BufferSize, DefaultBufferSize),
-		MaxRetries:         intPtrOrDefault(yc.MaxRetries, DefaultMaxRetries),
-		AllowInsecureHTTP:  yc.AllowInsecureHTTP,
-		AllowPrivateRanges: yc.AllowPrivateRanges,
+		URL:                        yc.URL,
+		Headers:                    yc.Headers,
+		TLSCA:                      yc.TLSCA,
+		TLSCert:                    yc.TLSCert,
+		TLSKey:                     yc.TLSKey,
+		FlushInterval:              time.Duration(yc.FlushInterval),
+		Timeout:                    time.Duration(yc.Timeout),
+		BatchSize:                  intPtrOrDefault(yc.BatchSize, DefaultBatchSize),
+		MaxBatchBytes:              intPtrOrDefault(yc.MaxBatchBytes, DefaultMaxBatchBytes),
+		MaxEventBytes:              intPtrOrDefault(yc.MaxEventBytes, DefaultMaxEventBytes),
+		BufferSize:                 intPtrOrDefault(yc.BufferSize, DefaultBufferSize),
+		MaxRetries:                 intPtrOrDefault(yc.MaxRetries, DefaultMaxRetries),
+		AllowInsecureHTTP:          yc.AllowInsecureHTTP,
+		AllowPrivateRanges:         yc.AllowPrivateRanges,
+		StartupVerificationTimeout: time.Duration(yc.VerifyOnStartupTimeout),
+	}
+	// YAML verify_on_startup → inverted internal DisableStartupVerification.
+	// Default (key omitted) leaves DisableStartupVerification = false → verify ON.
+	if yc.VerifyOnStartup != nil && !*yc.VerifyOnStartup {
+		cfg.DisableStartupVerification = true
 	}
 	if yc.TLSPolicy != nil {
 		cfg.TLSPolicy = &audit.TLSPolicy{

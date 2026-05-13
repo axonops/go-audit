@@ -512,6 +512,25 @@ audit: event type not found
 
 ---
 
+### Startup connectivity probe failures (#286)
+
+```
+audit/webhook: startup verification failed for https://audit.example.com: dial tcp 203.0.113.10:443: connect: connection refused (set verify_on_startup: false to skip)
+audit/loki: startup verification failed for https://loki.example.com: tls handshake: tls: failed to verify certificate (set verify_on_startup: false to skip)
+audit/syslog: startup verification failed for tcp+tls://siem.example.com:6514: dial tcp 198.51.100.20:6514: i/o timeout (set verify_on_startup: false to skip)
+```
+
+| | |
+|---|---|
+| **When** | `New()` is called on a webhook, loki, or syslog output and the construction-time probe (TCP dial + optional TLS handshake) fails. Default behaviour: the probe is ON. |
+| **Meaning** | The destination is unreachable, the TLS handshake failed, or the SSRF dial control rejected the address. The application cannot start with a broken audit destination — silent event loss is worse than a startup failure. |
+| **Transient?** | The cause is. The probe itself is one-shot at startup. Once `New()` returns success, the probe is not re-run. |
+| **What to do** | Three options, in order of preference. (1) Fix the configuration — wrong host, wrong port, expired certificate, missing CA bundle. (2) If the destination is correctly configured but legitimately comes up after the application (sidecar containers, K8s startup ordering), set `verify_on_startup: false` on that output's YAML or set `Config.DisableStartupVerification: true` in Go code. The runtime reconnect/retry path handles delivery once the destination becomes available. (3) If the failure is SSRF-related (probe rejected a private address by default), set `allow_private_ranges: true` only if the destination is operator-owned inside the same network policy zone — never for user-influenced URLs. The probe applies the SAME SSRF policy as the runtime transport, so a permissive probe with a strict runtime is impossible by design. |
+
+The probe budget is controlled by `verify_on_startup_timeout` (default `5s`). Operators on slow WAN paths can raise this; CI/local development is fine with the default.
+
+---
+
 ## 📚 Further Reading
 
 - [Async Delivery](async-delivery.md) — buffer sizing, delivery guarantee, graceful shutdown

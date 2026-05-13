@@ -401,3 +401,4 @@ Feature: YAML Output Configuration
     Then the audit call should have succeeded
     And the loaded auditor metadata should have app_name "injected-app"
     And the captured output should contain "injected-app"
+
