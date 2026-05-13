@@ -468,3 +468,19 @@ Feature: Webhook Output
     Given a webhook receiver that starts a chunked response then stalls
     When I send 1 webhook event to the configured failure-mode receiver within 5 seconds
     Then the failure-mode receiver should have received between 1 and 5 requests
+
+  # --- Startup connectivity check (#286) ---
+  #
+  # The webhook output defaults to verify_on_startup: true. New()
+  # performs a TCP dial — and, for https URLs, a TLS handshake —
+  # before returning, so a misconfigured or down receiver fails the
+  # application at startup rather than silently dropping every event
+  # at the first flush.
+
+  Scenario: Webhook construction fails fast when the endpoint is unreachable (default)
+    When I try to create a webhook output to an unreachable URL
+    Then the webhook construction should fail with an error containing "startup verification failed"
+
+  Scenario: Webhook construction with verify_on_startup false succeeds even when unreachable
+    When I try to create a webhook output to an unreachable URL with verify_on_startup false
+    Then the webhook construction should succeed

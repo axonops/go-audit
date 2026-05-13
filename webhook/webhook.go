@@ -170,10 +170,7 @@ func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) {
 		return nil, fmt.Errorf("audit/webhook: tls: %w", err)
 	}
 
-	var ssrfOpts []audit.SSRFOption
-	if cfg.AllowPrivateRanges {
-		ssrfOpts = append(ssrfOpts, audit.AllowPrivateRanges())
-	}
+	ssrfOpts := ssrfOptsFromConfig(cfg)
 
 	transport := &http.Transport{
 		DialContext: (&net.Dialer{
@@ -193,6 +190,16 @@ func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) {
 		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 			return errRedirectBlocked
 		},
+	}
+
+	// Construction-time connectivity probe (#286). Runs BEFORE the
+	// batch goroutine is started so a failed probe never leaks a
+	// goroutine. SSRF and TLS verification share their config with
+	// the runtime transport — any divergence would be a regression.
+	if !cfg.DisableStartupVerification {
+		if err := probeEndpoint(cfg.URL, tlsCfg, cfg); err != nil {
+			return nil, err
+		}
 	}
 
 	// Copy headers to prevent caller mutation.

@@ -896,13 +896,14 @@ func TestLoki_ConstructionWarningsRoutedToInjectedLogger(t *testing.T) {
 	injected := slog.New(handler)
 
 	out, err := loki.New(&loki.Config{
-		URL:                "https://loki.example.com/loki/api/v1/push",
-		TLSPolicy:          &audit.TLSPolicy{AllowTLS12: true, AllowWeakCiphers: true},
-		AllowPrivateRanges: true,
-		BatchSize:          1,
-		FlushInterval:      100 * time.Millisecond,
-		Timeout:            1 * time.Second,
-		BufferSize:         1000,
+		URL:                        "https://loki.example.com/loki/api/v1/push",
+		TLSPolicy:                  &audit.TLSPolicy{AllowTLS12: true, AllowWeakCiphers: true},
+		AllowPrivateRanges:         true,
+		BatchSize:                  1,
+		FlushInterval:              100 * time.Millisecond,
+		Timeout:                    1 * time.Second,
+		BufferSize:                 1000,
+		DisableStartupVerification: true,
 	}, nil, loki.WithDiagnosticLogger(injected))
 	require.NoError(t, err)
 	require.NoError(t, out.Close())
@@ -924,13 +925,14 @@ func TestLoki_NilDiagnosticLoggerFallsBackToDefault(t *testing.T) {
 	t.Cleanup(func() { slog.SetDefault(prev) })
 
 	out, err := loki.New(&loki.Config{
-		URL:                "https://loki.example.com/loki/api/v1/push",
-		TLSPolicy:          &audit.TLSPolicy{AllowTLS12: true, AllowWeakCiphers: true},
-		AllowPrivateRanges: true,
-		BatchSize:          1,
-		FlushInterval:      100 * time.Millisecond,
-		Timeout:            1 * time.Second,
-		BufferSize:         1000,
+		URL:                        "https://loki.example.com/loki/api/v1/push",
+		TLSPolicy:                  &audit.TLSPolicy{AllowTLS12: true, AllowWeakCiphers: true},
+		AllowPrivateRanges:         true,
+		BatchSize:                  1,
+		FlushInterval:              100 * time.Millisecond,
+		Timeout:                    1 * time.Second,
+		BufferSize:                 1000,
+		DisableStartupVerification: true,
 	}, nil, loki.WithDiagnosticLogger(nil))
 	require.NoError(t, err)
 	require.NoError(t, out.Close())

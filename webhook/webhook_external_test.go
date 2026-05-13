@@ -928,6 +928,9 @@ func TestWebhookOutput_SSRFBlocked(t *testing.T) {
 		Timeout:            1 * time.Second,
 		MaxRetries:         1,
 		BufferSize:         10,
+		// Disable startup probe so the test exercises write-path SSRF
+		// behaviour, not probe-path SSRF (which has its own coverage).
+		DisableStartupVerification: true,
 	}, metrics)
 	require.NoError(t, err)
 
@@ -1228,6 +1231,9 @@ func TestWebhookOutput_TLS_WrongCA_Rejected(t *testing.T) {
 		Timeout:            2 * time.Second,
 		MaxRetries:         1,
 		BufferSize:         100,
+		// Disable startup probe so the test exercises write-path TLS
+		// rejection (probe-path TLS rejection has its own coverage).
+		DisableStartupVerification: true,
 	}, metrics, webhook.WithOutputMetrics(om))
 	require.NoError(t, err)
 

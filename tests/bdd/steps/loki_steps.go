@@ -141,6 +141,39 @@ func registerLokiGivenValidationSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 		return tryCreateLokiOutput(tc, &loki.Config{URL: rawURL})
 	})
 
+	ctx.Step(`^I try to create a loki output to an unreachable URL$`, func() error {
+		addr, err := reserveUnboundPort()
+		if err != nil {
+			return err
+		}
+		return tryCreateLokiOutput(tc, &loki.Config{
+			URL:                "http://" + addr + "/loki/api/v1/push",
+			AllowInsecureHTTP:  true,
+			AllowPrivateRanges: true,
+			BatchSize:          1,
+			FlushInterval:      200 * time.Millisecond,
+			BufferSize:         1000,
+			Gzip:               true,
+		})
+	})
+
+	ctx.Step(`^I try to create a loki output to an unreachable URL with verify_on_startup false$`, func() error {
+		addr, err := reserveUnboundPort()
+		if err != nil {
+			return err
+		}
+		return tryCreateLokiOutput(tc, &loki.Config{
+			URL:                        "http://" + addr + "/loki/api/v1/push",
+			AllowInsecureHTTP:          true,
+			AllowPrivateRanges:         true,
+			BatchSize:                  1,
+			FlushInterval:              200 * time.Millisecond,
+			BufferSize:                 1000,
+			Gzip:                       true,
+			DisableStartupVerification: true,
+		})
+	})
+
 	ctx.Step(`^I try to create a loki output with basic auth and bearer token$`, func() error {
 		return tryCreateLokiOutput(tc, &loki.Config{
 			URL:         "https://loki.example.com/push",
@@ -441,6 +474,13 @@ func registerLokiThenErrorSteps(ctx *godog.ScenarioContext, tc *AuditTestContext
 		}
 		if !strings.Contains(tc.LastErr.Error(), substr) {
 			return fmt.Errorf("expected error containing %q, got: %s", substr, tc.LastErr.Error())
+		}
+		return nil
+	})
+
+	ctx.Step(`^the loki construction should succeed$`, func() error {
+		if tc.LastErr != nil {
+			return fmt.Errorf("expected loki construction to succeed, got: %w", tc.LastErr)
 		}
 		return nil
 	})

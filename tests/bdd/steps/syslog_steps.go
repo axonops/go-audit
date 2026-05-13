@@ -390,6 +390,19 @@ func registerSyslogWhenValidationSteps(ctx *godog.ScenarioContext, tc *AuditTest
 		return nil
 	})
 
+	ctx.Step(`^I try to create a syslog output on "([^"]*)" to "([^"]*)" with verify_on_startup false$`, func(network, address string) error {
+		out, err := syslog.New(&syslog.Config{
+			Network:                    network,
+			Address:                    address,
+			DisableStartupVerification: true,
+		})
+		if out != nil {
+			tc.AddCleanup(func() { _ = out.Close() })
+		}
+		tc.LastErr = err
+		return nil
+	})
+
 	ctx.Step(`^I try to create a syslog output with facility "([^"]*)"$`, func(facility string) error {
 		out, err := syslog.New(&syslog.Config{
 			Network:  "tcp",
@@ -443,6 +456,7 @@ func registerSyslogThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		return assertSyslogConstructionExactError(tc, strings.TrimSpace(doc.Content))
 	})
 	ctx.Step(`^the syslog construction should fail with an error containing "([^"]*)"$`, func(s string) error { return assertSyslogConstructionError(tc, s) })
+	ctx.Step(`^the syslog construction should succeed$`, func() error { return assertSyslogConstructionSucceeded(tc) })
 	// Batching framing assertion (#599 AC #4d). Each audited event
 	// in a batch must arrive as a distinct RFC 5424 message, not
 	// concatenated bytes. syslog-ng writes one log line per
@@ -536,6 +550,13 @@ func assertSyslogConstructionError(tc *AuditTestContext, substr string) error {
 	}
 	if !strings.Contains(tc.LastErr.Error(), substr) {
 		return fmt.Errorf("expected error containing %q, got: %w", substr, tc.LastErr)
+	}
+	return nil
+}
+
+func assertSyslogConstructionSucceeded(tc *AuditTestContext) error {
+	if tc.LastErr != nil {
+		return fmt.Errorf("expected syslog construction to succeed, got: %w", tc.LastErr)
 	}
 	return nil
 }

@@ -300,6 +300,16 @@ func registerThenSteps(ctx *godog.ScenarioContext, tc *TestContext) {
 		return nil
 	})
 
+	ctx.Step(`^the audit call should have failed with an error containing "([^"]*)"$`, func(substr string) error {
+		if tc.LastErr == nil {
+			return fmt.Errorf("expected an error containing %q, got nil", substr)
+		}
+		if !strings.Contains(tc.LastErr.Error(), substr) {
+			return fmt.Errorf("expected error containing %q, got: %w", substr, tc.LastErr)
+		}
+		return nil
+	})
+
 	// Strengthened-assertion steps for #551 — concrete observable
 	// effects that follow up "should succeed".
 	ctx.Step(`^the captured output should contain "([^"]*)"$`, func(needle string) error {

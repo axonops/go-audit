@@ -296,13 +296,69 @@ func New(cfg *Config, opts ...Option) (*Output, error) {
 		s.reconnectRecorder = rr
 	}
 
-	if err := s.connect(); err != nil {
-		return nil, fmt.Errorf("audit/syslog: dial %s://%s: %w",
-			cfg.Network, cfg.Address, err)
+	if err := s.verifyStartupConnectivity(cfg); err != nil {
+		return nil, err
 	}
 
 	go s.writeLoop()
 	return s, nil
+}
+
+// verifyStartupConnectivity runs the construction-time dial probe
+// when not explicitly disabled. Splitting it out of [New] keeps the
+// constructor's cyclomatic complexity below the project lint cap.
+func (s *Output) verifyStartupConnectivity(cfg *Config) error {
+	if cfg.DisableStartupVerification {
+		return nil
+	}
+	if err := bounded(s.connect, startupVerificationTimeout(cfg)); err != nil {
+		return fmt.Errorf("audit/syslog: startup verification failed for %s://%s: %w (set verify_on_startup: false to skip)",
+			cfg.Network, cfg.Address, err)
+	}
+	return nil
+}
+
+// DefaultStartupVerificationTimeout is the time budget for the
+// construction-time connectivity probe when
+// [Config.StartupVerificationTimeout] is zero. Five seconds is
+// generous for any healthy network while keeping `New()` bounded for
+// CI/local development.
+const DefaultStartupVerificationTimeout = 5 * time.Second
+
+// startupVerificationTimeout returns the effective probe budget,
+// falling back to [DefaultStartupVerificationTimeout] when the
+// config field is zero or negative. No upper cap — operators on slow
+// WAN paths may legitimately need more.
+func startupVerificationTimeout(cfg *Config) time.Duration {
+	if cfg.StartupVerificationTimeout > 0 {
+		return cfg.StartupVerificationTimeout
+	}
+	return DefaultStartupVerificationTimeout
+}
+
+// bounded runs fn in a goroutine and waits up to timeout for it to
+// return. On timeout, the goroutine is abandoned (the underlying
+// srslog APIs have no ctx-cancellation hook); any connection it
+// eventually obtains is unreferenced and will be closed when the
+// writer is GC'd. This is acceptable for the startup-probe path,
+// which fails the Output construction call and is not retried.
+//
+// A unit test that drives bounded() to timeout is intentionally
+// omitted: goleak.VerifyTestMain (#171) trips on the abandoned
+// dial goroutine. The behaviour is covered by the field-parsing
+// BDD scenarios and the equivalent ctx-aware tests in
+// webhook/loki, whose probe uses [net.Dialer.DialContext].
+func bounded(fn func() error, timeout time.Duration) error {
+	done := make(chan error, 1)
+	go func() { done <- fn() }()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case err := <-done:
+		return err
+	case <-timer.C:
+		return fmt.Errorf("startup verification timeout after %s", timeout)
+	}
 }
 
 // Write enqueues a serialised audit event for async delivery to the

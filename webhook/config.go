@@ -191,6 +191,32 @@ type Config struct { //nolint:govet // fieldalignment: pointer field TLSPolicy e
 	// private networks. Cloud metadata (169.254.169.254) remains
 	// blocked regardless.
 	AllowPrivateRanges bool
+
+	// DisableStartupVerification skips the construction-time
+	// connectivity probe. When false (zero value), [New] performs a
+	// TCP dial and — for https URLs — a TLS handshake before
+	// returning, so misconfigured or unreachable destinations fail
+	// fast at application start-up rather than surfacing as silent
+	// event loss on the first flush.
+	//
+	// Set to true for sidecar deployments where the destination may
+	// not yet be ready when the application calls [New], or for
+	// short-lived CLI tools that must start regardless of receiver
+	// availability.
+	//
+	// YAML: verify_on_startup (positive form; default true, set
+	// false to disable).
+	DisableStartupVerification bool
+
+	// StartupVerificationTimeout bounds the construction-time
+	// connectivity probe. Zero defaults to
+	// [DefaultStartupVerificationTimeout] (5s). The probe budget
+	// covers the TCP dial and — for https URLs — the TLS handshake
+	// under a single [context.Context]. Operators on slow WAN paths
+	// can raise this; CI/local development is fine with the default.
+	//
+	// Ignored when DisableStartupVerification is true.
+	StartupVerificationTimeout time.Duration
 }
 
 // String returns a human-readable representation of the config with

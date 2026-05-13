@@ -260,6 +260,36 @@ type Config struct {
 	// carrying 10 MiB events could pin ~100 GiB before backpressure
 	// triggers.
 	MaxEventBytes int
+
+	// DisableStartupVerification skips the construction-time
+	// connectivity probe. When false (zero value), [New] performs a
+	// TCP dial — and, on tcp+tls, a TLS handshake — before returning,
+	// so misconfigured or unreachable destinations fail fast at
+	// application start-up rather than surfacing as silent event
+	// loss once the asynchronous write path triggers.
+	//
+	// Set to true for sidecar deployments where the destination may
+	// not yet be ready when the application calls [New], or for
+	// short-lived CLI tools that must start regardless of receiver
+	// availability. When true, the runtime reconnect loop in
+	// writeLoop handles "no connection yet" transparently — the
+	// first events that arrive trigger a dial; failures retry with
+	// exponential backoff up to [Config.MaxRetries].
+	//
+	// YAML: verify_on_startup (positive form; default true, set
+	// false to disable).
+	DisableStartupVerification bool
+
+	// StartupVerificationTimeout bounds the construction-time
+	// connectivity probe. Zero defaults to
+	// [DefaultStartupVerificationTimeout] (5s). The budget covers
+	// the TCP dial — and, on tcp+tls, the TLS handshake — under a
+	// single [context.Context]. Independent of
+	// [Config.TLSHandshakeTimeout], which bounds reconnect attempts
+	// during runtime.
+	//
+	// Ignored when DisableStartupVerification is true.
+	StartupVerificationTimeout time.Duration
 }
 
 // String returns a human-readable representation of the config with

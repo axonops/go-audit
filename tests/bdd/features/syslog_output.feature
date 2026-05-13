@@ -395,3 +395,21 @@ Feature: Syslog Output
     Given a DNS-unresolvable address is configured
     When I try to send a syslog event over TCP to the unresolvable address within 5 seconds
     Then the result should be a DNS-resolution failure
+
+  # --- Startup connectivity check (#286) ---
+  #
+  # Syslog has always dialled at construction time; #286 exposes a
+  # YAML-controllable opt-out (verify_on_startup) for consistency
+  # with the new webhook/loki behaviour. The default (true) preserves
+  # the historical fail-fast posture; setting it false defers the
+  # dial to the runtime writeLoop, which uses the existing reconnect
+  # machinery to retry against a destination that comes up later.
+
+  Scenario: Syslog construction fails fast when the endpoint is unreachable (default)
+    # Port 1 is privileged and typically refuses immediately on Linux.
+    When I try to create a syslog output on "tcp" to "127.0.0.1:1"
+    Then the syslog construction should fail with an error containing "startup verification failed"
+
+  Scenario: Syslog construction with verify_on_startup false succeeds even when unreachable
+    When I try to create a syslog output on "tcp" to "127.0.0.1:1" with verify_on_startup false
+    Then the syslog construction should succeed

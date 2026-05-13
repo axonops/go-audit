@@ -20,6 +20,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -34,6 +35,23 @@ import (
 	"github.com/axonops/audit"
 	"github.com/axonops/audit/webhook"
 )
+
+// reserveUnboundPort binds a TCP port then immediately releases it,
+// returning the host:port string of the now-unbound address. A TCP
+// dial to this address returns ECONNREFUSED synchronously, giving
+// the startup probe a deterministic unreachable target without
+// relying on flaky "pick an unused port" guesses.
+func reserveUnboundPort() (string, error) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return "", fmt.Errorf("reserve port: %w", err)
+	}
+	addr := l.Addr().String()
+	if err := l.Close(); err != nil {
+		return "", fmt.Errorf("release port: %w", err)
+	}
+	return addr, nil
+}
 
 func registerWebhookSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	registerWebhookGivenSteps(ctx, tc)
@@ -602,6 +620,49 @@ func registerWebhookWhenConstructionSteps(ctx *godog.ScenarioContext, tc *AuditT
 			AllowInsecureHTTP:  true,
 			AllowPrivateRanges: true,
 			BatchSize:          1,
+			// Skip the startup probe so this step only exercises
+			// config validation. Probe-time behaviour has its own
+			// scenarios (#286).
+			DisableStartupVerification: true,
+		}, nil)
+		if out != nil {
+			tc.AddCleanup(func() { _ = out.Close() })
+		}
+		tc.LastErr = err
+		return nil
+	})
+
+	ctx.Step(`^I try to create a webhook output to an unreachable URL$`, func() error {
+		// Bind and immediately release a port so it's known-unbound;
+		// the probe must reject the configuration at construction.
+		addr, err := reserveUnboundPort()
+		if err != nil {
+			return err
+		}
+		out, err := webhook.New(&webhook.Config{
+			URL:                "http://" + addr,
+			AllowInsecureHTTP:  true,
+			AllowPrivateRanges: true,
+			BatchSize:          1,
+		}, nil)
+		if out != nil {
+			tc.AddCleanup(func() { _ = out.Close() })
+		}
+		tc.LastErr = err
+		return nil
+	})
+
+	ctx.Step(`^I try to create a webhook output to an unreachable URL with verify_on_startup false$`, func() error {
+		addr, err := reserveUnboundPort()
+		if err != nil {
+			return err
+		}
+		out, err := webhook.New(&webhook.Config{
+			URL:                        "http://" + addr,
+			AllowInsecureHTTP:          true,
+			AllowPrivateRanges:         true,
+			BatchSize:                  1,
+			DisableStartupVerification: true,
 		}, nil)
 		if out != nil {
 			tc.AddCleanup(func() { _ = out.Close() })
@@ -680,6 +741,10 @@ func registerWebhookWhenConstructionSteps(ctx *godog.ScenarioContext, tc *AuditT
 			FlushInterval:      100 * time.Millisecond,
 			Timeout:            2 * time.Second,
 			MaxRetries:         1,
+			// Wrong-CA failure at runtime (write path) is the
+			// property under test; the probe would short-circuit
+			// at construction.
+			DisableStartupVerification: true,
 		}
 		var oOpts []webhook.Option
 
@@ -822,6 +887,13 @@ func registerWebhookThenMetricsAndErrorSteps(ctx *godog.ScenarioContext, tc *Aud
 		}
 		if !strings.Contains(tc.LastErr.Error(), substr) {
 			return fmt.Errorf("expected error containing %q, got: %w", substr, tc.LastErr)
+		}
+		return nil
+	})
+
+	ctx.Step(`^the webhook construction should succeed$`, func() error {
+		if tc.LastErr != nil {
+			return fmt.Errorf("expected webhook construction to succeed, got: %w", tc.LastErr)
 		}
 		return nil
 	})
@@ -1194,6 +1266,10 @@ func createWebhookAuditorSSRF(tc *AuditTestContext, url string, allowPrivate boo
 		FlushInterval:      100 * time.Millisecond,
 		Timeout:            2 * time.Second,
 		MaxRetries:         1,
+		// SSRF behaviour at runtime is the property under test;
+		// the probe (which also enforces SSRF) would short-circuit
+		// the write-path before any event flush.
+		DisableStartupVerification: true,
 	}
 	var oOpts []webhook.Option
 

@@ -477,6 +477,8 @@ than holding `Close()` hostage through a full retry cycle.
 | `tls_policy` | object | *(nil — TLS 1.3 only)* | TLS version and cipher policy |
 | `tls_policy.allow_tls12` | bool | `false` | Allow TLS 1.2 (default: TLS 1.3 only) |
 | `tls_policy.allow_weak_ciphers` | bool | `false` | Allow weaker cipher suites with TLS 1.2 |
+| `verify_on_startup` | bool | `true` | When `true` (default), `New()` dials the syslog server — and, on `tcp+tls`, completes the TLS handshake — before returning, so a misconfigured or down destination fails fast at startup rather than surfacing as silent event loss once the asynchronous write path triggers. Set to `false` for sidecar/lazy-start deployments where the destination may not yet be ready when the application starts; the runtime reconnect machinery handles "no connection yet" via the existing exponential-backoff retry path. |
+| `verify_on_startup_timeout` | duration | `5s` | Bounds the construction-time dial. Independent of `tls_handshake_timeout` (which bounds reconnect handshakes during runtime). Ignored when `verify_on_startup: false`. |
 
 ### Validation Rules
 
