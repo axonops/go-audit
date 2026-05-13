@@ -68,6 +68,7 @@ Feature: Missing BDD Coverage Bundle (#561)
           webhook:
             url: http://example.invalid/audit
             allow_insecure_http: true
+            verify_on_startup: false
             buffer_size: 250
       """
     When I load the outputs config
@@ -85,6 +86,7 @@ Feature: Missing BDD Coverage Bundle (#561)
           webhook:
             url: http://example.invalid/audit
             allow_insecure_http: true
+            verify_on_startup: false
       """
     When I load the outputs config
     Then the config should load successfully
@@ -101,6 +103,7 @@ Feature: Missing BDD Coverage Bundle (#561)
           webhook:
             url: http://example.invalid/audit
             allow_insecure_http: true
+            verify_on_startup: false
             buffer_size: 2000000
       """
     When I load the outputs config
@@ -118,6 +121,7 @@ Feature: Missing BDD Coverage Bundle (#561)
           loki:
             url: http://example.invalid/loki/api/v1/push
             allow_insecure_http: true
+            verify_on_startup: false
             buffer_size: 500
       """
     When I load the outputs config
@@ -135,6 +139,7 @@ Feature: Missing BDD Coverage Bundle (#561)
           loki:
             url: http://example.invalid/loki/api/v1/push
             allow_insecure_http: true
+            verify_on_startup: false
       """
     When I load the outputs config
     Then the config should load successfully
@@ -151,6 +156,7 @@ Feature: Missing BDD Coverage Bundle (#561)
           loki:
             url: http://example.invalid/loki/api/v1/push
             allow_insecure_http: true
+            verify_on_startup: false
             buffer_size: 2000000
       """
     When I load the outputs config
@@ -174,6 +180,7 @@ Feature: Missing BDD Coverage Bundle (#561)
           webhook:
             url: http://example.invalid/audit
             allow_insecure_http: true
+            verify_on_startup: false
       """
     When I load the outputs config
     Then the config load should fail with an error containing "drain_timeout"
@@ -193,6 +200,7 @@ Feature: Missing BDD Coverage Bundle (#561)
           webhook:
             url: http://example.invalid/audit
             allow_insecure_http: true
+            verify_on_startup: false
       """
     When I load the outputs config
     Then the config should load successfully

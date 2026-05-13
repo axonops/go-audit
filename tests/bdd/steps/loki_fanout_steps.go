@@ -314,16 +314,19 @@ func createFileAndLokiAuditorUnreachable(tc *AuditTestContext) error {
 	tc.AddCleanup(func() { _ = fileOut.Close() })
 
 	// Unreachable Loki — connect to a port nothing is listening on.
+	// Skip the startup probe so the runtime fan-out-isolates-failure
+	// behaviour (the property under test) is exercised.
 	lokiCfg := &loki.Config{
-		URL:                "http://localhost:39999/loki/api/v1/push",
-		AllowInsecureHTTP:  true,
-		AllowPrivateRanges: true,
-		BatchSize:          1,
-		FlushInterval:      1e9,
-		Timeout:            1e9, // 1 second timeout
-		MaxRetries:         1,
-		BufferSize:         100,
-		Gzip:               false,
+		URL:                        "http://localhost:39999/loki/api/v1/push",
+		AllowInsecureHTTP:          true,
+		AllowPrivateRanges:         true,
+		BatchSize:                  1,
+		FlushInterval:              1e9,
+		Timeout:                    1e9, // 1 second timeout
+		MaxRetries:                 1,
+		BufferSize:                 100,
+		Gzip:                       false,
+		DisableStartupVerification: true,
 	}
 
 	lokiOut, err := loki.New(lokiCfg, nil, loki.WithFrameworkContext(audit.FrameworkContext{AppName: "bdd-audit", Host: "bdd-host"}))

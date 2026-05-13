@@ -236,6 +236,10 @@ func registerMetricsGivenFilterSteps(ctx *godog.ScenarioContext, tc *AuditTestCo
 			URL: tc.WebhookURL + "/events", AllowInsecureHTTP: true,
 			AllowPrivateRanges: true, BatchSize: 1,
 			FlushInterval: 100 * time.Millisecond, Timeout: 5 * time.Second,
+			// Core BDD shard does not run a webhook receiver; skip
+			// the construction-time probe so the route-filter metric
+			// behaviour (the property under test) is exercised.
+			DisableStartupVerification: true,
 		}, nil)
 		if err != nil {
 			return fmt.Errorf("create webhook: %w", err)
