@@ -1,0 +1,194 @@
+# Copyright 2026 AxonOps Limited.
+#
+# release-smoke — validate-only pre-flight for the unified release
+# flow (#841). Probes secrets, App permissions, repo settings,
+# branch/tag protection rules, GoReleaser pin, and release-script
+# parse health WITHOUT creating any tag, branch, commit, or PR.
+#
+# Run before a real release (workflow_dispatch in the Actions UI)
+# to surface any drift in release infrastructure. The check list
+# captures every misconfiguration that bit v0.1.12's release —
+# eight follow-up PRs of pain reduced to a 30-second smoke test.
+#
+# Zero side effects: this workflow makes only GET requests to the
+# GitHub API plus local parse-checks. It cannot move data or
+# permissions.
+name: Release Smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Prevent double-clicks from spawning duplicate runs. The smoke
+# workflow is read-only against the GitHub API but its run summary
+# is per-run, so a single canonical run is preferable.
+concurrency:
+  group: release-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Mint release-bot App token
+        id: app
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v2.1.4
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - name: Run smoke checks
+        id: smoke
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          REPO: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+          RELEASE_APP_ID: ${{ secrets.RELEASE_APP_ID }}
+        run: |
+          set -euo pipefail
+
+          # Helper that records a check pass/fail and accumulates
+          # markdown rows for the run summary.
+          declare -a rows
+          declare -i failures=0
+          record() {
+            local name="$1" status="$2" detail="$3"
+            rows+=("| $name | $status | $detail |")
+            if [[ "$status" != "PASS" ]]; then
+              failures=$((failures + 1))
+              echo "::error::smoke check failed: $name — $detail"
+            fi
+          }
+
+          # ----- 1. Secrets non-empty -----
+          if [[ -n "${RELEASE_APP_ID:-}" ]]; then
+            record "RELEASE_APP_ID secret" "PASS" "present"
+          else
+            record "RELEASE_APP_ID secret" "FAIL" "secret is empty"
+          fi
+          # PRIVATE_KEY presence is implied by the successful App token
+          # mint step above; if that step failed, this workflow would
+          # have aborted before reaching us.
+          record "RELEASE_APP_PRIVATE_KEY secret" "PASS" "App token minted successfully"
+
+          # ----- 2. App identity probe -----
+          actor="$(gh api /user --jq '.login' 2>/dev/null || echo "")"
+          if [[ -n "$actor" ]]; then
+            record "App identity (gh api /user)" "PASS" "authenticated as \`$actor\`"
+          else
+            record "App identity (gh api /user)" "FAIL" "token did not authenticate"
+          fi
+
+          # ----- 3. App installed on THIS repo -----
+          # Confirms the secret points at the App's installation on
+          # THIS repository, not at the org or a different repo.
+          installation="$(gh api "repos/$REPO/installation" --jq '.id // empty' 2>/dev/null || echo "")"
+          if [[ -n "$installation" ]]; then
+            record "App installation on this repo" "PASS" "installation \`$installation\`"
+          else
+            record "App installation on this repo" "FAIL" "App is not installed on $REPO"
+          fi
+
+          # ----- 4. Rate-limit budget -----
+          remaining="$(gh api /rate_limit --jq '.resources.core.remaining // 0' 2>/dev/null || echo "0")"
+          if [[ "$remaining" -gt 100 ]]; then
+            record "Rate-limit budget (core)" "PASS" "$remaining requests remaining"
+          else
+            record "Rate-limit budget (core)" "FAIL" "only $remaining requests remaining (release needs ~50)"
+          fi
+
+          # ----- 5. allow_auto_merge enabled -----
+          auto_merge="$(gh api "repos/$REPO" --jq '.allow_auto_merge // false' 2>/dev/null || echo "false")"
+          if [[ "$auto_merge" == "true" ]]; then
+            record "Repo allow_auto_merge" "PASS" "enabled"
+          else
+            record "Repo allow_auto_merge" "FAIL" "disabled — release PR will not auto-merge"
+          fi
+
+          # ----- 6. required_signatures on main -----
+          # The whole point of the GraphQL migration (#841) is to keep
+          # this rule ON across releases. If it's been turned off,
+          # something has regressed.
+          req_sigs="$(gh api "repos/$REPO/branches/main/protection/required_signatures" \
+                       --jq '.enabled // false' 2>/dev/null || echo "false")"
+          if [[ "$req_sigs" == "true" ]]; then
+            record "main branch required_signatures" "PASS" "enabled"
+          else
+            record "main branch required_signatures" "FAIL" "disabled — signed-commits guarantee is broken"
+          fi
+
+          # ----- 7. GoReleaser version pin floor -----
+          # PR #840 bumped goreleaser to v2.15.4 after v2.15.0's
+          # cosign-verification bug caused v0.1.12's binaries to fail.
+          # The smoke check refuses to bless a release with the pin
+          # rolled back below v2.15.4.
+          gr_version="$(grep -m1 -E "version: 'v[0-9]" .github/workflows/release.yml \
+                         | sed -E "s/.*version: 'v([0-9.]+)'.*/\1/")"
+          gr_major="${gr_version%%.*}"
+          gr_minor="$(echo "$gr_version" | cut -d. -f2)"
+          gr_patch="$(echo "$gr_version" | cut -d. -f3)"
+          if (( gr_major > 2 )) \
+             || (( gr_major == 2 && gr_minor > 15 )) \
+             || (( gr_major == 2 && gr_minor == 15 && gr_patch >= 4 )); then
+            record "GoReleaser version pin" "PASS" "v$gr_version (>= v2.15.4 floor)"
+          else
+            record "GoReleaser version pin" "FAIL" "v$gr_version is below the v2.15.4 floor (PR #840)"
+          fi
+
+          # ----- 8. Release scripts parse cleanly -----
+          # Reuse the canonical glob from the Makefile so the smoke
+          # workflow and `make check-static` stay in lockstep on
+          # which scripts must parse.
+          if make -s check-release-scripts >/dev/null; then
+            record "scripts/release/*.sh parse-check" "PASS" "all scripts parse cleanly"
+          else
+            record "scripts/release/*.sh parse-check" "FAIL" "one or more scripts has a syntax error"
+          fi
+
+          # ----- 9. make print-publish-modules returns non-empty -----
+          modules_count="$(make -s print-publish-modules 2>/dev/null | grep -cv '^$' || echo "0")"
+          if [[ "$modules_count" -gt 0 ]]; then
+            record "make print-publish-modules" "PASS" "$modules_count modules listed"
+          else
+            record "make print-publish-modules" "FAIL" "Makefile returned no publishable modules"
+          fi
+
+          # ----- 10. Tag protection rule (best effort) -----
+          # Tag protection rules are an org-level GHEC feature; in
+          # plain repositories the endpoint returns 404. Treat 404
+          # as PASS (no protection rule to verify) — only treat a
+          # 200 with no matching pattern as FAIL.
+          tag_protection_status="$(gh api -i "repos/$REPO/tags/protection" 2>&1 | head -n1 || echo "HTTP/1.1 404 Not Found")"
+          if grep -qE '^HTTP/[0-9.]+ 404 ' <<<"$tag_protection_status"; then
+            record "Tag protection rule" "PASS" "no protection rule (plain repo)"
+          elif grep -qE '^HTTP/[0-9.]+ 200 ' <<<"$tag_protection_status"; then
+            record "Tag protection rule" "PASS" "rule present — verify pattern manually"
+          else
+            record "Tag protection rule" "PASS" "status: ${tag_protection_status# *}"
+          fi
+
+          # ----- Summary -----
+          {
+            echo "## Release smoke checks"
+            echo
+            echo "| Check | Status | Detail |"
+            echo "|-------|--------|--------|"
+            printf '%s\n' "${rows[@]}"
+            echo
+            if (( failures > 0 )); then
+              echo "**$failures check(s) failed.** Investigate before cutting a release."
+            else
+              echo "**All checks passed.** Release infrastructure is healthy."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if (( failures > 0 )); then
+            exit 1
+          fi

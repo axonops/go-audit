@@ -455,8 +455,6 @@ jobs:
         run: |
           set -euo pipefail
           BRANCH="release/$PUBLISH_VERSION"
-          git config user.name  "axonops-audit-release-bot[bot]"
-          git config user.email "axonops-audit-release-bot[bot]@users.noreply.github.com"
 
           # Recreate the branch idempotently. A previous failed run
           # may have left both a branch AND an orphaned open PR on it
@@ -470,16 +468,27 @@ jobs:
             done
             git push origin --delete "$BRANCH" || true
           fi
-          git checkout -b "$BRANCH"
 
           if git diff --quiet HEAD --; then
             echo "::error::update-deps.sh produced no diff. Inter-module deps already at $PUBLISH_VERSION on main? Aborting."
             exit 1
           fi
 
+          # Stage all changes so gh-graphql-commit.sh can enumerate
+          # them via `git status --porcelain`. The script enforces an
+          # allowlist (go.mod / go.sum only); anything outside it
+          # fails the commit.
           git add -A
-          git commit -m "release: pin inter-module deps to $PUBLISH_VERSION"
-          git push -u origin "$BRANCH"
+
+          # App-signed commit via createCommitOnBranch (#841). The
+          # legacy `git commit + git push` required toggling
+          # required_signatures off; the GraphQL mutation signs with
+          # the App identity server-side and satisfies the branch
+          # protection rule directly.
+          scripts/release/gh-graphql-commit.sh \
+            --branch "$BRANCH" \
+            --message "release: pin inter-module deps to $PUBLISH_VERSION" \
+            --auto-create-branch
 
           # `gh pr create` may emit progress lines before the URL —
           # ask for the PR number directly via --json so we don't have
