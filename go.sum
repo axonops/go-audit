@@ -4,8 +4,6 @@ github.com/axonops/audit/loki v0.1.11 h1:jYewrKwhuml6KBsN2rS/4nejqTGQgv0X3GGV7Gp
 github.com/axonops/audit/loki v0.1.11/go.mod h1:7MZcSDpT4likpw/RqsroAimsjtxe+HGjzCkC7ds/6OY=
 github.com/axonops/audit/outputconfig v0.1.11 h1:RArErBa0X18R3QEEAQAYS5yY5VjoyQojnCezYMNuduw=
 github.com/axonops/audit/outputconfig v0.1.11/go.mod h1:gTzEFOubwmnvfLxTms+Y/3NjsQN+Rsd98IVKQhO9GVA=
-github.com/axonops/audit/outputs v0.1.9 h1:mH3EeoA1U5ahEQkNMvutOyWGfAbcSH0DCEeLrtM/HEA=
-github.com/axonops/audit/outputs v0.1.9/go.mod h1:x8jFor5DmgYOcRYTwSVwixqC+Xo8vNfCggL/YvX17uk=
 github.com/axonops/audit/secrets v0.1.11 h1:ilszR93wSDYRCVNK37LUJsrHUcHXyPOMjx5Lax29t9M=
 github.com/axonops/audit/secrets v0.1.11/go.mod h1:gAQX3co4e/23wOe4vkylrJ6smNicyITP+UEcx/gypak=
 github.com/axonops/audit/secrets/openbao v0.1.11 h1:pIRUVAFg117K48btcK4USV/1yaTa6p1gyLv1rWRNNqc=

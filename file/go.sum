@@ -1,7 +1,7 @@
-github.com/axonops/audit v0.1.12 h1:7teZMyLTd8bX0y4gvdHQ4BuTUr9lld/9UY5cgVWGBmI=
-github.com/axonops/audit v0.1.12/go.mod h1:Y7wAWK/t9eYPRV/6WKSA3OODuzLaa83xrWvzA43h6gM=
-github.com/axonops/audit/iouring v0.0.0-20260510154433-d95e747679cc h1:pkkInDlyOrzYXmzSftJ5SqtzWcoahu/goEDUcFD6/oo=
-github.com/axonops/audit/iouring v0.0.0-20260510154433-d95e747679cc/go.mod h1:mGoElCYHQ2BaVvGMSX9RTOogl0IkthEjXNEZM6VhBVw=
+github.com/axonops/audit v0.1.13 h1:GIZcbSTwzBPcUieI3GPA1XRhP7LnciA8Tf66EHkbcfA=
+github.com/axonops/audit v0.1.13/go.mod h1:aHsnr96RGIdmWBAgLWJYfyZPdLEgP7Su/KZJT+/w0rA=
+github.com/axonops/audit/iouring v0.0.0-20260512203621-dbaeb1c0c180 h1:KXAd/8+XAPtzZQ5ovjvYzEzqP68FXC9+1/2IyAnLkwc=
+github.com/axonops/audit/iouring v0.0.0-20260512203621-dbaeb1c0c180/go.mod h1:mGoElCYHQ2BaVvGMSX9RTOogl0IkthEjXNEZM6VhBVw=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=

@@ -3,8 +3,8 @@ module github.com/axonops/audit/secrets/vault
 go 1.26.3
 
 require (
-	github.com/axonops/audit v0.1.12
-	github.com/axonops/audit/secrets v0.1.12
+	github.com/axonops/audit v0.1.13
+	github.com/axonops/audit/secrets v0.1.13
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/goleak v1.3.0
 )
