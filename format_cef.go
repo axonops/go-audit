@@ -257,6 +257,14 @@ const maxCEFHeaderField = 255
 // cefSeverityStrings avoids per-event strconv.Itoa for severity (0-10).
 var cefSeverityStrings = [11]string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"}
 
+// ContentType implements [Formatter.ContentType]. CEF has no
+// IANA-registered media type; "text/plain" is the de-facto
+// convention accepted by ArcSight SmartConnector and Splunk HEC
+// raw endpoints. Operators sending CEF to a receiver that demands
+// a specific value can override the Content-Type via the output's
+// headers config.
+func (cf *CEFFormatter) ContentType() string { return "text/plain" }
+
 // Format serialises a single audit event as a CEF line. The returned
 // slice is owned by the caller (defensive copy from the pooled buffer).
 //

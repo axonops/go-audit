@@ -24,12 +24,16 @@
 //
 // # Batching and Delivery
 //
-// Events are buffered in memory and flushed as newline-delimited JSON
-// (application/x-ndjson) when the batch reaches [Config.BatchSize]
-// events or [Config.FlushInterval] elapses. Failed batches are retried with exponential backoff up to
-// [Config.MaxRetries] times. Delivery semantics are at-least-once:
-// a batch may be delivered more than once if the server accepts the
-// payload but the acknowledgement is lost.
+// Events are buffered in memory and flushed using the Content-Type
+// reported by the output's configured formatter — application/x-ndjson
+// for the built-in [audit.JSONFormatter], text/plain for [audit.CEFFormatter],
+// or whatever a third-party Formatter declares via
+// [audit.Formatter.ContentType]. The batch flushes when it reaches
+// [Config.BatchSize] events or [Config.FlushInterval] elapses. Failed
+// batches are retried with exponential backoff up to [Config.MaxRetries]
+// times. Delivery semantics are at-least-once: a batch may be delivered
+// more than once if the server accepts the payload but the
+// acknowledgement is lost.
 //
 // # Construction
 //

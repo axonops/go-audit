@@ -115,6 +115,8 @@ func (f *cacheTestFmt) Format(_ time.Time, _ string, _ audit.Fields, _ *audit.Ev
 	return []byte("data"), nil
 }
 
+func (f *cacheTestFmt) ContentType() string { return "application/x-ndjson" }
+
 func TestFormatCache_PutGet(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

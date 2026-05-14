@@ -187,7 +187,25 @@ Each HTTP request body contains one JSON object per line:
 {"timestamp":"...","event_type":"user_create","severity":5,...}\n
 ```
 
-The Content-Type header is `application/x-ndjson`.
+The Content-Type header is `application/x-ndjson` for the default
+[`JSONFormatter`](https://pkg.go.dev/github.com/axonops/audit#JSONFormatter).
+When a different formatter is configured on the output, the
+Content-Type follows that formatter's declared type. The library
+discovers this via [`Formatter.ContentType()`](https://pkg.go.dev/github.com/axonops/audit#Formatter)
+and propagates it to the webhook at auditor construction.
+
+| Formatter | `Content-Type` |
+|-----------|----------------|
+| [`JSONFormatter`](https://pkg.go.dev/github.com/axonops/audit#JSONFormatter) | `application/x-ndjson` |
+| [`CEFFormatter`](https://pkg.go.dev/github.com/axonops/audit#CEFFormatter) | `text/plain` |
+| Custom `Formatter` | Whatever the implementation returns from `ContentType()` |
+
+The CEF wire format is one CEF record per line, newline-separated,
+matching the convention accepted by ArcSight SmartConnector and
+Splunk HEC raw endpoints. Operators sending CEF to a receiver that
+demands a different MIME type can override Content-Type via the
+output's `headers` configuration — operator-supplied headers take
+precedence over the formatter's default.
 
 NDJSON is:
 - **Streamable** — receivers can process lines as they arrive
@@ -328,7 +346,7 @@ Each POST request contains:
 
 | Header | Value |
 |--------|-------|
-| `Content-Type` | `application/x-ndjson` |
+| `Content-Type` | Formatter-driven (`application/x-ndjson` for JSON, `text/plain` for CEF — see [Wire Format](#wire-format)) |
 | Custom headers | From `headers:` config |
 
 Body: one JSON object per line (NDJSON), terminated with `\n`.

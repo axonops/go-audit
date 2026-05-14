@@ -159,7 +159,7 @@ func (w *Output) doPost(ctx context.Context, body []byte) (bool, error) {
 		return false, fmt.Errorf("audit/webhook: request: %w", err)
 	}
 
-	req.Header.Set("Content-Type", "application/x-ndjson")
+	req.Header.Set("Content-Type", w.effectiveContentType())
 	for k, v := range w.headers {
 		req.Header.Set(k, v)
 	}

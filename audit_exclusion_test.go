@@ -43,6 +43,8 @@ func (e *exclusionErrorFormatter) Format(_ time.Time, _ string, _ audit.Fields, 
 	return []byte(`{"ok":true}` + "\n"), nil
 }
 
+func (e *exclusionErrorFormatter) ContentType() string { return "application/x-ndjson" }
+
 // TestFormatWithExclusion_ErrorPath verifies that when Format returns an error
 // through the formatWithExclusion path (sensitivity label stripping), the
 // event is dropped and the serialization error is recorded in metrics.

@@ -6,6 +6,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Breaking
+
+- The [`audit.Formatter`](https://pkg.go.dev/github.com/axonops/audit#Formatter)
+  interface gains a `ContentType() string` method. Built-in
+  formatters implement it (`JSONFormatter` → `application/x-ndjson`,
+  `CEFFormatter` → `text/plain`). Third-party `Formatter`
+  implementations must add a one-line method returning the MIME
+  type of the bytes they emit. The library is pre-release; no
+  back-compat shim. (#463)
+
+### Added
+
+- New optional output interface
+  [`audit.ContentTypeSetter`](https://pkg.go.dev/github.com/axonops/audit#ContentTypeSetter).
+  The auditor invokes `SetContentType` on every output that
+  implements it at construction time, passing the result of the
+  output's effective formatter's `ContentType()`. HTTP outputs
+  (webhook) use this to set the request Content-Type header
+  correctly per formatter — previously hardcoded to
+  `application/x-ndjson` even when the formatter was CEF. Loki
+  does not implement this interface because its Content-Type is
+  fixed at `application/json` for the Loki push API. (#463)
+- 7 new BDD scenarios in `tests/bdd/features/webhook_batching.feature`
+  validating the wire-level batched payload structure for both
+  JSON and CEF formatters: NDJSON line count + parseability,
+  per-event marker order, trailing-newline invariant, single- and
+  multi-event CEF bodies with `CEF:0|` prefix, Content-Type
+  assertions for JSON and CEF (including a negative assertion
+  for the CEF→NDJSON Content-Type bug that this change fixes).
+  (#463)
+
+### Fixed
+
+- Webhook output: when a `CEFFormatter` was configured, the
+  request `Content-Type` header still claimed
+  `application/x-ndjson`, lying to the receiver. The header now
+  reflects the formatter's declared type (`text/plain` for CEF).
+  Operators who need a different MIME type can still override via
+  the output's `headers` configuration. (#463)
+
 ### Changed
 
 - Core now depends on `github.com/axonops/syncmap v1.0.0` for the

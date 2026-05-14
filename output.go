@@ -138,6 +138,39 @@ type MetadataWriter interface {
 	WriteWithMetadata(data []byte, meta EventMetadata) error
 }
 
+// ContentTypeSetter is an optional interface implemented by outputs
+// that need to know the MIME type of the bytes their associated
+// formatter emits. HTTP-based outputs (notably [webhook.Output])
+// use it to set the request Content-Type header without having to
+// pin themselves to a specific formatter.
+//
+// The library calls SetContentType once at auditor construction
+// time, after each output has been bound to its effective formatter
+// and after [FrameworkFieldSetter.SetFrameworkFields] propagation,
+// but BEFORE any event is dispatched. Outputs that do not care
+// about Content-Type simply omit the method.
+//
+// Implementations MUST treat SetContentType as a one-shot
+// configuration call from a non-I/O goroutine. Use
+// [sync/atomic.Pointer] or equivalent if a concurrent reader (the
+// output's background write goroutine) could observe the field
+// before the auditor's construction goroutine writes it — otherwise
+// the initialisation is a data race per the Go memory model.
+//
+// Implementations SHOULD validate the value (reject empty strings,
+// CRLF, control characters) and return early on bad input rather
+// than panicking — a malformed Content-Type ultimately surfaces as
+// an HTTP-transport error per request, which is recoverable.
+//
+// Outputs whose wire format is fixed independently of the
+// formatter (e.g., Loki's JSON push API, where the envelope is
+// always "application/json" regardless of the inner log-line
+// formatter) MUST NOT implement this interface — the library will
+// not call SetContentType on them.
+type ContentTypeSetter interface {
+	SetContentType(contentType string)
+}
+
 // FrameworkContext carries auditor-wide framework metadata into
 // output constructors so the first connection / first request can
 // use the correct app_name, host, timezone, and pid. Construction-

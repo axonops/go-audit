@@ -116,6 +116,8 @@ func (noopFormatter) Format(ts time.Time, eventType string, fields Fields, def *
 	return nil, nil
 }
 
+func (noopFormatter) ContentType() string { return "application/x-ndjson" }
+
 // TestAppendPostFieldsJSONInto_PropertyEqualsSequentialInPlace is
 // the byte-equality proof for the #508 batch in-place JSON path.
 // Rapid generates random JSON-formatted bases and random PostField

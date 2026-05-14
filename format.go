@@ -150,6 +150,26 @@ type Formatter interface {
 	// A non-nil error causes the event to be dropped and
 	// [Metrics.RecordSerializationError] to be called.
 	Format(ts time.Time, eventType string, fields Fields, def *EventDef, opts *FormatOptions) ([]byte, error)
+
+	// ContentType returns the MIME type of the bytes emitted by
+	// [Formatter.Format]. HTTP-based outputs use this value as the
+	// request Content-Type header. Implementations MUST return a
+	// stable, non-empty value (the library reads it once at
+	// construction time and propagates it to outputs via
+	// [ContentTypeSetter.SetContentType]).
+	//
+	// Examples: the built-in [JSONFormatter] returns
+	// "application/x-ndjson"; [CEFFormatter] returns "text/plain"
+	// (CEF has no IANA-registered media type — text/plain is the
+	// convention accepted by ArcSight SmartConnector and Splunk
+	// HEC).
+	//
+	// The value MUST satisfy the RFC 9110 §5.5 field-value grammar
+	// — no CRLF, no NUL, no non-printable control characters.
+	// [ContentTypeSetter.SetContentType] validates and rejects unsafe
+	// values at auditor construction; the HTTP transport applies its
+	// own validation downstream as defence in depth.
+	ContentType() string
 }
 
 // bufferedFormatter is an internal optimisation interface: built-in

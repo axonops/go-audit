@@ -47,10 +47,24 @@ const dropWarnInterval = 10 * time.Second
 
 // Compile-time assertions.
 var (
-	_ audit.Output           = (*Output)(nil)
-	_ audit.DeliveryReporter = (*Output)(nil)
-	_ audit.DestinationKeyer = (*Output)(nil)
+	_ audit.Output            = (*Output)(nil)
+	_ audit.DeliveryReporter  = (*Output)(nil)
+	_ audit.DestinationKeyer  = (*Output)(nil)
+	_ audit.ContentTypeSetter = (*Output)(nil)
 )
+
+// defaultContentType is the request Content-Type used by [Output]
+// when no [audit.ContentTypeSetter.SetContentType] call has fired
+// (i.e., the webhook was constructed outside an auditor for unit
+// tests). Matches the body shape produced by the default
+// [audit.JSONFormatter].
+const defaultContentType = "application/x-ndjson"
+
+// maxContentTypeLen caps the Content-Type header value to defend
+// against an adversarial formatter returning an absurd string.
+// HTTP header values have no formal upper bound, but 256 covers
+// every realistic media-type + parameter combination.
+const maxContentTypeLen = 256
 
 // errRedirectBlocked is returned by the http.Client's CheckRedirect
 // function. It is checked in doPost to classify redirect errors as
@@ -112,6 +126,8 @@ func responseHeaderTimeout(t time.Duration) time.Duration {
 // but returns 5xx due to a timeout. Receivers SHOULD be idempotent.
 //
 // Output is safe for concurrent use.
+//
+//nolint:govet // fieldalignment: readability preferred — fields grouped by lifecycle (#463)
 type Output struct {
 	metrics         audit.Metrics
 	outputMetrics   audit.OutputMetrics // immutable after New (#696)
@@ -133,6 +149,14 @@ type Output struct {
 	// doPostWithRetry. Read/written only by doPostWithRetry in the
 	// batchLoop goroutine; no synchronisation needed.
 	retryHint time.Duration
+	// contentType holds the request Content-Type as decided by the
+	// formatter via [audit.ContentTypeSetter]. The auditor's
+	// construction goroutine writes it once; the batchLoop reads it
+	// on every doPost. The two goroutines have no synchronisation
+	// edge between them at startup (batchLoop is started in New
+	// BEFORE audit.New calls SetContentType), so atomic storage is
+	// mandatory. A nil pointer means "use [defaultContentType]".
+	contentType atomic.Pointer[string]
 	// lastDeliveryNanos is the wall-clock UnixNano of the most recent
 	// HTTP 2xx response (post-retry). Webhook is async — Write only
 	// enqueues — so the timestamp updates from the batch goroutine
@@ -336,6 +360,75 @@ func (w *Output) ReportsDelivery() bool { return true }
 // frozen. Implements [audit.LastDeliveryReporter] (#753).
 func (w *Output) LastDeliveryNanos() int64 {
 	return w.lastDeliveryNanos.Load()
+}
+
+// SetContentType implements [audit.ContentTypeSetter]. The auditor
+// calls this once at construction time with the result of
+// [audit.Formatter.ContentType] from the effective per-output
+// formatter, before any event is dispatched.
+//
+// Validation rejects (silently — auditor construction continues):
+//   - empty strings
+//   - values exceeding [maxContentTypeLen]
+//   - any string failing [net/http/internal/ascii.IsPrint] equivalent
+//     validation against the [RFC 9110] field-value grammar
+//     (i.e., contains CR, LF, NUL, or non-printable bytes).
+//
+// A rejected value leaves the previous Content-Type in place (or
+// [defaultContentType] if SetContentType has never been called).
+// This protects against a hostile or misbehaving formatter — the
+// HTTP transport would reject the malformed value at request-send
+// time anyway, but failing early at construction surfaces the bug
+// in a single log line rather than per-request errors.
+//
+// Operator override: a `Content-Type` entry in the output's
+// `headers` config (passed via [Config.Headers]) takes precedence
+// over the value installed here. The request pipeline sets
+// Content-Type from this field first, then applies operator
+// headers — so an operator who must send (e.g.) `application/json`
+// to a strict CEF receiver can still do so.
+func (w *Output) SetContentType(ct string) {
+	if ct == "" || len(ct) > maxContentTypeLen || !isValidContentType(ct) {
+		w.logger.Warn("audit: output webhook: rejected invalid Content-Type from formatter",
+			"value_length", len(ct))
+		return
+	}
+	w.contentType.Store(&ct)
+}
+
+// effectiveContentType returns the Content-Type to use on the
+// outbound POST: the value set via [Output.SetContentType], or
+// [defaultContentType] when the webhook was constructed outside
+// an auditor (e.g. unit tests).
+func (w *Output) effectiveContentType() string {
+	if p := w.contentType.Load(); p != nil {
+		return *p
+	}
+	return defaultContentType
+}
+
+// isValidContentType is a conservative byte-level check matching the
+// RFC 9110 §5.5 field-value grammar: visible ASCII plus space and
+// horizontal tab, no control characters (excluding HTAB), no
+// CR/LF/NUL. Sufficient for header-value safety; a stricter
+// media-type-grammar check would be over-engineering — the HTTP
+// transport applies its own validation downstream.
+func isValidContentType(ct string) bool {
+	// Iterate raw bytes via index — ranging over the string would yield
+	// runes after UTF-8 decoding. Header values are byte-grammars per
+	// RFC 9110 §5.5.
+	for i := range len(ct) {
+		b := ct[i]
+		// HTAB (0x09) and visible ASCII (0x20..0x7E) only. Reject
+		// every other byte including DEL, CR, LF, NUL.
+		if b == 0x09 {
+			continue
+		}
+		if b < 0x20 || b > 0x7E {
+			return false
+		}
+	}
+	return true
 }
 
 // Name returns the human-readable identifier for this output.

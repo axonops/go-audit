@@ -95,6 +95,13 @@ type JSONFormatter struct {
 	OmitEmpty bool
 }
 
+// ContentType implements [Formatter.ContentType]. JSONFormatter emits
+// newline-delimited JSON; the MIME type "application/x-ndjson" is
+// the [NDJSON spec](https://github.com/ndjson/ndjson-spec) convention
+// and is accepted by every webhook receiver that supports streaming
+// JSON.
+func (jf *JSONFormatter) ContentType() string { return "application/x-ndjson" }
+
 // Format serialises a single audit event as a JSON line. The returned
 // slice is owned by the caller (defensive copy from the pooled buffer).
 //

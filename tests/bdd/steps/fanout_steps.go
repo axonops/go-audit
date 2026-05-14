@@ -665,12 +665,16 @@ func (p *panicFormatter) Format(_ time.Time, _ string, _ audit.Fields, _ *audit.
 	panic("intentional panic in formatter")
 }
 
+func (p *panicFormatter) ContentType() string { return "application/x-ndjson" }
+
 // errorReturningFormatter returns an error on every Format call (no panic).
 type errorReturningFormatter struct{}
 
 func (e *errorReturningFormatter) Format(_ time.Time, _ string, _ audit.Fields, _ *audit.EventDef, _ *audit.FormatOptions) ([]byte, error) {
 	return nil, fmt.Errorf("intentional format error")
 }
+
+func (e *errorReturningFormatter) ContentType() string { return "application/x-ndjson" }
 
 // devNullOutput discards all writes.
 type devNullOutput struct{}

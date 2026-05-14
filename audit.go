@@ -267,6 +267,7 @@ func (a *Auditor) applyConstructionDefaults() {
 		a.timezone = time.Now().Location().String()
 	}
 	a.propagateFrameworkFields()
+	a.propagateContentTypes()
 }
 
 // Logger returns the diagnostic logger configured via
