@@ -128,6 +128,11 @@ type Output struct {
 	dropsBufferFull dropLimiter // rate-limits buffer-full warnings
 	flushIvl        time.Duration
 	timeout         time.Duration
+	// retryHint is the Retry-After delay parsed from the last 429
+	// response. Consumed and cleared on the next retry attempt in
+	// doPostWithRetry. Read/written only by doPostWithRetry in the
+	// batchLoop goroutine; no synchronisation needed.
+	retryHint time.Duration
 	// lastDeliveryNanos is the wall-clock UnixNano of the most recent
 	// HTTP 2xx response (post-retry). Webhook is async — Write only
 	// enqueues — so the timestamp updates from the batch goroutine

@@ -73,7 +73,8 @@ flowchart LR
     E -->|count/timer/close| F[Build NDJSON]
     F --> G[HTTP POST]
     G -->|2xx| H[Success]
-    G -->|5xx/429| I[Retry with backoff]
+    G -->|5xx| I[Retry with backoff]
+    G -->|429| K[Retry with backoff,<br/>honouring Retry-After]
     G -->|4xx| J[Drop batch]
 ```
 
@@ -83,7 +84,8 @@ flowchart LR
 3. The batch loop accumulates events until a flush trigger fires
 4. Events are joined as NDJSON and POSTed to the configured URL
 5. On transient failure (5xx, 429), the batch is retried with
-   exponential backoff
+   exponential backoff. On 429, a `Retry-After` header is also
+   honoured (see [Retry-After on 429](#retry-after-on-429))
 6. On permanent failure (4xx), the batch is dropped
 
 ## Buffering Architecture
@@ -351,12 +353,36 @@ Body: one JSON object per line (NDJSON), terminated with `\n`.
 | Jitter | Random multiplier in [0.5, 1.0) via `crypto/rand` |
 | Max attempts | `max_retries` (total attempts including initial) |
 
+### `Retry-After` on 429
+
+When the server returns `429 Too Many Requests` with a
+[`Retry-After`](https://www.rfc-editor.org/rfc/rfc9110#section-10.2.3)
+header, the webhook output honours it as a **minimum** wait before
+the next attempt. The effective backoff for the next retry is
+`max(computed_backoff, parsed_retry_after)` — whichever is longer
+wins, where `parsed_retry_after` is the header value in seconds.
+
+| Behaviour | Value |
+|-----------|-------|
+| Header format supported | Delta-seconds only (e.g. `Retry-After: 30`) |
+| Header format **not** supported | HTTP-date form (e.g. `Retry-After: Wed, 21 Oct 2026 07:28:00 GMT`) — treated as if absent |
+| Cap | 30 seconds (server-supplied values above the cap are clamped) |
+| Lifecycle | Single-use — consumed by the next retry, then cleared. A subsequent 429 without the header reverts to standard backoff. |
+| Malformed / non-positive / negative | Treated as if absent — standard backoff applies |
+
+The cap prevents a hostile or misbehaving server from forcing the
+client to stall indefinitely. With `max_retries=3`, the total time
+a single batch can spend waiting on hostile `Retry-After` headers
+is therefore bounded by `3 × 30s = 90s` before the batch is dropped.
+
 ```mermaid
 flowchart TD
     A[POST batch] --> B{Response?}
     B -->|2xx| C[Success]
-    B -->|429/5xx| D{Retries left?}
-    D -->|Yes| E[Backoff sleep]
+    B -->|429| G[Read Retry-After<br/>cap at 30s]
+    G --> D{Retries left?}
+    B -->|5xx| D
+    D -->|Yes| E["Sleep max(<br/>computed backoff,<br/>Retry-After)"]
     E --> A
     D -->|No| F[Drop batch]
     B -->|4xx| F
