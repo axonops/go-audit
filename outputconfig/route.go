@@ -21,17 +21,28 @@ import (
 	"github.com/goccy/go-yaml"
 )
 
+// yamlSeverityRange is the YAML representation of a per-category
+// severity filter. An empty YAML mapping (`{}`) unmarshals to a
+// non-nil *yamlSeverityRange with both fields nil; buildRoute
+// normalises this to a nil *audit.SeverityRange so consumers have
+// exactly one canonical "no filter" value.
+type yamlSeverityRange struct {
+	MinSeverity *int `yaml:"min_severity"`
+	MaxSeverity *int `yaml:"max_severity"`
+}
+
 type yamlRoute struct {
 	// MinSeverity (YAML: min_severity) — minimum severity threshold.
-	// Events with severity below this value are not delivered. Nil = no filter.
+	// Applies to event-type matches and the severity-only catch-all.
+	// Per-category filters override this for category matches. Nil = no filter.
 	MinSeverity *int `yaml:"min_severity"`
 	// MaxSeverity (YAML: max_severity) — maximum severity threshold.
-	// Events with severity above this value are not delivered. Nil = no filter.
-	MaxSeverity       *int     `yaml:"max_severity"`
-	IncludeCategories []string `yaml:"include_categories"`
-	IncludeEventTypes []string `yaml:"include_event_types"`
-	ExcludeCategories []string `yaml:"exclude_categories"`
-	ExcludeEventTypes []string `yaml:"exclude_event_types"`
+	// Same scope as MinSeverity. Nil = no filter.
+	MaxSeverity       *int                          `yaml:"max_severity"`
+	IncludeCategories map[string]*yamlSeverityRange `yaml:"include_categories"`
+	IncludeEventTypes []string                      `yaml:"include_event_types"`
+	ExcludeCategories []string                      `yaml:"exclude_categories"`
+	ExcludeEventTypes []string                      `yaml:"exclude_event_types"`
 }
 
 // outputFields holds parsed fields from a single output value.
@@ -50,7 +61,7 @@ func buildRoute(name string, raw any, taxonomy *audit.Taxonomy) (*audit.EventRou
 		return nil, fmt.Errorf("output %q route: %w", name, audit.WrapUnknownFieldError(uErr, yr))
 	}
 	route := &audit.EventRoute{
-		IncludeCategories: yr.IncludeCategories,
+		IncludeCategories: convertIncludeCategories(yr.IncludeCategories),
 		IncludeEventTypes: yr.IncludeEventTypes,
 		ExcludeCategories: yr.ExcludeCategories,
 		ExcludeEventTypes: yr.ExcludeEventTypes,
@@ -61,6 +72,29 @@ func buildRoute(name string, raw any, taxonomy *audit.Taxonomy) (*audit.EventRou
 		return nil, fmt.Errorf("output %q: %w", name, err)
 	}
 	return route, nil
+}
+
+// convertIncludeCategories translates the parsed YAML map to the
+// audit package's typed map. An empty inline mapping (`{}`) or an
+// explicit `~` / null is normalised to a nil *audit.SeverityRange —
+// there is exactly one canonical "no filter" value so equality and
+// golden-file tests are stable.
+func convertIncludeCategories(in map[string]*yamlSeverityRange) map[string]*audit.SeverityRange {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]*audit.SeverityRange, len(in))
+	for cat, yf := range in {
+		if yf == nil || (yf.MinSeverity == nil && yf.MaxSeverity == nil) {
+			out[cat] = nil
+			continue
+		}
+		out[cat] = &audit.SeverityRange{
+			MinSeverity: yf.MinSeverity,
+			MaxSeverity: yf.MaxSeverity,
+		}
+	}
+	return out
 }
 
 func buildOutputFormatter(name string, raw any) (audit.Formatter, error) {

@@ -102,7 +102,7 @@ func TestLogger_ThreeWayRace_AuditSetRouteClose(t *testing.T) {
 			defer wg.Done()
 			for range 5 {
 				_ = auditor.SetOutputRoute("test", &audit.EventRoute{
-					IncludeCategories: []string{"write"},
+					IncludeCategories: map[string]*audit.SeverityRange{"write": nil},
 				})
 				_ = auditor.SetOutputRoute("test", &audit.EventRoute{})
 			}

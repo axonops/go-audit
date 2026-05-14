@@ -10,5 +10,5 @@ outputs:
       path: "${AUDIT_TEST_DIR}/audit.log"
     route:
       include_categories:
-        - write
-        - security
+        write: {}
+        security: {}

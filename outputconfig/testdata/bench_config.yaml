@@ -52,9 +52,10 @@ outputs:
       max_backups: 3
     route:
       include_categories:
-        - security
-        - compliance
-      min_severity: 6
+        security:
+          min_severity: 6
+        compliance:
+          min_severity: 6
     exclude_labels:
       - pii
       - financial
@@ -66,7 +67,7 @@ outputs:
       max_size_mb: 200
     route:
       include_categories:
-        - write
+        write: {}
       include_event_types:
         - user_create
         - user_update

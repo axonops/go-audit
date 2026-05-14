@@ -114,8 +114,10 @@ func registerSeverityLoggerSteps(ctx *godog.ScenarioContext, tc *AuditTestContex
 	})
 
 	ctx.Step(`^an auditor with stdout output routed to include only "([^"]*)" with min_severity (\d+)$`, func(cat string, minSev int) error {
-		include := []string{cat}
-		return createSeverityRoutedAuditor(tc, &minSev, nil, include, nil)
+		// Per-category severity (#193): the min_severity is attached
+		// to the category's filter, not to the route. Route-level
+		// MinSeverity no longer applies to category matches.
+		return createPerCategorySeverityRoutedAuditor(tc, cat, &minSev, nil)
 	})
 
 	ctx.Step(`^an auditor with stdout output routed to exclude "([^"]*)" with min_severity (\d+)$`, func(cat string, minSev int) error {
@@ -147,7 +149,7 @@ func registerSeverityLoggerSteps(ctx *godog.ScenarioContext, tc *AuditTestContex
 	// in config_steps.go. Do not duplicate here.
 }
 
-func createSeverityRoutedAuditor(tc *AuditTestContext, minSev, maxSev *int, includeCats, excludeCats []string) error {
+func createSeverityRoutedAuditor(tc *AuditTestContext, minSev, maxSev *int, incCats, excludeCats []string) error {
 	tc.StdoutBuf = &bytes.Buffer{}
 	stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: tc.StdoutBuf})
 	if err != nil {
@@ -156,8 +158,37 @@ func createSeverityRoutedAuditor(tc *AuditTestContext, minSev, maxSev *int, incl
 	route := &audit.EventRoute{
 		MinSeverity:       minSev,
 		MaxSeverity:       maxSev,
-		IncludeCategories: includeCats,
+		IncludeCategories: includeCats(incCats...),
 		ExcludeCategories: excludeCats,
+	}
+	auditor, err := audit.New(
+		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
+		audit.WithNamedOutput(stdout, audit.WithRoute(route)),
+	)
+	if err != nil {
+		return fmt.Errorf("create auditor: %w", err)
+	}
+	tc.Auditor = auditor
+	return nil
+}
+
+// createPerCategorySeverityRoutedAuditor builds an auditor whose
+// single output uses a per-category SeverityRange filter for the
+// named category (#193). Route-level MinSeverity/MaxSeverity are
+// NOT set — the per-category bounds are authoritative for category
+// matches.
+func createPerCategorySeverityRoutedAuditor(tc *AuditTestContext, cat string, minSev, maxSev *int) error {
+	tc.StdoutBuf = &bytes.Buffer{}
+	stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: tc.StdoutBuf})
+	if err != nil {
+		return fmt.Errorf("create stdout: %w", err)
+	}
+	route := &audit.EventRoute{
+		IncludeCategories: map[string]*audit.SeverityRange{
+			cat: {MinSeverity: minSev, MaxSeverity: maxSev},
+		},
 	}
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tc.Taxonomy),
@@ -185,6 +216,17 @@ func registerSeverityValidationSteps(ctx *godog.ScenarioContext, tc *AuditTestCo
 		return trySeverityLoggerCreation(tc, &minSev, &maxSev)
 	})
 
+	// Per-category validation (#193): per-category severity bounds
+	// are attached to category map entries, not to the route.
+	ctx.Step(`^I try to create an auditor with per-category route for "([^"]*)" min_severity (\-?\d+)$`,
+		func(cat string, minSev int) error {
+			return tryPerCategoryAuditorCreation(tc, cat, &minSev, nil)
+		})
+	ctx.Step(`^I try to create an auditor with per-category route for "([^"]*)" min_severity (\d+) and max_severity (\d+)$`,
+		func(cat string, minSev, maxSev int) error {
+			return tryPerCategoryAuditorCreation(tc, cat, &minSev, &maxSev)
+		})
+
 	ctx.Step(`^the auditor creation should fail with error containing "([^"]*)"$`, func(expected string) error {
 		if tc.LastErr == nil {
 			return fmt.Errorf("expected error containing %q, got nil", expected)
@@ -194,6 +236,35 @@ func registerSeverityValidationSteps(ctx *godog.ScenarioContext, tc *AuditTestCo
 		}
 		return nil
 	})
+}
+
+// tryPerCategoryAuditorCreation attempts to construct an auditor
+// whose single output uses a per-category SeverityRange for the
+// named category. The constructor error is captured for later
+// assertion via the shared `the auditor creation should fail...`
+// step.
+func tryPerCategoryAuditorCreation(tc *AuditTestContext, cat string, minSev, maxSev *int) error {
+	tc.StdoutBuf = &bytes.Buffer{}
+	stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: tc.StdoutBuf})
+	if err != nil {
+		return fmt.Errorf("create stdout: %w", err)
+	}
+	route := &audit.EventRoute{
+		IncludeCategories: map[string]*audit.SeverityRange{
+			cat: {MinSeverity: minSev, MaxSeverity: maxSev},
+		},
+	}
+	auditor, lErr := audit.New(
+		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
+		audit.WithNamedOutput(stdout, audit.WithRoute(route)),
+	)
+	tc.LastErr = lErr
+	if auditor != nil {
+		tc.Auditor = auditor
+	}
+	return nil
 }
 
 func trySeverityLoggerCreation(tc *AuditTestContext, minSev, maxSev *int) error {
@@ -227,4 +298,45 @@ func registerSeverityRuntimeSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 		route := &audit.EventRoute{MinSeverity: &minSev}
 		return tc.Auditor.SetOutputRoute(name, route)
 	})
+
+	// Per-category runtime route change (#193).
+	ctx.Step(`^I set output "([^"]*)" route to per-category "([^"]*)" with min_severity (\d+)$`,
+		func(name, cat string, minSev int) error {
+			if tc.Auditor == nil {
+				return fmt.Errorf("auditor not created")
+			}
+			route := &audit.EventRoute{
+				IncludeCategories: map[string]*audit.SeverityRange{
+					cat: {MinSeverity: &minSev},
+				},
+			}
+			return tc.Auditor.SetOutputRoute(name, route)
+		})
+
+	// Precedence assertion (#193): a route with a category in
+	// IncludeCategories carrying a nil filter must deliver category
+	// matches regardless of route-level MinSeverity.
+	ctx.Step(`^a per-category route including "([^"]*)" with no severity AND route-level min_severity (\d+)$`,
+		func(cat string, minSev int) error {
+			tc.StdoutBuf = &bytes.Buffer{}
+			stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: tc.StdoutBuf})
+			if err != nil {
+				return fmt.Errorf("create stdout: %w", err)
+			}
+			route := &audit.EventRoute{
+				IncludeCategories: map[string]*audit.SeverityRange{cat: nil},
+				MinSeverity:       &minSev,
+			}
+			auditor, lErr := audit.New(
+				audit.WithTaxonomy(tc.Taxonomy),
+				audit.WithAppName("test-app"),
+				audit.WithHost("test-host"),
+				audit.WithNamedOutput(stdout, audit.WithRoute(route)),
+			)
+			if lErr != nil {
+				return fmt.Errorf("create auditor: %w", lErr)
+			}
+			tc.Auditor = auditor
+			return nil
+		})
 }

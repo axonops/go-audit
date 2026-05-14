@@ -43,7 +43,7 @@ Feature: YAML Output Configuration
             path: "${AUDIT_BDD_DIR}/writes.log"
           route:
             include_categories:
-              - write
+              write: {}
       """
     When I create an auditor from the YAML config
     And I audit event "user_create" with fields:

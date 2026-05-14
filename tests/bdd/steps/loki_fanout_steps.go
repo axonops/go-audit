@@ -43,7 +43,7 @@ func registerLokiFanoutGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 
 	ctx.Step(`^an auditor with file receiving all events and loki receiving only "([^"]*)"$`,
 		func(category string) error {
-			lokiRoute := &audit.EventRoute{IncludeCategories: []string{category}}
+			lokiRoute := &audit.EventRoute{IncludeCategories: includeCats(category)}
 			return createFileAndLokiAuditor(tc, nil, lokiRoute)
 		})
 

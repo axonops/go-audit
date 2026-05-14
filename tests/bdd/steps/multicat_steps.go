@@ -105,7 +105,7 @@ events:
 
 func registerMultiCatLoggerSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^an auditor with stdout output routed to include only "([^"]*)"$`, func(category string) error {
-		return createMultiCatAuditor(tc, &audit.EventRoute{IncludeCategories: []string{category}}, nil)
+		return createMultiCatAuditor(tc, &audit.EventRoute{IncludeCategories: includeCats(category)}, nil)
 	})
 
 	ctx.Step(`^an auditor with stdout output routed to exclude "([^"]*)"$`, func(category string) error {

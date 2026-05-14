@@ -386,7 +386,7 @@ outputs:
     # --- Per-output features ---
     route:
       include_categories:
-        - security
+        security: {}
     exclude_labels:
       - pii
     hmac:
@@ -989,7 +989,7 @@ outputs:
     formatter:
       type: cef
     route:
-      include_categories: [security]
+      include_categories: {security: {}}
   loki_all:
     type: loki
     loki:

@@ -95,7 +95,7 @@ outputs:
       path: "./security.log"
     route:
       include_categories:
-        - security
+        security: {}
 
   writes_log:
     type: file
@@ -103,7 +103,7 @@ outputs:
       path: "./writes.log"
     route:
       include_categories:
-        - write
+        write: {}
 ```
 
 - **No route** = receives everything (the console output above)
@@ -142,20 +142,23 @@ example's `outputs.yaml` includes a `critical_alerts` output with
     file:
       path: "./security.log"
     route:
-      include_categories: [security]
+      include_categories: {security: {}}
 ```
 
-**Category with severity** — filter by category AND severity. Only
-events matching the category AND meeting the severity threshold are
-delivered:
+**Category with per-category severity** (#193) — each included
+category can carry its own severity bound. The bound goes **inside**
+the category mapping value, not at the route level. A category
+match never falls back to route-level severity — to constrain a
+category by severity, place the bound inside its mapping:
 ```yaml
   security_critical:
     type: file
     file:
       path: "./security-critical.log"
     route:
-      include_categories: [security]
-      min_severity: 7
+      include_categories:
+        security:
+          min_severity: 7   # only security events at severity >= 7
 ```
 
 **Severity only** — filter by severity regardless of category. This

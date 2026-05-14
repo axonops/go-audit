@@ -124,7 +124,7 @@ func TestLoad_FileWithRoute(t *testing.T) {
 	// Second output: file with route
 	assert.Equal(t, "audit_log", result.OutputMetadata()[1].Name)
 	require.NotNil(t, result.OutputMetadata()[1].Route)
-	assert.Equal(t, []string{"write", "security"}, result.OutputMetadata()[1].Route.IncludeCategories)
+	assert.Equal(t, map[string]*audit.SeverityRange{"write": nil, "security": nil}, result.OutputMetadata()[1].Route.IncludeCategories)
 }
 
 func TestLoad_MultipleOutputs(t *testing.T) {
@@ -568,7 +568,7 @@ outputs:
   bad:
     type: stdout
     route:
-      include_categories: [nonexistent]
+      include_categories: {nonexistent: {}}
 `)
 	_, err := outputconfig.Load(context.Background(), yaml, tax)
 	require.Error(t, err)
@@ -587,7 +587,7 @@ outputs:
   bad:
     type: stdout
     route:
-      include_categories: [write]
+      include_categories: {write: {}}
       exclude_categories: [security]
 `)
 	_, err := outputconfig.Load(context.Background(), yaml, tax)
@@ -779,8 +779,8 @@ func TestLoad_MissingEnvVarInFormatter(t *testing.T) {
 
 func TestLoad_MissingEnvVarInRoute(t *testing.T) {
 	tax := testTaxonomy(t)
-	// Route values are string sequences — env var in a sequence element.
-	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  bad:\n    type: stdout\n    route:\n      include_categories:\n        - ${MISSING_ROUTE_VAR}\n")
+	// Route include_categories is a mapping (#193) — env var in a key.
+	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  bad:\n    type: stdout\n    route:\n      include_categories:\n        ${MISSING_ROUTE_VAR}: {}\n")
 	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
@@ -804,7 +804,7 @@ outputs:
     file:
       path: ` + filepath.Join(dir, "writes.log") + `
     route:
-      include_categories: [write]
+      include_categories: {write: {}}
 `)
 	tax := testTaxonomy(t)
 	result, err := outputconfig.Load(context.Background(), yamlCfg, tax)
@@ -848,7 +848,7 @@ func TestLoad_ClosesOutputOnRouteError(t *testing.T) {
 		return spy, nil
 	})
 	tax := testTaxonomy(t)
-	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  leak:\n    type: spy\n    route:\n      include_categories: [nonexistent]\n")
+	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  leak:\n    type: spy\n    route:\n      include_categories: {nonexistent: {}}\n")
 	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.True(t, spy.closed.Load(), "output must be closed when buildRoute fails")
@@ -989,7 +989,7 @@ outputs:
   plain:
     type: stdout
     route:
-      include_categories: [write]
+      include_categories: {write: {}}
 `)
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
@@ -1076,6 +1076,12 @@ outputs:
 
 func TestLoad_RouteSeverityWithCategories(t *testing.T) {
 	tax := testTaxonomy(t)
+	// Per-category min_severity expressed inside the category mapping
+	// (#193). Route-level min_severity is intentionally absent — the
+	// per-category form is the authoritative way to constrain
+	// severity for a specific category. Route-level severity now
+	// applies only to event-type matches and the severity-only
+	// catch-all.
 	data := []byte(`
 version: 1
 app_name: test
@@ -1084,15 +1090,18 @@ outputs:
   combined:
     type: stdout
     route:
-      include_categories: [security]
-      min_severity: 7
+      include_categories:
+        security:
+          min_severity: 7
 `)
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	require.NotNil(t, result.OutputMetadata()[0].Route)
-	assert.Equal(t, []string{"security"}, result.OutputMetadata()[0].Route.IncludeCategories)
-	require.NotNil(t, result.OutputMetadata()[0].Route.MinSeverity)
-	assert.Equal(t, 7, *result.OutputMetadata()[0].Route.MinSeverity)
+	inc := result.OutputMetadata()[0].Route.IncludeCategories
+	require.Contains(t, inc, "security")
+	require.NotNil(t, inc["security"])
+	require.NotNil(t, inc["security"].MinSeverity)
+	assert.Equal(t, 7, *inc["security"].MinSeverity)
 }
 
 // ---------------------------------------------------------------------------

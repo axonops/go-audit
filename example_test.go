@@ -323,7 +323,7 @@ func ExampleNewStdoutOutput() {
 func ExampleEventRoute_include() {
 	// Include mode: only security events are delivered to this output.
 	route := audit.EventRoute{
-		IncludeCategories: []string{"security"},
+		IncludeCategories: map[string]*audit.SeverityRange{"security": nil},
 	}
 	fmt.Println("empty:", route.IsEmpty())
 	// Output: empty: false
@@ -373,7 +373,7 @@ func ExampleAuditor_SetOutputRoute() {
 
 	// Restrict output to security events only at runtime.
 	if err := auditor.SetOutputRoute("stdout", &audit.EventRoute{
-		IncludeCategories: []string{"security"},
+		IncludeCategories: map[string]*audit.SeverityRange{"security": nil},
 	}); err != nil {
 		fmt.Println("route error:", err)
 		return

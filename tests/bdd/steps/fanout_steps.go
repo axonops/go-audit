@@ -72,6 +72,21 @@ events:
       marker: {}
 `
 
+// includeCats builds an EventRoute.IncludeCategories map from a list
+// of category names with nil SeverityRange (the "no severity filter"
+// shorthand). Used throughout the fanout step definitions to keep
+// the call sites concise.
+func includeCats(names ...string) map[string]*audit.SeverityRange {
+	if len(names) == 0 {
+		return nil
+	}
+	m := make(map[string]*audit.SeverityRange, len(names))
+	for _, n := range names {
+		m[n] = nil
+	}
+	return m
+}
+
 func registerFanoutSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	registerFanoutGivenSteps(ctx, tc)
 	registerFanoutWhenSteps(ctx, tc)
@@ -124,7 +139,7 @@ func registerFanoutGivenRoutingSteps(ctx *godog.ScenarioContext, tc *AuditTestCo
 		return nil
 	})
 	ctx.Step(`^an auditor with file receiving all events and webhook receiving only "([^"]*)"$`, func(cat string) error {
-		return createRoutedAuditor(tc, &audit.EventRoute{IncludeCategories: []string{cat}})
+		return createRoutedAuditor(tc, &audit.EventRoute{IncludeCategories: includeCats(cat)})
 	})
 	ctx.Step(`^an auditor with file receiving all events and webhook including event types "([^"]*)"$`, func(types string) error {
 		return createRoutedAuditor(tc, &audit.EventRoute{IncludeEventTypes: strings.Split(types, ",")})
@@ -133,11 +148,11 @@ func registerFanoutGivenRoutingSteps(ctx *godog.ScenarioContext, tc *AuditTestCo
 		return createRoutedAuditor(tc, &audit.EventRoute{ExcludeCategories: []string{cat}})
 	})
 	ctx.Step(`^an auditor with file receiving all events and webhook including categories "([^"]*)" and "([^"]*)"$`, func(cat1, cat2 string) error {
-		return createRoutedAuditor(tc, &audit.EventRoute{IncludeCategories: []string{cat1, cat2}})
+		return createRoutedAuditor(tc, &audit.EventRoute{IncludeCategories: includeCats(cat1, cat2)})
 	})
 	ctx.Step(`^an auditor with file receiving all events and webhook including categories "([^"]*)" and event types "([^"]*)"$`, func(cats, types string) error {
 		return createRoutedAuditor(tc, &audit.EventRoute{
-			IncludeCategories: strings.Split(cats, ","),
+			IncludeCategories: includeCats(strings.Split(cats, ",")...),
 			IncludeEventTypes: strings.Split(types, ","),
 		})
 	})
@@ -166,7 +181,7 @@ func registerFanoutGivenRuntimeSteps(ctx *godog.ScenarioContext, tc *AuditTestCo
 		u = strings.TrimPrefix(u, "https://")
 		return tc.Auditor.SetOutputRoute(
 			"webhook:"+u,
-			&audit.EventRoute{IncludeCategories: []string{cat}},
+			&audit.EventRoute{IncludeCategories: includeCats(cat)},
 		)
 	})
 }
@@ -240,7 +255,7 @@ func registerFanoutGivenMultiOutputSteps(ctx *godog.ScenarioContext, tc *AuditTe
 	ctx.Step(`^I query the webhook output route$`, func() error { return queryWebhookRoute(tc) })
 	ctx.Step(`^the route should include category "([^"]*)"$`, func(cat string) error { return assertRouteIncludesCategory(tc, cat) })
 	ctx.Step(`^I try to set route for unknown output "([^"]*)"$`, func(name string) error {
-		tc.LastErr = tc.Auditor.SetOutputRoute(name, &audit.EventRoute{IncludeCategories: []string{"write"}})
+		tc.LastErr = tc.Auditor.SetOutputRoute(name, &audit.EventRoute{IncludeCategories: includeCats("write")})
 		return nil
 	})
 	ctx.Step(`^I clear the webhook output route$`, func() error {
@@ -398,7 +413,7 @@ func tryMixedRoute(tc *AuditTestContext) error {
 		audit.WithAppName("test-app"),
 		audit.WithHost("test-host"),
 		audit.WithNamedOutput(f, audit.WithRoute(&audit.EventRoute{
-			IncludeCategories: []string{"write"},
+			IncludeCategories: includeCats("write"),
 			ExcludeCategories: []string{"read"},
 		})),
 	)
@@ -421,7 +436,7 @@ func tryUnknownCategoryRoute(tc *AuditTestContext) error {
 		audit.WithAppName("test-app"),
 		audit.WithHost("test-host"),
 		audit.WithNamedOutput(f, audit.WithRoute(&audit.EventRoute{
-			IncludeCategories: []string{"nonexistent"},
+			IncludeCategories: includeCats("nonexistent"),
 		})),
 	)
 	tc.LastErr = err
@@ -443,12 +458,14 @@ func assertRouteIncludesCategory(tc *AuditTestContext, cat string) error {
 	if tc.QueriedRoute == nil {
 		return fmt.Errorf("no route queried")
 	}
-	for _, c := range tc.QueriedRoute.IncludeCategories {
-		if c == cat {
-			return nil
-		}
+	if _, ok := tc.QueriedRoute.IncludeCategories[cat]; ok {
+		return nil
 	}
-	return fmt.Errorf("route does not include category %q (includes: %v)", cat, tc.QueriedRoute.IncludeCategories)
+	keys := make([]string, 0, len(tc.QueriedRoute.IncludeCategories))
+	for k := range tc.QueriedRoute.IncludeCategories {
+		keys = append(keys, k)
+	}
+	return fmt.Errorf("route does not include category %q (includes: %v)", cat, keys)
 }
 
 func tryDuplicateSyslogAddress(tc *AuditTestContext) error {
@@ -717,8 +734,8 @@ func createDualFileRoutedAuditor(tc *AuditTestContext) error {
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithAppName("test-app"),
 		audit.WithHost("test-host"),
-		audit.WithNamedOutput(secOut, audit.WithRoute(&audit.EventRoute{IncludeCategories: []string{"security"}})),
-		audit.WithNamedOutput(writeOut, audit.WithRoute(&audit.EventRoute{IncludeCategories: []string{"write"}})),
+		audit.WithNamedOutput(secOut, audit.WithRoute(&audit.EventRoute{IncludeCategories: includeCats("security")})),
+		audit.WithNamedOutput(writeOut, audit.WithRoute(&audit.EventRoute{IncludeCategories: includeCats("write")})),
 	}
 	auditor, err := audit.New(opts...)
 	if err != nil {
@@ -765,8 +782,8 @@ func createTripleRoutedAuditor(tc *AuditTestContext) error {
 		audit.WithAppName("test-app"),
 		audit.WithHost("test-host"),
 		audit.WithNamedOutput(fileOut), // all events
-		audit.WithNamedOutput(syslogOut, audit.WithRoute(&audit.EventRoute{IncludeCategories: []string{"security"}})), // security only
-		audit.WithNamedOutput(webhookOut, audit.WithRoute(&audit.EventRoute{IncludeCategories: []string{"write"}})),   // write only
+		audit.WithNamedOutput(syslogOut, audit.WithRoute(&audit.EventRoute{IncludeCategories: includeCats("security")})), // security only
+		audit.WithNamedOutput(webhookOut, audit.WithRoute(&audit.EventRoute{IncludeCategories: includeCats("write")})),   // write only
 	}
 	auditor, err := audit.New(opts...)
 	if err != nil {

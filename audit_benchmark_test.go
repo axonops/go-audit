@@ -371,10 +371,10 @@ func BenchmarkAudit_FanOut_FilteredOutputs(b *testing.B) {
 		audit.WithHost("test-host"),
 		audit.WithNamedOutput(out1), // receives all events
 		audit.WithNamedOutput(out2, audit.WithRoute(&audit.EventRoute{
-			IncludeCategories: []string{"write"},
+			IncludeCategories: map[string]*audit.SeverityRange{"write": nil},
 		})), // receives only write events
 		audit.WithNamedOutput(out3, audit.WithRoute(&audit.EventRoute{
-			IncludeCategories: []string{"security"},
+			IncludeCategories: map[string]*audit.SeverityRange{"security": nil},
 		})), // receives only security events — filters schema_register
 	)
 	if err != nil {

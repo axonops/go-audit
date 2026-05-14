@@ -26,7 +26,7 @@ import (
 
 func TestEventRoute_IsEmpty(t *testing.T) {
 	assert.True(t, (&audit.EventRoute{}).IsEmpty())
-	assert.False(t, (&audit.EventRoute{IncludeCategories: []string{"write"}}).IsEmpty())
+	assert.False(t, (&audit.EventRoute{IncludeCategories: map[string]*audit.SeverityRange{"write": nil}}).IsEmpty())
 	assert.False(t, (&audit.EventRoute{ExcludeEventTypes: []string{"auth_failure"}}).IsEmpty())
 }
 
@@ -44,7 +44,7 @@ func TestValidateEventRoute(t *testing.T) {
 		},
 		{
 			name:  "valid include categories",
-			route: audit.EventRoute{IncludeCategories: []string{"write", "security"}},
+			route: audit.EventRoute{IncludeCategories: map[string]*audit.SeverityRange{"write": nil, "security": nil}},
 		},
 		{
 			name:  "valid include event types",
@@ -61,7 +61,7 @@ func TestValidateEventRoute(t *testing.T) {
 		{
 			name: "valid include categories and event types",
 			route: audit.EventRoute{
-				IncludeCategories: []string{"write"},
+				IncludeCategories: map[string]*audit.SeverityRange{"write": nil},
 				IncludeEventTypes: []string{"auth_failure"},
 			},
 		},
@@ -75,7 +75,7 @@ func TestValidateEventRoute(t *testing.T) {
 		{
 			name: "mixed include and exclude categories",
 			route: audit.EventRoute{
-				IncludeCategories: []string{"write"},
+				IncludeCategories: map[string]*audit.SeverityRange{"write": nil},
 				ExcludeCategories: []string{"read"},
 			},
 			wantErr: "either include or exclude, not both",
@@ -83,7 +83,7 @@ func TestValidateEventRoute(t *testing.T) {
 		{
 			name: "mixed include categories and exclude event types",
 			route: audit.EventRoute{
-				IncludeCategories: []string{"write"},
+				IncludeCategories: map[string]*audit.SeverityRange{"write": nil},
 				ExcludeEventTypes: []string{"auth_failure"},
 			},
 			wantErr: "either include or exclude, not both",
@@ -98,7 +98,7 @@ func TestValidateEventRoute(t *testing.T) {
 		},
 		{
 			name:    "unknown include category",
-			route:   audit.EventRoute{IncludeCategories: []string{"nonexistent"}},
+			route:   audit.EventRoute{IncludeCategories: map[string]*audit.SeverityRange{"nonexistent": nil}},
 			wantErr: "unknown taxonomy entries",
 		},
 		{
@@ -151,14 +151,14 @@ func TestMatchesRoute(t *testing.T) {
 		// Include mode — categories.
 		{
 			name:      "include category match",
-			route:     audit.EventRoute{IncludeCategories: []string{"security"}},
+			route:     audit.EventRoute{IncludeCategories: map[string]*audit.SeverityRange{"security": nil}},
 			eventType: "auth_failure",
 			category:  "security",
 			want:      true,
 		},
 		{
 			name:      "include category no match",
-			route:     audit.EventRoute{IncludeCategories: []string{"security"}},
+			route:     audit.EventRoute{IncludeCategories: map[string]*audit.SeverityRange{"security": nil}},
 			eventType: "user_create",
 			category:  "write",
 			want:      false,
@@ -182,7 +182,7 @@ func TestMatchesRoute(t *testing.T) {
 		{
 			name: "include union category match",
 			route: audit.EventRoute{
-				IncludeCategories: []string{"write"},
+				IncludeCategories: map[string]*audit.SeverityRange{"write": nil},
 				IncludeEventTypes: []string{"auth_failure"},
 			},
 			eventType: "user_create",
@@ -192,7 +192,7 @@ func TestMatchesRoute(t *testing.T) {
 		{
 			name: "include union event type match",
 			route: audit.EventRoute{
-				IncludeCategories: []string{"write"},
+				IncludeCategories: map[string]*audit.SeverityRange{"write": nil},
 				IncludeEventTypes: []string{"auth_failure"},
 			},
 			eventType: "auth_failure",
@@ -202,7 +202,7 @@ func TestMatchesRoute(t *testing.T) {
 		{
 			name: "include union no match",
 			route: audit.EventRoute{
-				IncludeCategories: []string{"write"},
+				IncludeCategories: map[string]*audit.SeverityRange{"write": nil},
 				IncludeEventTypes: []string{"auth_failure"},
 			},
 			eventType: "config_get",
@@ -296,7 +296,7 @@ func BenchmarkMatchesRoute(b *testing.B) {
 
 	b.Run("include_categories", func(b *testing.B) {
 		route := audit.EventRoute{
-			IncludeCategories: []string{"write", "security", "admin", "read"},
+			IncludeCategories: map[string]*audit.SeverityRange{"write": nil, "security": nil, "admin": nil, "read": nil},
 		}
 		b.ResetTimer()
 		b.ReportAllocs()
@@ -328,11 +328,11 @@ func BenchmarkMatchesRoute(b *testing.B) {
 	})
 
 	b.Run("include_20_categories", func(b *testing.B) {
-		cats := make([]string, 20)
-		for i := range cats {
-			cats[i] = fmt.Sprintf("category_%02d", i)
+		cats := make(map[string]*audit.SeverityRange, 20)
+		for i := 0; i < 20; i++ {
+			cats[fmt.Sprintf("category_%02d", i)] = nil
 		}
-		cats[15] = "write" // match is near the end
+		cats["write"] = nil // ensure the match key is present
 		route := audit.EventRoute{IncludeCategories: cats}
 		b.ResetTimer()
 		b.ReportAllocs()

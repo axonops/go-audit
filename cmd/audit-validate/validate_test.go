@@ -54,7 +54,7 @@ outputs:
 
 // outputsRouteUnknownCategory drives an EventRoute that references a
 // category absent from the taxonomy. The runtime emits
-// "EventRoute references unknown taxonomy entries: [category ...]"
+// `EventRoute references unknown taxonomy entries: [category "..."]`
 // — exercising the validator's semantic-class classifier (#611 AC#2).
 const outputsRouteUnknownCategory = `
 version: 1
@@ -65,7 +65,7 @@ outputs:
     type: stdout
     route:
       include_categories:
-        - does_not_exist
+        does_not_exist: {}
 `
 
 // outputsRouteUnknownEventType drives an EventRoute that references

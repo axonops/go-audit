@@ -80,7 +80,7 @@ outputs:
     file:
       path: "./secure-audit.log"
     route:
-      include_categories: [security]
+      include_categories: {security: {}}
 
   # No HMAC — all events, no crypto overhead
   verbose_log:

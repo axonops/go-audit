@@ -210,7 +210,7 @@ func registerSyslogSeverityGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 			return createSyslogAuditorWithRoute(tc, &syslog.Config{
 				Network: network, Address: address,
 			}, &audit.EventRoute{
-				IncludeCategories: []string{category},
+				IncludeCategories: includeCats(category),
 			})
 		})
 }

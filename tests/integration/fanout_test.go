@@ -244,7 +244,7 @@ func TestFanOut_EventRouting(t *testing.T) {
 		audit.WithHost("test-host"),
 		audit.WithNamedOutput(fileOut), // all events
 		audit.WithNamedOutput(webhookOut, audit.WithRoute(&audit.EventRoute{
-			IncludeCategories: []string{"security"},
+			IncludeCategories: map[string]*audit.SeverityRange{"security": nil},
 		})), // security only
 	)
 	require.NoError(t, err)

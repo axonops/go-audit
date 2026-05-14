@@ -77,13 +77,13 @@ func TestFanout_RouteFiltering(t *testing.T) {
 	}{
 		{
 			name:      "include category matches",
-			route:     audit.EventRoute{IncludeCategories: []string{"security"}},
+			route:     audit.EventRoute{IncludeCategories: map[string]*audit.SeverityRange{"security": nil}},
 			events:    []string{"user_create", "auth_failure"},
 			wantCount: 1, // only auth_failure
 		},
 		{
 			name:      "include category no match",
-			route:     audit.EventRoute{IncludeCategories: []string{"security"}},
+			route:     audit.EventRoute{IncludeCategories: map[string]*audit.SeverityRange{"security": nil}},
 			events:    []string{"user_create", "user_get"},
 			wantCount: 0,
 		},
@@ -96,7 +96,7 @@ func TestFanout_RouteFiltering(t *testing.T) {
 		{
 			name: "include union matches category and event type",
 			route: audit.EventRoute{
-				IncludeCategories: []string{"write"},
+				IncludeCategories: map[string]*audit.SeverityRange{"write": nil},
 				IncludeEventTypes: []string{"auth_failure"},
 			},
 			events:    []string{"user_create", "auth_failure", "user_get"},
@@ -207,7 +207,7 @@ func TestFanout_BootstrapValidation_UnknownCategory(t *testing.T) {
 		audit.WithAppName("test-app"),
 		audit.WithHost("test-host"),
 		audit.WithNamedOutput(out, audit.WithRoute(&audit.EventRoute{
-			IncludeCategories: []string{"nonexistent"},
+			IncludeCategories: map[string]*audit.SeverityRange{"nonexistent": nil},
 		})),
 	)
 	require.Error(t, err)
@@ -222,7 +222,7 @@ func TestFanout_BootstrapValidation_MixedMode(t *testing.T) {
 		audit.WithAppName("test-app"),
 		audit.WithHost("test-host"),
 		audit.WithNamedOutput(out, audit.WithRoute(&audit.EventRoute{
-			IncludeCategories: []string{"write"},
+			IncludeCategories: map[string]*audit.SeverityRange{"write": nil},
 			ExcludeCategories: []string{"read"},
 		})),
 	)
@@ -248,7 +248,7 @@ func TestFanout_SetOutputRoute(t *testing.T) {
 
 	// Set route to security only.
 	require.NoError(t, auditor.SetOutputRoute("routed", &audit.EventRoute{
-		IncludeCategories: []string{"security"},
+		IncludeCategories: map[string]*audit.SeverityRange{"security": nil},
 	}))
 
 	require.NoError(t, auditor.AuditEvent(audit.NewEvent("user_delete", audit.Fields{"outcome": "success"})))
@@ -274,7 +274,7 @@ func TestFanout_SetOutputRoute_DoesNotAffectOtherOutputs(t *testing.T) {
 
 	// Restrict A to security only.
 	require.NoError(t, auditor.SetOutputRoute("a", &audit.EventRoute{
-		IncludeCategories: []string{"security"},
+		IncludeCategories: map[string]*audit.SeverityRange{"security": nil},
 	}))
 
 	require.NoError(t, auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{"outcome": "success"})))
@@ -313,7 +313,7 @@ func TestFanout_SetOutputRoute_InvalidRoute(t *testing.T) {
 	t.Cleanup(func() { _ = auditor.Close() })
 
 	err = auditor.SetOutputRoute("test", &audit.EventRoute{
-		IncludeCategories: []string{"bogus"},
+		IncludeCategories: map[string]*audit.SeverityRange{"bogus": nil},
 	})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
@@ -328,7 +328,7 @@ func TestFanout_ClearOutputRoute(t *testing.T) {
 		audit.WithAppName("test-app"),
 		audit.WithHost("test-host"),
 		audit.WithNamedOutput(out, audit.WithRoute(&audit.EventRoute{
-			IncludeCategories: []string{"security"},
+			IncludeCategories: map[string]*audit.SeverityRange{"security": nil},
 		})),
 	)
 	require.NoError(t, err)
@@ -360,7 +360,7 @@ func TestFanout_ClearOutputRoute_UnknownOutput(t *testing.T) {
 
 func TestFanout_OutputRoute(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
-	route := audit.EventRoute{IncludeCategories: []string{"security"}}
+	route := audit.EventRoute{IncludeCategories: map[string]*audit.SeverityRange{"security": nil}}
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
 		audit.WithAppName("test-app"),
@@ -375,7 +375,9 @@ func TestFanout_OutputRoute(t *testing.T) {
 	assert.Equal(t, route.IncludeCategories, got.IncludeCategories)
 
 	// Mutating the returned route must not affect the stored route.
-	got.IncludeCategories = append(got.IncludeCategories, "write")
+	// Map form (#193): inserting a new key on the returned map must
+	// not be observable on a subsequent OutputRoute() call.
+	got.IncludeCategories["write"] = nil
 	got2, err := auditor.OutputRoute("test")
 	require.NoError(t, err)
 	assert.Len(t, got2.IncludeCategories, 1, "stored route should not be mutated")
@@ -409,11 +411,11 @@ func TestFanout_OutputRoute_ReflectsSetAndClear(t *testing.T) {
 	t.Cleanup(func() { _ = auditor.Close() })
 
 	// Set a route.
-	newRoute := audit.EventRoute{IncludeCategories: []string{"write"}}
+	newRoute := audit.EventRoute{IncludeCategories: map[string]*audit.SeverityRange{"write": nil}}
 	require.NoError(t, auditor.SetOutputRoute("test", &newRoute))
 	got, err := auditor.OutputRoute("test")
 	require.NoError(t, err)
-	assert.Equal(t, []string{"write"}, got.IncludeCategories)
+	assert.Equal(t, map[string]*audit.SeverityRange{"write": nil}, got.IncludeCategories)
 
 	// Clear.
 	require.NoError(t, auditor.ClearOutputRoute("test"))
@@ -447,7 +449,7 @@ func TestFanout_ConcurrentSetRouteAndAudit(t *testing.T) {
 		defer wg.Done()
 		for range 50 {
 			_ = auditor.SetOutputRoute("concurrent", &audit.EventRoute{
-				IncludeCategories: []string{"security"},
+				IncludeCategories: map[string]*audit.SeverityRange{"security": nil},
 			})
 			_ = auditor.ClearOutputRoute("concurrent")
 		}
@@ -480,7 +482,7 @@ func TestFanout_GlobalFilterTakesPrecedence(t *testing.T) {
 		audit.WithAppName("test-app"),
 		audit.WithHost("test-host"),
 		audit.WithNamedOutput(out, audit.WithRoute(&audit.EventRoute{
-			IncludeCategories: []string{"security"},
+			IncludeCategories: map[string]*audit.SeverityRange{"security": nil},
 		})),
 	)
 	require.NoError(t, err)
@@ -623,7 +625,7 @@ func TestFanout_PerOutputRouteFilter_MetricsRecordFiltered(t *testing.T) {
 		audit.WithHost("test-host"),
 		audit.WithMetrics(metrics),
 		audit.WithNamedOutput(out, audit.WithRoute(&audit.EventRoute{
-			IncludeCategories: []string{"security"},
+			IncludeCategories: map[string]*audit.SeverityRange{"security": nil},
 		})),
 	)
 	require.NoError(t, err)
@@ -760,8 +762,8 @@ func TestFanout_AllExcludeRoute_ZeroDeliveries(t *testing.T) {
 // independently — no leakage from one output's filter into
 // another's. (#565 G10).
 func TestFanout_IncludeExclude_MultipleOutputs_Independence(t *testing.T) {
-	writeOnly := &audit.EventRoute{IncludeCategories: []string{"write"}}
-	securityOnly := &audit.EventRoute{IncludeCategories: []string{"security"}}
+	writeOnly := &audit.EventRoute{IncludeCategories: map[string]*audit.SeverityRange{"write": nil}}
+	securityOnly := &audit.EventRoute{IncludeCategories: map[string]*audit.SeverityRange{"security": nil}}
 	out1 := testhelper.NewMockOutput("write-only")
 	out2 := testhelper.NewMockOutput("security-only")
 	auditor, err := audit.New(

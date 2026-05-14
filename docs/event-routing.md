@@ -6,9 +6,10 @@
 - [Why Route Events?](#why-route-events)
 - [Configuration](#configuration)
 - [Include Mode](#include-mode)
+- [Per-Category Severity Thresholds](#per-category-severity-thresholds)
 - [Exclude Mode](#exclude-mode)
 - [Severity Filtering](#severity-filtering)
-- [Combining Severity with Include/Exclude](#combining-severity-with-includeexclude)
+- [Severity Precedence](#severity-precedence)
 - [How Events Flow](#how-events-flow)
 - [Runtime Route Changes](#runtime-route-changes)
 - [Events Without Categories](#events-without-categories)
@@ -28,6 +29,10 @@ A typical deployment has multiple outputs with different purposes:
 - **Compliance file** — needs everything, unfiltered
 - **Alerting webhook** — needs only high-severity events (severity 7+)
 - **Debug log** — needs only write operations during development
+- **Combined feed with mixed thresholds** — all `read` events for the
+  audit trail AND only critical (`severity >= 7`) `security` events,
+  delivered to the same output. This is the per-category-severity
+  pattern; see [Per-Category Severity Thresholds](#per-category-severity-thresholds).
 
 Without routing, every output receives every event, increasing storage
 costs and noise.
@@ -51,7 +56,7 @@ outputs:
       address: "syslog.example.com:514"
     route:
       include_categories:
-        - security
+        security: {}
 
   # Severity filtering — only high-severity events
   alerts:
@@ -64,16 +69,76 @@ outputs:
 
 ## ✅ Include Mode
 
-Only events matching the filter are delivered to this output:
+Only events matching the filter are delivered to this output. The
+allow-list is split across two fields:
 
 ```yaml
 route:
-  include_categories: [security]         # events in the "security" category
-  include_event_types: [config_change]   # OR this specific event type
+  include_categories:
+    security: {}        # any event in the "security" category
+    write: {}           # any event in the "write" category
+  include_event_types:
+    - config_change     # OR this specific event type
 ```
+
+`include_categories` is a YAML **mapping** keyed by category name.
+The value is either an empty mapping (`{}`, meaning "all severities
+for this category") or a per-category severity filter — see the next
+section.
+
+`include_event_types` is a YAML **sequence** of event type names.
 
 If you include both a category and an event type that belongs to that
 category, the event is delivered **once** — it is not duplicated.
+
+## 🎯 Per-Category Severity Thresholds
+
+Each entry in `include_categories` can carry its own
+`min_severity` / `max_severity` bound, expressed as a YAML mapping
+value. This lets a single route express filters that vary by
+category — for example, "all `read` events for the audit trail AND
+only critical (severity ≥ 7) `security` events" — in one place:
+
+```yaml
+route:
+  include_categories:
+    security:
+      min_severity: 7      # only severity-7+ security events
+    read: {}               # all read events, any severity
+```
+
+A nil filter (the empty mapping `{}`) means "no severity constraint
+for this category" — every event in that category is delivered. A
+mapping with `min_severity` and/or `max_severity` constrains
+deliveries to events in that severity band.
+
+Per-category severity is **authoritative for category matches**.
+Route-level `min_severity` / `max_severity` (the `severity-only`
+section below) does NOT apply to events matched by category — only
+to events matched by `include_event_types` and to the
+severity-only catch-all. See [Severity Precedence](#severity-precedence)
+for the full rule.
+
+### Three modes at a glance
+
+```yaml
+# Mode A — category only (any severity)
+route:
+  include_categories:
+    read: {}
+    write: {}
+
+# Mode B — per-category severity
+route:
+  include_categories:
+    security:
+      min_severity: 7
+    read: {}
+
+# Mode C — severity only (catch-all, no categories)
+route:
+  min_severity: 9
+```
 
 ## ❌ Exclude Mode
 
@@ -103,36 +168,59 @@ If only `min_severity` is set, all events at or above that severity
 pass. If only `max_severity` is set, all events at or below that
 severity pass.
 
-## 🔗 Combining Severity with Include/Exclude
+## 🔗 Severity Precedence
 
-Severity filtering combines with include/exclude as an **AND**
-condition — an event must pass **both** the category/event filter
-AND the severity filter to reach the output.
+A route can carry route-level severity bounds (`min_severity` /
+`max_severity` at the top level of the `route:` block) and per-category
+bounds (`min_severity` / `max_severity` inside a category entry of
+`include_categories`). The two scopes serve different purposes:
 
-### Example: Security events with high severity only
+| Match path | Severity bound applied |
+|---|---|
+| Event's category is a key in `include_categories` | **Per-category** filter (or pass-all if nil) |
+| Event's type is in `include_event_types` | Route-level `min_severity` / `max_severity` |
+| Exclude mode (`exclude_categories` / `exclude_event_types`) | Route-level `min_severity` / `max_severity` |
+| Severity-only catch-all (no include / exclude lists) | Route-level `min_severity` / `max_severity` |
+
+A category match never falls back to route-level severity. If the
+event's category is a key in `include_categories` and the per-category
+filter is nil, **all severities pass for that category**, even if the
+route also has a `min_severity` set. To restrict that category by
+severity, put the bound inside its mapping value.
+
+### Example: per-category severity AND event-type fallback
 
 ```yaml
 route:
-  include_categories: [security]
-  min_severity: 8
+  include_categories:
+    security:
+      min_severity: 7      # security events must be severity ≥ 7
+    read: {}               # read events of any severity
+  include_event_types:
+    - admin_action         # admin_action of any category, but
+  min_severity: 5          #   only at severity ≥ 5
 ```
 
-This delivers only events that are in the "security" category **AND**
-have severity 8 or higher. A security event with severity 5 is
-filtered out. A non-security event with severity 9 is also filtered
-out.
+- A `security` event at severity 8 → delivered (matches `security`, per-cat 7 OK).
+- A `security` event at severity 3 → dropped (per-cat 7 fails).
+- A `read` event at severity 0 → delivered (matches `read`, nil filter).
+- An `admin_action` event in some other category at severity 6 → delivered
+  (matches `include_event_types`, route-level 5 OK).
+- An `admin_action` event at severity 4 → dropped (route-level 5 fails).
 
-### Example: Exclude reads, but only keep high severity
+### Example: exclude with route-level severity floor
 
 ```yaml
 route:
-  exclude_categories: [read]
+  exclude_categories:
+    - read
   min_severity: 5
 ```
 
-This delivers events that are NOT in the "read" category **AND** have
-severity 5 or higher. Low-severity write events (severity 3) are
-filtered out even though they pass the exclude filter.
+Delivers events NOT in the "read" category **AND** at severity ≥ 5.
+Low-severity write events (severity 3) are filtered out even though
+they pass the exclude check. Exclude mode does not support per-category
+severity — there is one route-level bound for the whole exclude list.
 
 ## 🔧 How Events Flow
 
@@ -142,19 +230,32 @@ flowchart TD
     B -->|No| C[Dropped]
     B -->|Yes| D[For each output]
     D --> E{Route configured?}
-    E -->|No| G[Accept all]
-    E -->|Yes| F{Matches route filter?}
-    F -->|No| H[Filtered out]
-    F -->|Yes| I{Severity >= min?}
-    I -->|No| H
-    I -->|Yes| J[Sensitivity filter]
-    J --> K["Output.Write()"]
-    G --> J
+    E -->|No| K[Sensitivity filter]
+    E -->|Yes| F{Mode?}
+    F -->|Exclude| X{In exclude list?}
+    X -->|Yes| H[Filtered out]
+    X -->|No| SR{Route-level severity OK?}
+    SR -->|No| H
+    SR -->|Yes| K
+    F -->|Include| Y{Category in include_categories?}
+    Y -->|Yes| Z{Per-category severity OK?}
+    Z -->|No| H
+    Z -->|Yes| K
+    Y -->|No| W{In include_event_types?}
+    W -->|Yes| WS{Route-level severity OK?}
+    WS -->|No| H
+    WS -->|Yes| K
+    W -->|No| H
+    F -->|Severity-only catch-all| CS{Route-level severity OK?}
+    CS -->|No| H
+    CS -->|Yes| K
+    K --> L["Output.Write()"]
 ```
 
 An event must pass the category check AND the per-output route filter
 to reach an output. If an output has no route configured, it receives
-all events.
+all events. The severity check varies by match path — see
+[Severity Precedence](#severity-precedence).
 
 ## 🔄 Runtime Route Changes
 
@@ -163,7 +264,17 @@ Routes can be modified at runtime without restarting the auditor:
 ```go
 // Restrict an output to security events only.
 err := auditor.SetOutputRoute("siem", &audit.EventRoute{
-    IncludeCategories: []string{"security"},
+    IncludeCategories: map[string]*audit.SeverityRange{
+        "security": nil, // any severity
+    },
+})
+
+// Restrict to high-severity security events.
+sev7 := 7
+err = auditor.SetOutputRoute("siem", &audit.EventRoute{
+    IncludeCategories: map[string]*audit.SeverityRange{
+        "security": {MinSeverity: &sev7},
+    },
 })
 
 // Remove the route — output receives all events again.
@@ -195,8 +306,34 @@ They can also be filtered by per-output routes using
 `include_event_types` if explicitly listed.
 
 Category-based include/exclude routes do not affect uncategorised
-events — an `include_categories: [security]` route will NOT deliver
-uncategorised events (they are not in the "security" category).
+events — an `include_categories: {security: {}}` route will NOT
+deliver uncategorised events (they are not in the "security" category).
+
+## 🔁 Schema Note: include_categories is a Mapping
+
+`include_categories` is a YAML **mapping**, not a sequence. The
+older list form `include_categories: [security, read]` is no longer
+accepted and will fail to parse with the goccy/go-yaml error
+`sequence was used where mapping is expected` at the relevant line.
+Migrate to:
+
+```yaml
+include_categories:
+  security: {}
+  read: {}
+```
+
+An empty inline mapping (`{}`) and an explicit `null`/`~` are both
+accepted as "no severity constraint for this category" and are
+normalised to a nil value at parse time.
+
+## ⚡ Performance Note
+
+The matching path is a single map lookup followed by at most two
+pointer dereferences — zero allocations on the event hot path.
+`include_categories` is the map directly (no parallel pre-computed
+set), so route matching is O(1) regardless of category count. See
+`BENCHMARKS.md` for measured cost.
 
 ## 📚 Further Reading
 
@@ -204,3 +341,4 @@ uncategorised events (they are not in the "security" category).
 - [Outputs](outputs.md) — output types and fan-out architecture
 - [Output Configuration YAML](output-configuration.md) — full YAML reference
 - [API Reference: EventRoute](https://pkg.go.dev/github.com/axonops/audit#EventRoute)
+- [API Reference: SeverityRange](https://pkg.go.dev/github.com/axonops/audit#SeverityRange)

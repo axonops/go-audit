@@ -941,7 +941,7 @@ outputs:
     type: stdout
     route:
       include_categories:
-        - security
+        security: {}
 `)
 	result, err := outputconfig.Load(
 		context.Background(), data, tax,
