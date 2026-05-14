@@ -6,6 +6,8 @@ require (
 	github.com/axonops/audit v0.1.13
 	github.com/axonops/audit/file v0.1.13
 	github.com/axonops/audit/secrets v0.1.13
+	github.com/axonops/audit/secrets/env v0.1.13
+	github.com/axonops/audit/secrets/file v0.1.13
 	github.com/axonops/audit/secrets/openbao v0.1.13
 	github.com/axonops/audit/secrets/vault v0.1.13
 	github.com/cucumber/godog v0.15.1
@@ -15,7 +17,7 @@ require (
 )
 
 require (
-	github.com/axonops/audit/iouring v0.0.0-20260512203621-dbaeb1c0c180 // indirect
+	github.com/axonops/audit/iouring v0.0.0-20260513160545-006350cee067 // indirect
 	github.com/cucumber/gherkin/go/v26 v26.2.0 // indirect
 	github.com/cucumber/messages/go/v21 v21.0.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
