@@ -472,7 +472,7 @@ would mkdir the parent. We chose not to:
 ## Capacity Planning
 
 The two parameters that govern throughput are
-[`auditor.queue_size`](output-configuration.md#-auditor-configuration)
+[`auditor.queue_size`](output-configuration.md#auditor-configuration)
 (events between the application and the drain goroutine) and the
 per-output `buffer_size` (events between the drain goroutine and the
 output's `Write` call). They are documented in detail in
@@ -554,7 +554,7 @@ for the recipe.
 - [SECURITY.md](../SECURITY.md) — disclosure policy, scope.
 - [docs/threat-model.md](threat-model.md) — actors, assets, trust
   boundaries, guarantees, non-guarantees.
-- [docs/outputs.md § Failure Mode Matrix](outputs.md#-failure-mode-matrix)
+- [docs/outputs.md § Failure Mode Matrix](outputs.md#failure-mode-matrix)
   — concrete behaviour per output × failure mode (down, slow, auth
   failure, disk full, TLS expired, DNS, rate-limited) with the
   metric counter and operator action for every cell.

@@ -12,7 +12,7 @@
 - [Per-Output Features](#per-output-features)
 - [Fan-Out Architecture](#fan-out-architecture)
 
-## 🔍 What Are Outputs?
+## What Are Outputs?
 
 Outputs are where your audit events end up after validation and
 serialisation. audit can send the same event to multiple outputs
@@ -34,7 +34,7 @@ per-event fields — for example, Loki uses event_type and severity as
 stream labels. Outputs that don't implement it receive plain `Write()`
 calls with no overhead.
 
-## ❓ Why Multiple Outputs?
+## Why Multiple Outputs?
 
 Different teams need audit events in different places, in different
 formats, with different levels of detail:
@@ -47,7 +47,7 @@ formats, with different levels of detail:
 Each output can have its own formatter, [event routing](event-routing.md)
 filter, and [sensitivity label exclusions](sensitivity-labels.md).
 
-## 📋 Available Outputs
+## Available Outputs
 
 | Output | Module | Transport | Key Features |
 |--------|--------|-----------|--------------|
@@ -59,7 +59,7 @@ filter, and [sensitivity label exclusions](sensitivity-labels.md).
 
 ---
 
-## 📁 File Output
+## File Output
 
 Writes one audit event per line to a local file with automatic
 size-based rotation, gzip compression, and backup retention.
@@ -86,7 +86,7 @@ Install: `go get github.com/axonops/audit/file`
 
 ---
 
-## 📡 Syslog Output
+## Syslog Output
 
 Sends events as [RFC 5424](https://datatracker.ietf.org/doc/html/rfc5424)
 syslog messages over TCP, UDP, or TCP+TLS. The connection is
@@ -114,7 +114,7 @@ Install: `go get github.com/axonops/audit/syslog`
 
 ---
 
-## 🌐 Webhook Output
+## Webhook Output
 
 Batches audit events as
 [NDJSON](https://github.com/ndjson/ndjson-spec) (newline-delimited
@@ -173,7 +173,7 @@ Install: `go get github.com/axonops/audit/loki`
 
 ---
 
-## 💻 Stdout Output
+## Stdout Output
 
 Writes events to standard output. Built into the core module — no
 additional `go get` needed. Useful for local development, debugging,
@@ -196,7 +196,7 @@ deployment, piping patterns, limitations.
 
 ---
 
-## 🔀 Per-Output Features
+## Per-Output Features
 
 Every output supports these optional features:
 
@@ -207,7 +207,7 @@ Every output supports these optional features:
 | **Sensitivity labels** | `exclude_labels:` on each output | [Sensitivity Labels](sensitivity-labels.md) |
 | **Enable/disable** | `enabled: false` on each output | Toggle without removing config |
 
-## 🏗️ Buffering and Delivery Model
+## Buffering and Delivery Model
 
 Outputs fall into two categories based on how they receive events from
 the core drain goroutine:
@@ -234,7 +234,7 @@ buffer do not affect other outputs.
 See [Two-Level Buffering](async-delivery.md#two-level-buffering) for
 the complete pipeline architecture, memory sizing, and tuning guidance.
 
-## 📡 Fan-Out Architecture
+## Fan-Out Architecture
 
 ```mermaid
 flowchart TD
@@ -253,9 +253,9 @@ does not prevent delivery to others — the drain loop continues.
 Only stdout writes synchronously. All other outputs return
 immediately from `Write()`, so a stalled destination does not delay
 delivery to other outputs. See
-[Buffering and Delivery Model](#-buffering-and-delivery-model) above.
+[Buffering and Delivery Model](#buffering-and-delivery-model) above.
 
-## 🚨 Failure Mode Matrix
+## Failure Mode Matrix
 
 How does each output behave when the destination misbehaves? The
 matrix below documents the concrete behaviour, the metric counter
@@ -304,7 +304,7 @@ recovery topology (separate `RetentionWriter`, dual-output
 strategies, K8s liveness wiring) see
 [Deployment](deployment.md).
 
-## 📚 Further Reading
+## Further Reading
 
 - [Progressive Example: File Output](../examples/03-file-output/)
 - [Progressive Example: Multi-Output](../examples/09-multi-output/)

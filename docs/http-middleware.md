@@ -11,7 +11,7 @@
 - [Placement: Audit Must Wrap Panic Recovery](#placement-audit-must-wrap-panic-recovery)
 - [Available Hint Fields](#available-hint-fields)
 
-## 🔍 What Does This Do?
+## What Does This Do?
 
 When you build an HTTP API, you want to audit who did what — which
 user called which endpoint, from which IP address, how long it took,
@@ -28,7 +28,7 @@ them manually in every handler. It wraps your HTTP router and:
    domain-specific audit data (who is the user, what resource did they
    touch, was it allowed)
 
-## 🔍 What Gets Captured Automatically
+## What Gets Captured Automatically
 
 These fields are extracted from every HTTP request without any code in
 your handlers:
@@ -49,7 +49,7 @@ when the middleware calculates the request duration. This is a
 middleware-specific feature — it is not added to events emitted
 outside of HTTP request handling.
 
-## 🔍 What Your Handlers Add
+## What Your Handlers Add
 
 Your handlers add domain-specific audit data — the things only
 your application code knows:
@@ -71,7 +71,7 @@ func createUserHandler(w http.ResponseWriter, r *http.Request) {
 }
 ```
 
-## ⏭️ Skipping Requests
+## Skipping Requests
 
 > **Not every HTTP request needs an audit event.** If your callback
 > returns `skip = true`, no audit event is emitted for that request.
@@ -100,7 +100,7 @@ builder := func(hints *audit.Hints, transport *audit.TransportMetadata) (string,
 }
 ```
 
-## ➕ Adding Custom Fields
+## Adding Custom Fields
 
 The predefined hint fields (`ActorID`, `Outcome`, `TargetID`, etc.)
 cover common audit data. For anything beyond these, use the `Extra`
@@ -154,7 +154,7 @@ builder := func(hints *audit.Hints, transport *audit.TransportMetadata) (string,
 }
 ```
 
-## 🔌 Wiring It Up
+## Wiring It Up
 
 The middleware works with any Go HTTP router — stdlib `http.ServeMux`,
 chi, gorilla/mux, or anything that uses `http.Handler`.
@@ -176,7 +176,7 @@ For a complete working example with multiple routes, authentication
 middleware, and the full EventBuilder implementation, see
 [Progressive Example: Middleware](../examples/06-middleware/).
 
-## 📋 Available Hint Fields
+## Available Hint Fields
 
 These are the predefined fields you can set on `Hints` in your
 handlers. All are optional — set only what applies to your request.
@@ -335,7 +335,28 @@ The 31 [reserved standard fields](../examples/13-standard-fields/)
 are populated by the middleware via `AuditHints` and always accepted
 without taxonomy declaration.
 
-## 📚 Further Reading
+### Request-ID pass-through
+
+`request_id` is populated by reading the inbound request's
+`X-Request-Id` header (case-insensitive). When the header is
+absent OR contains non-ASCII / non-printable bytes / exceeds the
+length cap, the middleware generates a UUID v4 in its place — so
+every audited request has a non-empty `request_id` regardless of
+upstream behaviour.
+
+The middleware does NOT write the ID back to the response.
+Reflecting it to the client is the caller's responsibility — read
+`Hints.RequestID` from your `EventBuilder` callback (or pass-through
+the value you handed in) and call
+`w.Header().Set("X-Request-Id", id)` yourself.
+
+A common pattern: a small upstream middleware reads or generates
+the ID once, writes it into both `r.Header` and `w.Header()`, and
+the audit middleware then sees the same ID via its own validation
+path — surfacing it as the `request_id` field on every audit event
+for that request without duplicating the generation logic.
+
+## Further Reading
 
 - [Progressive Example: Middleware](../examples/06-middleware/) — complete HTTP middleware example
 - [Progressive Example: Capstone](../examples/17-capstone/) — middleware in a full REST application

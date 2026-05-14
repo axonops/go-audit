@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-// Option configures a [Auditor] during construction via [New].
+// Option configures an [Auditor] during construction via [New].
 //
 // Options fall into three classes (#593 B-45):
 //

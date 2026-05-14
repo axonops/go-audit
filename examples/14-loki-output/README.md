@@ -493,6 +493,6 @@ docker stop loki && docker rm loki
 
 ## Further Reading
 
-- [Output Configuration Reference](../../docs/output-configuration.md#-loki-output-fields) — all config fields with defaults and bounds
-- [Output Types](../../docs/outputs.md#-loki-output) — Loki section with security and delivery details
-- [Troubleshooting](../../docs/troubleshooting.md#-loki-events-not-appearing) — common Loki issues
+- [Output Configuration Reference](../../docs/output-configuration.md#loki-output-fields) — all config fields with defaults and bounds
+- [Output Types](../../docs/outputs.md#loki-output) — Loki section with security and delivery details
+- [Troubleshooting](../../docs/troubleshooting.md#loki-events-not-appearing) — common Loki issues

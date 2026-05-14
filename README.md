@@ -12,7 +12,7 @@
   [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
   ![Status](https://img.shields.io/badge/status-pre--release-orange)
 
-  [🚀 Quick Start](#-quick-start) | [✨ Features](#-key-features) | [📚 Examples](examples/) | [📖 API Reference](https://pkg.go.dev/github.com/axonops/audit)
+  [🚀 Quick Start](#quick-start) | [✨ Features](#key-features) | [📚 Examples](examples/) | [📖 API Reference](https://pkg.go.dev/github.com/axonops/audit)
 </div>
 
 ---

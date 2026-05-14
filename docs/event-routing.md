@@ -14,14 +14,14 @@
 - [Runtime Route Changes](#runtime-route-changes)
 - [Events Without Categories](#events-without-categories)
 
-## 🔍 What Is Event Routing?
+## What Is Event Routing?
 
 Event routing controls which events reach which outputs. Instead of
 sending every event to every output, you can filter by category,
 event type, or severity so that each output receives only the events
 relevant to its purpose.
 
-## ❓ Why Route Events?
+## Why Route Events?
 
 A typical deployment has multiple outputs with different purposes:
 
@@ -37,7 +37,7 @@ A typical deployment has multiple outputs with different purposes:
 Without routing, every output receives every event, increasing storage
 costs and noise.
 
-## ⚙️ Configuration
+## Configuration
 
 Routes are configured per-output in the output YAML:
 
@@ -67,7 +67,7 @@ outputs:
       min_severity: 7
 ```
 
-## ✅ Include Mode
+## Include Mode
 
 Only events matching the filter are delivered to this output. The
 allow-list is split across two fields:
@@ -91,7 +91,7 @@ section.
 If you include both a category and an event type that belongs to that
 category, the event is delivered **once** — it is not duplicated.
 
-## 🎯 Per-Category Severity Thresholds
+## Per-Category Severity Thresholds
 
 Each entry in `include_categories` can carry its own
 `min_severity` / `max_severity` bound, expressed as a YAML mapping
@@ -140,7 +140,7 @@ route:
   min_severity: 9
 ```
 
-## ❌ Exclude Mode
+## Exclude Mode
 
 All events are delivered **except** those matching the filter:
 
@@ -153,7 +153,7 @@ route:
 > **Include and exclude are mutually exclusive.** You cannot use both
 > on the same route. Setting both causes a startup error.
 
-## 📊 Severity Filtering
+## Severity Filtering
 
 Filter by severity range (0-10 scale). Events outside the range are
 not delivered to this output:
@@ -168,7 +168,7 @@ If only `min_severity` is set, all events at or above that severity
 pass. If only `max_severity` is set, all events at or below that
 severity pass.
 
-## 🔗 Severity Precedence
+## Severity Precedence
 
 A route can carry route-level severity bounds (`min_severity` /
 `max_severity` at the top level of the `route:` block) and per-category
@@ -222,7 +222,7 @@ Low-severity write events (severity 3) are filtered out even though
 they pass the exclude check. Exclude mode does not support per-category
 severity — there is one route-level bound for the whole exclude list.
 
-## 🔧 How Events Flow
+## How Events Flow
 
 ```mermaid
 flowchart TD
@@ -257,7 +257,7 @@ to reach an output. If an output has no route configured, it receives
 all events. The severity check varies by match path — see
 [Severity Precedence](#severity-precedence).
 
-## 🔄 Runtime Route Changes
+## Runtime Route Changes
 
 Routes can be modified at runtime without restarting the auditor:
 
@@ -293,7 +293,7 @@ next event processed by the drain goroutine.
 See [Progressive Example: Event Routing](../examples/10-event-routing/)
 for runtime route changes in a working application.
 
-## 📋 Events Without Categories
+## Events Without Categories
 
 Events that are not assigned to any category in the taxonomy are
 always delivered at the global level — they cannot be disabled via
@@ -309,7 +309,7 @@ Category-based include/exclude routes do not affect uncategorised
 events — an `include_categories: {security: {}}` route will NOT
 deliver uncategorised events (they are not in the "security" category).
 
-## 🔁 Schema Note: include_categories is a Mapping
+## Schema Note: include_categories is a Mapping
 
 `include_categories` is a YAML **mapping**, not a sequence. The
 older list form `include_categories: [security, read]` is no longer
@@ -327,7 +327,7 @@ An empty inline mapping (`{}`) and an explicit `null`/`~` are both
 accepted as "no severity constraint for this category" and are
 normalised to a nil value at parse time.
 
-## ⚡ Performance Note
+## Performance Note
 
 The matching path is a single map lookup followed by at most two
 pointer dereferences — zero allocations on the event hot path.
@@ -335,7 +335,7 @@ pointer dereferences — zero allocations on the event hot path.
 set), so route matching is O(1) regardless of category count. See
 `BENCHMARKS.md` for measured cost.
 
-## 📚 Further Reading
+## Further Reading
 
 - [Progressive Example: Event Routing](../examples/10-event-routing/) — complete routing configuration
 - [Outputs](outputs.md) — output types and fan-out architecture

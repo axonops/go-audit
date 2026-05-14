@@ -51,7 +51,7 @@ events:
 `outcome`, `method`, `path`, `status_code`, `duration_ms` are all
 declared on the event. Reserved standard fields (e.g. `actor_id`,
 `source_ip`, `target_id`) are always available without declaration —
-see [docs/taxonomy-validation.md](taxonomy-validation.md#-reserved-field-names)
+see [docs/taxonomy-validation.md](taxonomy-validation.md#reserved-field-names)
 for the full list.
 
 ## 3. Configure outputs — `outputs.yaml`

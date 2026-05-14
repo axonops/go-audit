@@ -24,15 +24,15 @@ This is a complete reference for everything that can go in an
 > deployments you SHOULD use an absolute path
 > (e.g., `/etc/myapp/outputs.yaml`) or a path resolved against the
 > binary's own directory. See
-> [Loading Output Configuration](#-loading-output-configuration)
+> [Loading Output Configuration](#loading-output-configuration)
 > below for the supported loaders.
 
-## 📋 Complete Schema
+## Complete Schema
 
 ```yaml
 version: 1
 
-# ── Auditor Configuration (optional) ────────────────────────
+# Auditor Configuration (optional) ────────────────────────
 # Core auditor settings. If omitted, sensible defaults are used.
 
 auditor:
@@ -42,7 +42,7 @@ auditor:
   validation_mode: strict          # "strict" (default), "warn", "permissive"
   omit_empty: false                # default: false
 
-# ── Framework Fields ──────────────────────────────────────
+# Framework Fields ──────────────────────────────────────
 # Identify every event's origin. app_name and host are required.
 # Environment variables are supported in all values.
 
@@ -50,7 +50,7 @@ app_name: "my-service"               # REQUIRED: application name
 host: "${HOSTNAME:-localhost}"        # REQUIRED: hostname / environment
 timezone: "${TZ:-UTC}"               # optional in YAML — auto-detected from system if omitted; always present in output
 
-# ── Standard Field Defaults (optional) ────────────────────
+# Standard Field Defaults (optional) ────────────────────
 # Deployment-wide default values for reserved standard fields.
 # Applied to every event unless the event sets its own value.
 # Keys must be reserved standard field names (actor_id, source_ip,
@@ -61,14 +61,14 @@ standard_fields:
   source_ip: "${DEFAULT_SOURCE_IP:-10.0.0.1}"
   actor_id: "${SERVICE_ACCOUNT:-system}"
 
-# ── TLS Policy (per-output / per-provider) ────────────────
+# TLS Policy (per-output / per-provider) ────────────────
 # TLS policy is configured inside each output block (syslog,
 # webhook, loki) and each secret-provider block (vault, openbao).
 # There is no root-level tls_policy key — attempting to set one
 # fails at startup with an "unknown top-level key" error. See the
 # per-output blocks below for examples.
 
-# ── Outputs ─────────────────────────────────────────────────
+# Outputs ─────────────────────────────────────────────────
 # Map of named outputs. Each output has a type, optional config,
 # optional formatter override, optional event route, and optional
 # sensitivity label exclusions.
@@ -184,11 +184,11 @@ outputs:
         security: {}
 ```
 
-## 📋 Top-Level Fields
+## Top-Level Fields
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `version` | Yes | Must be `1`. Schema version for future migration. See [Config Schema Versioning](#-config-schema-versioning) below. |
+| `version` | Yes | Must be `1`. Schema version for future migration. See [Config Schema Versioning](#config-schema-versioning) below. |
 | `app_name` | Yes | Application name. Emitted as a framework field in every event. Max 255 bytes. |
 | `host` | Yes | Hostname/environment. Emitted as a framework field. Max 255 bytes. Env vars supported. |
 | `timezone` | No | Timezone name (e.g. `UTC`, `America/New_York`). Max 64 bytes. Auto-detected from system when absent. |
@@ -197,9 +197,9 @@ outputs:
 | `auditor` | No | Auditor configuration. All fields optional; defaults applied if omitted. |
 | `outputs` | Yes | Map of named outputs. At least one must be defined. Maximum: 100. |
 
-> ⚠️ **No root-level `tls_policy` key.** TLS policy is configured inside each output (under `syslog:`, `webhook:`, `loki:`) and each secret provider (under `vault:`, `openbao:`). Setting `tls_policy:` at the root fails at startup with an "unknown top-level key" error. See [Per-Output TLS Policy](#-per-output-tls-policy) below.
+> ⚠️ **No root-level `tls_policy` key.** TLS policy is configured inside each output (under `syslog:`, `webhook:`, `loki:`) and each secret provider (under `vault:`, `openbao:`). Setting `tls_policy:` at the root fails at startup with an "unknown top-level key" error. See [Per-Output TLS Policy](#per-output-tls-policy) below.
 
-## 🔄 Config Schema Versioning
+## Config Schema Versioning
 
 The outputs YAML carries a top-level `version:` field so the
 library can recognise the shape of the document and apply
@@ -281,7 +281,7 @@ API. This keeps migrations as library-implementation detail
 rather than a consumer extension point.
 
 The taxonomy schema versioning model is documented in parallel at
-[`docs/taxonomy-validation.md` "Taxonomy Schema Versioning"](taxonomy-validation.md#-taxonomy-schema-versioning).
+[`docs/taxonomy-validation.md` "Taxonomy Schema Versioning"](taxonomy-validation.md#taxonomy-schema-versioning).
 The two schemas (taxonomy + outputs) version independently — a
 taxonomy bump does not require an outputs config bump and vice
 versa.
@@ -303,7 +303,7 @@ The schema-bump workflow for the outputs config is:
 4. Update this section with the new version literal and the
    shape change.
 
-## 🏷️ Standard Field Defaults
+## Standard Field Defaults
 
 The optional `standard_fields:` block sets deployment-wide default
 values for one or more **reserved standard fields** — the 31
@@ -359,7 +359,7 @@ substitution is supported in all string values via `${VAR}` and
 > That page is the single source of truth for the reserved-field
 > contract.
 
-## ⚙️ Auditor Configuration
+## Auditor Configuration
 
 The optional `auditor:` section configures the core auditor. All
 fields are optional — omitted fields use sensible defaults.
@@ -381,7 +381,7 @@ auditor:
   enabled: ${AUDIT_ENABLED:-true}
 ```
 
-## 🪵 Diagnostic Logger Propagation
+## Diagnostic Logger Propagation
 
 The `auditor:` section has no YAML field for the diagnostic logger — a
 `*slog.Logger` is a runtime value, not a YAML construct. Configure it
@@ -416,7 +416,7 @@ warnings routed through `slog.Default` — a subtle inconsistency if
 your application uses a non-default handler. Both options accept nil
 (equivalent to `slog.Default`).
 
-## 🔒 Per-Output TLS Policy
+## Per-Output TLS Policy
 
 TLS policy is configured inside each TLS-capable block — `syslog:`
 (when `network: tcp+tls`), `webhook:` (when `https://`), `loki:`
@@ -516,7 +516,7 @@ The MockFileMetrics extension that captures these errors lives at
 [`tests/bdd/steps/file_steps.go`](../tests/bdd/steps/file_steps.go)
 (`MockFileMetrics.RecordError` + `ErrorCount`).
 
-## 🔐 Secrets Configuration
+## Secrets Configuration
 
 The optional `secrets:` section configures secret providers
 declaratively in YAML, replacing programmatic provider setup via
@@ -575,7 +575,7 @@ If the same provider scheme appears in both the YAML `secrets:`
 section and a programmatic `WithSecretProvider` call, `Load` returns
 an error. Choose one or the other for each provider scheme.
 
-## 📦 Output Block
+## Output Block
 
 Every output has these fields (plus the optional `hmac:` block):
 
@@ -589,7 +589,7 @@ Every output has these fields (plus the optional `hmac:` block):
 | `exclude_labels` | No | List of sensitivity labels to strip from events before delivery. |
 | `hmac` | No | Per-output HMAC integrity config. See [HMAC Integrity](hmac-integrity.md). |
 
-## 📝 Formatter Configuration
+## Formatter Configuration
 
 ```yaml
 formatter:
@@ -621,7 +621,7 @@ formatter:
 > [Loki Output: Formatter Restriction](loki-output.md#formatter-restriction)
 > for details.
 
-## 🔀 Event Route Configuration
+## Event Route Configuration
 
 Routes control which events reach an output. Include and exclude
 modes are mutually exclusive.
@@ -686,7 +686,7 @@ route:
 See [Event Routing](event-routing.md) for detailed examples and
 explanations.
 
-## 🔒 Sensitivity Label Exclusion
+## Sensitivity Label Exclusion
 
 ```yaml
 exclude_labels:
@@ -700,7 +700,7 @@ are never stripped.
 
 See [Sensitivity Labels](sensitivity-labels.md) for details.
 
-## 📁 File Output Fields
+## File Output Fields
 
 | Field | Default | Description |
 |-------|---------|-------------|
@@ -712,7 +712,7 @@ See [Sensitivity Labels](sensitivity-labels.md) for details.
 | `compress` | `true` | Gzip compress rotated files. |
 | `buffer_size` | `10000` | Internal async buffer capacity. Maximum: 100,000. |
 
-## 📡 Syslog Output Fields
+## Syslog Output Fields
 
 | Field | Default | Description |
 |-------|---------|-------------|
@@ -729,7 +729,7 @@ See [Sensitivity Labels](sensitivity-labels.md) for details.
 | `tls_policy.allow_tls12` | `false` | Allow TLS 1.2 in addition to TLS 1.3. |
 | `tls_policy.allow_weak_ciphers` | `false` | Allow weaker cipher suites when TLS 1.2 is enabled. |
 
-## 🌐 Webhook Output Fields
+## Webhook Output Fields
 
 | Field | Default | Description |
 |-------|---------|-------------|
@@ -749,7 +749,7 @@ See [Sensitivity Labels](sensitivity-labels.md) for details.
 | `allow_insecure_http` | `false` | Allow `http://` URLs. MUST NOT be `true` in production. |
 | `allow_private_ranges` | `false` | Allow private/loopback IP ranges. Disables SSRF protection. |
 
-## 🔶 Loki Output Fields
+## Loki Output Fields
 
 | Field | Default | Description |
 |-------|---------|-------------|
@@ -776,7 +776,7 @@ See [Sensitivity Labels](sensitivity-labels.md) for details.
 | `allow_insecure_http` | `false` | Allow `http://` URLs. MUST NOT be `true` in production. |
 | `allow_private_ranges` | `false` | Allow private/loopback IP ranges. Disables SSRF protection. |
 
-## 🌍 Environment Variable Substitution
+## Environment Variable Substitution
 
 Values support `${VAR}` and `${VAR:-default}` syntax:
 
@@ -790,7 +790,7 @@ syslog:
 Expansion happens after YAML parsing for injection safety — the raw
 YAML structure is validated first, then string values are expanded.
 
-## 🔑 Secret Reference Resolution
+## Secret Reference Resolution
 
 Any string value in the YAML can be a `ref+SCHEME://PATH#KEY` URI
 that resolves to a plaintext secret from OpenBao or HashiCorp Vault
@@ -853,7 +853,7 @@ value: "ref+openbao://${BAO_SECRET_PATH:-secret/data/audit/hmac}#salt"
 See [Secret Provider Integration](secrets.md) for URI syntax, provider
 setup, caching, security model, and error reference.
 
-## 🏭 Output Factory Registration
+## Output Factory Registration
 
 Output types must be registered before `outputconfig.Load` can create
 them from YAML. The library exposes two registration paths; both
@@ -936,7 +936,7 @@ See:
 - [`outputconfig.WithFactory`](https://pkg.go.dev/github.com/axonops/audit/outputconfig#WithFactory)
   — the per-call LoadOption.
 
-## 📦 Loading Output Configuration
+## Loading Output Configuration
 
 The simplest way to create an auditor from YAML is the
 `outputconfig.New` facade — one call, no manual wiring:
@@ -1000,7 +1000,7 @@ opts = append(opts, loaded.Options()...)
 auditor, err := audit.New(opts...)
 ```
 
-## 📚 Further Reading
+## Further Reading
 
 - [Progressive Example: File Output](../examples/03-file-output/) — file-specific configuration
 - [Progressive Example: Multi-Output](../examples/09-multi-output/) — multiple outputs in one YAML
