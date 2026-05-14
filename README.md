@@ -340,7 +340,7 @@ license details.
 
 - [github.com/goccy/go-yaml](https://github.com/goccy/go-yaml) — YAML parsing (MIT)
 - [github.com/axonops/srslog](https://github.com/axonops/srslog) — RFC 5424 syslog (BSD-3-Clause)
-- [github.com/rgooding/go-syncmap](https://github.com/rgooding/go-syncmap) — Generic sync.Map (Apache-2.0)
+- [github.com/axonops/syncmap](https://github.com/axonops/syncmap) — Generic sync.Map (Apache-2.0), fork of [rgooding/go-syncmap](https://github.com/rgooding/go-syncmap)
 
 ---
 

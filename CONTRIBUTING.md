@@ -485,9 +485,17 @@ skip on docs-only PRs.
 ## Dependencies
 
 Dependencies are kept minimal. The core library depends on
-`github.com/goccy/go-yaml` (taxonomy parsing) and `go-syncmap` (lock-free
-category lookups). Output modules carry their own dependencies
-(e.g., `github.com/axonops/srslog` for syslog).
+`github.com/goccy/go-yaml` (taxonomy parsing) and
+`github.com/axonops/syncmap` (generic, type-safe wrapper around
+`sync.Map` for the lock-free filter-state hot path). Output
+modules carry their own dependencies — `github.com/axonops/srslog`
+for syslog, etc.
+
+Both runtime dependencies are AxonOps-controlled forks of
+their upstream projects, which lets us self-impose the supply-chain
+acceptance criteria (CI, CodeQL, Dependabot, SECURITY.md, signed
+releases, CLA) that #158 originally tracked as upstream feature
+requests. Upstream attribution lives in the forks' `NOTICE` files.
 
 Before adding a new dependency, file an issue to discuss it. Forbidden
 in core: Prometheus, OpenTelemetry, any logging framework, any config
