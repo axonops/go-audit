@@ -60,7 +60,7 @@ outputs:
 import _ "github.com/axonops/audit/webhook"  // registers "webhook" factory
 ```
 
-**[→ Progressive example with embedded HTTP receiver](../examples/08-webhook-output/)**
+**[→ Progressive example with embedded HTTP receiver](../examples/07-webhook-output/)**
 
 ## How It Works
 
@@ -582,7 +582,7 @@ outputs:
 
 - [Output Types Overview](outputs.md) — summary of all five outputs
 - [Output Configuration Reference](output-configuration.md) — YAML field tables
-- [Progressive Example](../examples/08-webhook-output/) — working code with embedded HTTP receiver
+- [Progressive Example](../examples/07-webhook-output/) — working code with embedded HTTP receiver
 - [NDJSON Specification](https://github.com/ndjson/ndjson-spec) — payload format
 - [OWASP SSRF](https://owasp.org/www-community/attacks/Server_Side_Request_Forgery) — SSRF attack reference
 - [RFC 8446: TLS 1.3](https://datatracker.ietf.org/doc/html/rfc8446)

@@ -15,7 +15,7 @@
 # intentionally NOT run — at this point in the release flow VERSION
 # is not yet a tag on origin, so tidy would fail to resolve.
 #
-# Also updates `examples/17-capstone/go.mod` (it's not published, but
+# Also updates `examples/20-capstone/go.mod` (it's not published, but
 # its dependency pins move with the release).
 set -euo pipefail
 

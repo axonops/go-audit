@@ -121,7 +121,7 @@ updates:
 
   # Capstone (inventory demo) example
   - package-ecosystem: "gomod"
-    directory: "/examples/17-capstone"
+    directory: "/examples/20-capstone"
     schedule:
       interval: "weekly"
       day: "monday"

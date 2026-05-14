@@ -9,7 +9,7 @@ audited Go service:
 | [`audit-metrics.json`](audit-metrics.json) | Prometheus | SREs, platform engineers | Audit-pipeline health: events delivered, output errors, buffer drops, validation errors, per-output flush latency. |
 
 Both dashboards are derived from the production-grade
-[capstone example](../../examples/17-capstone/grafana/dashboards/)
+[capstone example](../../examples/20-capstone/grafana/dashboards/)
 and are released as artefacts on every tagged release so ops teams
 can import them in minutes without replicating the full capstone
 demo state.
@@ -63,7 +63,7 @@ Grafana's variable-substitution UI on first load.
 
 The dashboards assume the audit library is configured with the
 canonical Prometheus metric names emitted by the
-[reference adapter](../../examples/20-prometheus-reference/metrics.go):
+[reference adapter](../../examples/19-prometheus-reference/metrics.go):
 
 | Metric | Labels | Source |
 |---|---|---|
@@ -105,10 +105,10 @@ are lost on re-import unless you maintain a fork).
 
 ## See also
 
-- [Example 17 — Capstone](../../examples/17-capstone/) — full
+- [Example 17 — Capstone](../../examples/20-capstone/) — full
   end-to-end demo with Postgres, Loki, OpenBao, and Grafana
   pre-wired.
-- [Example 20 — Prometheus Reference](../../examples/20-prometheus-reference/)
+- [Example 20 — Prometheus Reference](../../examples/19-prometheus-reference/)
   — the canonical Prometheus metrics adapter the metrics
   dashboard expects.
 - [Metrics & Monitoring](../../docs/metrics-monitoring.md) — full

@@ -2,7 +2,6 @@
 
 > **Previous:** [10 — Event Routing](../10-event-routing/) |
 > **Next:** [12 — HMAC Integrity](../12-hmac-integrity/)
-
 # Example 11: Sensitivity Labels
 
 Strip sensitive fields from specific outputs: an internal log receives

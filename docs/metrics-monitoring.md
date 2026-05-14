@@ -79,11 +79,11 @@ Why the nine-method shape won:
 
 The real cost — consumer boilerplate — is addressed by shipping
 a complete, drop-in Prometheus adapter at
-[`examples/20-prometheus-reference/`](../examples/20-prometheus-reference/).
-Copy [`metrics.go`](../examples/20-prometheus-reference/metrics.go)
+[`examples/19-prometheus-reference/`](../examples/19-prometheus-reference/).
+Copy [`metrics.go`](../examples/19-prometheus-reference/metrics.go)
 into your project to wire pipeline-wide and per-output metrics
 into a Prometheus registry. The capstone example
-([`examples/17-capstone/metrics.go`](../examples/17-capstone/metrics.go))
+([`examples/20-capstone/metrics.go`](../examples/20-capstone/metrics.go))
 shows the same pattern in a full production-grade context with
 Postgres, Loki, HMAC, and Grafana dashboards.
 
@@ -114,18 +114,18 @@ Postgres, Loki, HMAC, and Grafana dashboards.
 ## Prometheus Example
 
 A complete, tested Prometheus adapter ships at
-[`examples/20-prometheus-reference/`](../examples/20-prometheus-reference/).
-Copy [`metrics.go`](../examples/20-prometheus-reference/metrics.go)
+[`examples/19-prometheus-reference/`](../examples/19-prometheus-reference/).
+Copy [`metrics.go`](../examples/19-prometheus-reference/metrics.go)
 into your project — it's the drop-in artefact. It implements
 both the pipeline-wide `audit.Metrics` interface and the
 per-output `audit.OutputMetricsFactory`, exposes nine `audit_*`
 counters and two histograms (full table in the example
-[README](../examples/20-prometheus-reference/README.md)), and
+[README](../examples/19-prometheus-reference/README.md)), and
 embeds `audit.NoOpMetrics` / `audit.NoOpOutputMetrics` for
 forward-compatibility (new methods added to those interfaces in
 future releases default to no-ops without breaking your build).
 
-The companion [`main.go`](../examples/20-prometheus-reference/main.go)
+The companion [`main.go`](../examples/19-prometheus-reference/main.go)
 demonstrates wiring the adapter into `outputconfig.NewWithLoad`
 via `WithCoreMetrics` + `WithOutputMetrics`, and exposing
 `/metrics` over HTTP.
@@ -328,7 +328,7 @@ belongs in `/healthz`; a fault that is transient or
 operator-correctable belongs in `/readyz`.
 
 A complete runnable implementation lives at
-[examples/18-health-endpoint](../examples/18-health-endpoint/).
+[examples/16-health-endpoint](../examples/16-health-endpoint/).
 
 ## Per-Output Metrics (`OutputMetrics`)
 
@@ -460,7 +460,7 @@ assert.Equal(t, 0, metrics.BufferDrops())
 
 ## Further Reading
 
-- [Progressive Example: Capstone](../examples/17-capstone/) — Prometheus metrics integration
+- [Progressive Example: Capstone](../examples/20-capstone/) — Prometheus metrics integration
 - [Async Delivery](async-delivery.md) — buffer sizing and backpressure
 - [Testing](testing.md) — asserting on metrics in tests
 - [API Reference: Metrics](https://pkg.go.dev/github.com/axonops/audit#Metrics)

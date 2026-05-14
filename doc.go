@@ -173,7 +173,7 @@
 //     delivered successfully; use in /healthz handlers to detect
 //     silently-stalled async outputs (TCP half-open, retries
 //     exhausted) where Write enqueues succeed but no events ever land.
-//     See examples/18-health-endpoint for a runnable /healthz pattern.
+//     See examples/16-health-endpoint for a runnable /healthz pattern.
 //
 // # Error Discrimination
 //

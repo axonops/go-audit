@@ -208,7 +208,7 @@ A few things worth noting:
   (port-in-use, permission denied), buffered events are lost. For
   graceful shutdown, replace `log.Fatal(http.ListenAndServe(...))`
   with a `signal.NotifyContext` + `srv.Shutdown(ctx)` pattern; see
-  [examples/17-capstone/](../examples/17-capstone/) for a complete
+  [examples/20-capstone/](../examples/20-capstone/) for a complete
   example.
 
 ## 6. Run it
@@ -260,6 +260,6 @@ based on what your deployment actually needs:
   permissions: [docs/output-configuration.md](output-configuration.md).
 - **Full reference application** — Postgres-backed CRUD with
   middleware, HMAC, Loki dashboards, Prometheus metrics, and graceful
-  shutdown: [examples/17-capstone/](../examples/17-capstone/).
+  shutdown: [examples/20-capstone/](../examples/20-capstone/).
 - **Threat model** — actors, guarantees, and what the library does
   not defend against: [docs/threat-model.md](threat-model.md).

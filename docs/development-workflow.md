@@ -68,23 +68,23 @@ use (
     examples/01-basic
     examples/02-code-generation
     examples/03-file-output
-    examples/04-testing
-    examples/05-formatters
-    examples/06-middleware
-    examples/07-syslog-output
-    examples/08-webhook-output
+    examples/17-testing
+    examples/04-formatters
+    examples/15-middleware
+    examples/06-syslog-output
+    examples/07-webhook-output
     examples/09-multi-output
     examples/10-event-routing
     examples/11-sensitivity-labels
     examples/12-hmac-integrity
-    examples/13-standard-fields
-    examples/14-loki-output
-    examples/15-tls-policy
-    examples/16-buffering
-    examples/17-capstone
-    examples/18-health-endpoint
-    examples/19-migration
-    examples/20-prometheus-reference
+    examples/05-standard-fields
+    examples/08-loki-output
+    examples/13-tls-policy
+    examples/14-buffering
+    examples/20-capstone
+    examples/16-health-endpoint
+    examples/18-migration
+    examples/19-prometheus-reference
 )
 ```
 
@@ -119,7 +119,7 @@ Once the workspace exists, the inner loop is plain Go:
 ```bash
 # Edit code in any module — core, sub-modules, or examples.
 $EDITOR webhook/webhook.go
-$EDITOR examples/08-webhook-output/main.go
+$EDITOR examples/07-webhook-output/main.go
 
 # Fast inner-loop checks (no full lint, no security scan).
 # Run this on every save / before every commit:
@@ -154,7 +154,7 @@ make test-bdd-core          # core feature files
 binaries — without changing your `cd`.** Tests resolve cross-
 module imports through the workspace, so a change in
 `webhook/webhook.go` is immediately visible to a test in
-`examples/08-webhook-output/`.
+`examples/07-webhook-output/`.
 
 **Don't add `replace` directives** in any committed `go.mod`.
 `go.work` is the supported mechanism for local cross-module
@@ -327,7 +327,7 @@ would let the Docker image bake in unreleased local changes.
 
 Concrete examples in the repo:
 
-- **`examples/17-capstone/Dockerfile`** copies its own
+- **`examples/20-capstone/Dockerfile`** copies its own
   `go.mod` / `go.sum` and runs `go build` against
   proxy.golang.org versions. The local workspace is invisible
   to the build.
@@ -341,7 +341,7 @@ the capstone container, you have three options, ordered by
 realism:
 
 1. **Bump the local module's go.mod and rebuild the image.**
-   Edit `examples/17-capstone/go.mod` to add
+   Edit `examples/20-capstone/go.mod` to add
    `replace github.com/axonops/audit => ../../`. **This is the
    one exception to the [no-`replace` rule](#day-to-day-development)
    — acceptable for local debugging only.** Stash or revert the

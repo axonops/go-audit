@@ -2,7 +2,6 @@
 
 > **Previous:** [01 — Basic](../01-basic/) |
 > **Next:** [03 — File Output](../03-file-output/)
-
 # Example 02: Code Generation
 
 Define your audit events in a YAML file, generate type-safe Go
@@ -216,7 +215,7 @@ Fields like `target_id`, `reason`, and `source_ip` are **reserved
 standard fields** — always available without taxonomy declaration. The
 code generator produces setter methods (`.SetTargetID()`, `.SetReason()`,
 `.SetSourceIP()`) on every builder regardless of whether those fields
-appear in the taxonomy. See [example 13](../13-standard-fields/) for the
+appear in the taxonomy. See [example 05 — Standard Fields](../05-standard-fields/) for the
 full explanation.
 
 ### Configuring Outputs in YAML

@@ -108,7 +108,7 @@ Key features:
 configuration, TLS, reconnection, facility values, production examples,
 and troubleshooting.
 
-**[→ Progressive example with embedded TCP receiver](../examples/07-syslog-output/)**
+**[→ Progressive example with embedded TCP receiver](../examples/06-syslog-output/)**
 
 Install: `go get github.com/axonops/audit/syslog`
 
@@ -138,7 +138,7 @@ Key features:
 configuration, authentication, TLS, NDJSON format, retry logic, SSRF
 protection, production examples, and troubleshooting.
 
-**[→ Progressive example with embedded HTTP receiver](../examples/08-webhook-output/)**
+**[→ Progressive example with embedded HTTP receiver](../examples/07-webhook-output/)**
 
 Install: `go get github.com/axonops/audit/webhook`
 
@@ -167,7 +167,7 @@ production examples, performance tuning, and troubleshooting.
 - **SSRF protection** blocks private/loopback ranges by default
 - **Exponential backoff retry** on 429/5xx with `Retry-After` support
 
-**[→ Progressive example with real query output](../examples/14-loki-output/)**
+**[→ Progressive example with real query output](../examples/08-loki-output/)**
 
 Install: `go get github.com/axonops/audit/loki`
 
@@ -308,7 +308,7 @@ strategies, K8s liveness wiring) see
 
 - [Progressive Example: File Output](../examples/03-file-output/)
 - [Progressive Example: Multi-Output](../examples/09-multi-output/)
-- [Progressive Example: Capstone](../examples/17-capstone/) — four outputs with HMAC, CEF, Loki, and PII stripping
+- [Progressive Example: Capstone](../examples/20-capstone/) — four outputs with HMAC, CEF, Loki, and PII stripping
 - [Output Configuration YAML](output-configuration.md) — full YAML reference
 - [Troubleshooting](troubleshooting.md) — failure symptoms and recovery
 - [Metrics & Monitoring](metrics-monitoring.md) — full metric reference

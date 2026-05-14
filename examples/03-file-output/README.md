@@ -1,8 +1,7 @@
 [← Back to examples](../README.md)
 
 > **Previous:** [02 — Code Generation](../02-code-generation/) |
-> **Next:** [04 — Testing](../04-testing/)
-
+> **Next:** [04 — Formatters](../04-formatters/)
 # Example 03: File Output
 
 Write audit events to a log file with automatic rotation, size limits,
