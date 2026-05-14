@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Core now depends on `github.com/axonops/syncmap v1.0.0` for the
+  `filterState` lock-free category/event-type lookups, replacing the
+  15-line inlined `syncMapBool` wrapper added in #588. The fork is
+  AxonOps-controlled (Apache 2.0, signed releases, CI / CodeQL /
+  Dependabot / SECURITY.md) so the supply-chain acceptance criteria
+  tracked by #158 are self-imposed rather than requested upstream.
+  Hot-path benchmark `BenchmarkFilterCheck` is unchanged within
+  noise (16.74 ns → 16.72 ns, p=0.841). Upstream attribution is
+  preserved in the fork's NOTICE.
+
 ## [0.1.13] - 2026-05-12
 
 Mostly release-engineering and example-hygiene. No library API changes.
