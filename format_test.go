@@ -921,6 +921,8 @@ func (s *stubFormatter) Format(ts time.Time, eventType string, fields audit.Fiel
 	return s.fn(ts, eventType, fields, def)
 }
 
+func (s *stubFormatter) ContentType() string { return "application/x-ndjson" }
+
 func TestLogger_DefaultJSONFormatter(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(

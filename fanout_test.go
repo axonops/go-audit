@@ -557,6 +557,8 @@ func (p *panicFormatter) Format(_ time.Time, _ string, _ audit.Fields, _ *audit.
 	panic("formatter panic")
 }
 
+func (p *panicFormatter) ContentType() string { return "application/x-ndjson" }
+
 func TestFanout_PanicInOutputWrite_OtherOutputsStillReceive(t *testing.T) {
 	panicOut := &panicOnWriteOutput{MockOutput: *testhelper.NewMockOutput("panicker")}
 	survivor := testhelper.NewMockOutput("survivor")
@@ -666,6 +668,8 @@ type errorFormatter struct{}
 func (e *errorFormatter) Format(_ time.Time, _ string, _ audit.Fields, _ *audit.EventDef, _ *audit.FormatOptions) ([]byte, error) {
 	return nil, fmt.Errorf("format failed")
 }
+
+func (e *errorFormatter) ContentType() string { return "application/x-ndjson" }
 
 func TestFanout_ErrorFormatter_DoesNotBlockDefaultFormatter(t *testing.T) {
 	goodOut := testhelper.NewMockOutput("good")

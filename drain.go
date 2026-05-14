@@ -330,6 +330,34 @@ func (a *Auditor) propagateFrameworkFields() {
 	}
 }
 
+// propagateContentTypes informs each output that implements
+// [ContentTypeSetter] of the MIME type of the bytes its effective
+// formatter emits. Called once at auditor construction, after
+// [propagateFrameworkFields], before any event is dispatched.
+//
+// HTTP-based outputs (notably [webhook.Output]) use the value to
+// populate the request Content-Type header so receivers can
+// correctly parse CEF text vs. JSON streams. Outputs that don't
+// care (file, stdout, syslog, Loki) simply omit the interface and
+// are skipped.
+//
+// The webhook's batchLoop may already be running when this
+// propagation fires; implementations MUST use atomic/synchronised
+// storage for the field per the contract on [ContentTypeSetter].
+func (a *Auditor) propagateContentTypes() {
+	for _, oe := range a.entries {
+		setter, ok := oe.output.(ContentTypeSetter)
+		if !ok {
+			continue
+		}
+		f := oe.effectiveFormatter(a.formatter)
+		if f == nil {
+			continue
+		}
+		setter.SetContentType(f.ContentType())
+	}
+}
+
 // formatWithExclusion serialises an event with sensitivity-labelled
 // fields excluded. It bypasses the format cache because different
 // outputs may exclude different label sets.

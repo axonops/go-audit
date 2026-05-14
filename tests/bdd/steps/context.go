@@ -55,10 +55,11 @@ type AuditTestContext struct { //nolint:govet // fieldalignment: readability pre
 	SymlinkTargetPath string            // file.Output symlink-safety scenarios — real path behind the symlink
 
 	// Docker infrastructure.
-	WebhookURL    string // "http://localhost:8080"
-	LokiURL       string // "http://localhost:3100"
-	TLSReceiver   any    // *tlsWebhookReceiver for HTTPS webhook tests
-	LocalReceiver any    // *localWebhookReceiver or *localLokiReceiver for SSRF/redirect/retry tests
+	WebhookURL     string // "http://localhost:8080"
+	LokiURL        string // "http://localhost:3100"
+	TLSReceiver    any    // *tlsWebhookReceiver for HTTPS webhook tests
+	LocalReceiver  any    // *localWebhookReceiver or *localLokiReceiver for SSRF/redirect/retry tests
+	LocalReceiverB any    // secondary local webhook receiver (used by #463 fan-out scenarios)
 
 	// Middleware state.
 	TestServer   *httptest.Server
@@ -164,6 +165,7 @@ func (tc *AuditTestContext) Reset() {
 	tc.AuditDuration = 0
 	tc.TLSReceiver = nil
 	tc.LocalReceiver = nil
+	tc.LocalReceiverB = nil
 	tc.cleanups = nil
 	tc.ScenarioName = ""
 }
@@ -230,6 +232,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	registerMetricsSteps(ctx, tc)
 	registerSyslogSteps(ctx, tc)
 	registerWebhookSteps(ctx, tc)
+	registerWebhookBatchingSteps(ctx, tc)
 	registerFanoutSteps(ctx, tc)
 	registerMiddlewareSteps(ctx, tc)
 	RegisterMultiCatSteps(ctx, tc)
