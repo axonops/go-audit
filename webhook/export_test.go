@@ -18,3 +18,13 @@ package webhook
 // black-box test packages. Production callers MUST use New, which
 // runs the same validator before constructing the output.
 var ValidateConfigForTest = validateWebhookConfig
+
+// ParseRetryAfter exposes the internal Retry-After parser to
+// black-box test packages so the table-driven boundary cases (cap
+// clamping, malformed values, non-positive values) can be asserted
+// without going through the retry-loop integration path.
+var ParseRetryAfter = parseRetryAfter
+
+// MaxRetryAfter exposes the Retry-After cap so cap-clamping tests
+// can reference the documented limit without hardcoding the value.
+const MaxRetryAfter = maxRetryAfter

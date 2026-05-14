@@ -24,10 +24,17 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/axonops/audit"
 )
+
+// maxRetryAfter caps the server-provided Retry-After header to prevent
+// a malicious server from forcing unbounded delay.
+//
+// SYNC: keep in sync with loki/http.go (#542).
+const maxRetryAfter = 30 * time.Second
 
 // sanitiseClientError returns a copy of err with any embedded
 // [*url.Error] stripped of its URL — the URL is replaced with the
@@ -54,15 +61,30 @@ func sanitiseClientError(err error) error {
 }
 
 // doPostWithRetry attempts HTTP POST with exponential backoff retry.
+// On 429, a Retry-After hint may be parsed from the response and used
+// as a minimum backoff (capped at maxRetryAfter) on the next attempt.
 func (w *Output) doPostWithRetry(ctx context.Context, batch [][]byte) {
 	start := time.Now()
 	body := buildNDJSON(batch)
 	logger := w.logger
 	om := w.outputMetrics
+	// Defensive: every consume path inside the loop also clears retryHint,
+	// and the loop overwrites the field on each 429, so a hint set on
+	// the final attempt of one batch is reset before the next batch
+	// reads it. Belt-and-braces guards against future return paths.
+	w.retryHint = 0
 
 	for attempt := range w.maxRetries {
 		if attempt > 0 {
 			backoff := webhookBackoff(attempt)
+
+			// Respect Retry-After from a 429 if it exceeds computed backoff.
+			// retryHint is set by the previous doPost call.
+			if w.retryHint > backoff {
+				backoff = w.retryHint
+			}
+			w.retryHint = 0 // consume — defensive even though next doPost overwrites it
+
 			timer := time.NewTimer(backoff)
 			select {
 			case <-timer.C:
@@ -161,13 +183,39 @@ func (w *Output) doPost(ctx context.Context, body []byte) (bool, error) {
 		return false, nil // success
 	}
 
-	if resp.StatusCode == 429 || resp.StatusCode >= 500 {
+	if resp.StatusCode == 429 {
+		w.retryHint = parseRetryAfter(resp.Header.Get("Retry-After"))
+		return true, fmt.Errorf("audit/webhook: rate limited (429)")
+	}
+
+	if resp.StatusCode >= 500 {
 		return true, fmt.Errorf("audit/webhook: server error %d", resp.StatusCode)
 	}
 
 	// 4xx (not 429), and any 3xx that bypassed redirect-follow
 	// (no Location header, 300, 304, ...) — client error, not retryable.
 	return false, fmt.Errorf("audit/webhook: client error %d", resp.StatusCode)
+}
+
+// parseRetryAfter parses a Retry-After header value (delta-seconds
+// only). Returns 0 if absent, unparseable, or non-positive. The
+// result is capped at maxRetryAfter to prevent server-controlled DoS.
+//
+// SYNC: identical to loki/http.go (parseRetryAfter). Keep the two
+// copies in sync when making changes (#542).
+func parseRetryAfter(val string) time.Duration {
+	if val == "" {
+		return 0
+	}
+	secs, err := strconv.Atoi(val)
+	if err != nil || secs <= 0 {
+		return 0
+	}
+	d := time.Duration(secs) * time.Second
+	if d > maxRetryAfter {
+		return maxRetryAfter
+	}
+	return d
 }
 
 // recordSuccess records successful delivery metrics for a batch.
