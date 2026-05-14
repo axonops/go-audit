@@ -97,9 +97,8 @@ func genFilterOps(rt *rapid.T) []filterOp {
 			op.output = rapid.SampledFrom(outputs).Draw(rt, "output")
 			op.route = &audit.EventRoute{}
 			if rapid.Bool().Draw(rt, "include_categories") {
-				op.route.IncludeCategories = []string{
-					rapid.SampledFrom(categories).Draw(rt, "include_cat"),
-				}
+				cat := rapid.SampledFrom(categories).Draw(rt, "include_cat")
+				op.route.IncludeCategories = map[string]*audit.SeverityRange{cat: nil}
 			}
 		case opClearOutputRoute:
 			op.output = rapid.SampledFrom(outputs).Draw(rt, "output")
@@ -176,10 +175,25 @@ func snapshotRoutes(t *testing.T, auditor *audit.Auditor) map[string]string {
 // has slices + severity pointers; passing by value triggers
 // gocritic's hugeParam linter).
 func formatRoute(r *audit.EventRoute) string {
-	return "include_cats=" + joinSorted(r.IncludeCategories) +
+	return "include_cats=" + joinSortedMap(r.IncludeCategories) +
 		" exclude_cats=" + joinSorted(r.ExcludeCategories) +
 		" include_evts=" + joinSorted(r.IncludeEventTypes) +
 		" exclude_evts=" + joinSorted(r.ExcludeEventTypes)
+}
+
+// joinSortedMap collapses a map[string]*audit.SeverityRange to a
+// deterministic "[a,b,c]" string of the keys. Per-category severity
+// ranges are not part of the property-test domain today; if a future
+// op introduces them, extend this to include the range too.
+func joinSortedMap(m map[string]*audit.SeverityRange) string {
+	if len(m) == 0 {
+		return "[]"
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return joinSorted(keys)
 }
 
 // joinSorted returns "[a,b,c]" for any input order.

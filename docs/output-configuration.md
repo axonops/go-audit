@@ -124,7 +124,7 @@ outputs:
       version: "1.0"
     route:
       include_categories:
-        - security                 # only security events to SIEM
+        security: {}             # only security events to SIEM
 
   # ── Webhook Output ────────────────────────────────────────
   alerts:
@@ -181,7 +181,7 @@ outputs:
       # allow_private_ranges: true   # disable SSRF protection (dev only)
     route:
       include_categories:
-        - security
+        security: {}
 ```
 
 ## 📋 Top-Level Fields
@@ -629,7 +629,7 @@ modes are mutually exclusive.
 ```yaml
 route:
   # Include mode — only matching events delivered:
-  include_categories: [security]
+  include_categories: {security: {}}
   include_event_types: [auth_failure]
 
   # Exclude mode — all events except matching:
@@ -653,20 +653,34 @@ route:
 Include and exclude modes are mutually exclusive — setting both on the
 same route causes a startup error.
 
-**Severity filtering is an AND condition** — it combines with whichever
-mode you use. An event must pass BOTH the category/event filter AND the
-severity filter. For example:
+**Severity precedence depends on the match path** — route-level
+`min_severity`/`max_severity` apply only to `include_event_types`
+matches, exclude-mode routes, and severity-only catch-all routes. For
+`include_categories`, the per-category bound inside each category's
+mapping value is authoritative; route-level severity is NOT applied
+to category matches. See
+[Event Routing — Severity Precedence](event-routing.md#severity-precedence)
+for the full rule and worked examples.
 
 ```yaml
-# Include mode + severity: only security events with severity 8+
+# Per-category severity: only security events at severity >= 8.
+# The min_severity is INSIDE the category mapping value, not at
+# the route level.
 route:
-  include_categories: [security]
-  min_severity: 8
+  include_categories:
+    security:
+      min_severity: 8
 
-# Exclude mode + severity: everything except reads, but only severity 5+
+# Exclude mode + severity: everything except reads, but only severity 5+.
+# Route-level severity DOES apply in exclude mode.
 route:
   exclude_categories: [read]
   min_severity: 5
+
+# Severity-only catch-all: no include or exclude lists, route-level
+# severity is the only gate (the PagerDuty pattern).
+route:
+  min_severity: 9
 ```
 
 See [Event Routing](event-routing.md) for detailed examples and

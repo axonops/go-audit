@@ -17,7 +17,7 @@ outputs:
       path: "./secure-audit.log"
     route:
       include_categories:
-        - security
+        security: {}
 
   # Global HMAC — every event gets an HMAC signature.
   # No route filter, so all events are delivered with tamper detection.

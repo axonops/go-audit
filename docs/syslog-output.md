@@ -637,7 +637,7 @@ outputs:
       version: "1.0"
     route:
       include_categories:
-        - security
+        security: {}
 ```
 
 CEF (Common Event Format) is natively understood by ArcSight, Splunk,
@@ -719,7 +719,7 @@ outputs:
       version: "1.0"
     route:
       include_categories:
-        - security
+        security: {}
 
   # All events to log aggregator in JSON format
   aggregator:

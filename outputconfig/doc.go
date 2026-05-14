@@ -61,7 +61,8 @@
 //	      vendor: MyCompany
 //	      product: MyApp
 //	    route:                      # optional per-output event filter
-//	      include_categories: [security]
+//	      include_categories:
+//	        security: {}             # nil filter = any severity for this cat
 //	    exclude_labels: [pii]       # optional sensitivity label filter
 //	    hmac:                       # optional per-output HMAC integrity
 //	      enabled: true

@@ -182,7 +182,7 @@ outputs:
       version: "1.0"
     route:
       include_categories:
-        - security
+        security: {}
 ```
 
 ## Container and Kubernetes Deployment

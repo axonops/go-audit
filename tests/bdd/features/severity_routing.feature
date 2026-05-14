@@ -5,8 +5,11 @@ Feature: Severity-based event routing
   (like authentication failures) trigger alerts via PagerDuty while
   low-severity events go to a debug log.
 
-  Severity filtering is an AND condition with category/event type
-  filtering — both must pass for the event to be delivered.
+  Severity precedence (#193): for category matches in
+  include_categories, the per-category SeverityRange is authoritative
+  and route-level MinSeverity/MaxSeverity is NOT applied. Route-level
+  severity applies to include_event_types matches, exclude-mode
+  routes, and the severity-only catch-all (the PagerDuty pattern).
 
   Background:
     Given a severity routing taxonomy
@@ -119,10 +122,12 @@ Feature: Severity-based event routing
     And all delivered events should have event_type "system_breach"
 
   # ---------------------------------------------------------------------------
-  # Severity + category filters (AND logic)
+  # Per-category severity (#193) — the step builds a per-category
+  # SeverityRange; route-level MinSeverity is NOT used for these
+  # scenarios.
   # ---------------------------------------------------------------------------
 
-  Scenario: Category include AND severity must both match
+  Scenario: Category include with per-category min_severity rejects below threshold
     Given an auditor with stdout output routed to include only "security" with min_severity 9
     When I audit event "auth_failure" with fields:
       | field    | value   |
@@ -131,7 +136,7 @@ Feature: Severity-based event routing
       | marker   | sec_low |
     Then the output should contain exactly 0 events
 
-  Scenario: Category include AND severity both satisfied delivers
+  Scenario: Category include with per-category min_severity at threshold delivers
     Given an auditor with stdout output routed to include only "security" with min_severity 7
     When I audit event "auth_failure" with fields:
       | field    | value      |

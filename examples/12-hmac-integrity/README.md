@@ -60,7 +60,7 @@ secure_log:
   file:
     path: "./secure-audit.log"
   route:
-    include_categories: [security]    # only security events
+    include_categories: {security: {}}    # only security events
 ```
 
 **Global HMAC** — enable HMAC without routing, so every event gets

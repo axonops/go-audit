@@ -11,7 +11,7 @@ outputs:
       path: "./security.log"
     route:
       include_categories:
-        - security
+        security: {}
 
   writes_log:
     type: file
@@ -19,7 +19,7 @@ outputs:
       path: "./writes.log"
     route:
       include_categories:
-        - write
+        write: {}
 
   critical_alerts:
     type: file

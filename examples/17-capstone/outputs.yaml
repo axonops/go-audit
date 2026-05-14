@@ -70,10 +70,15 @@ outputs:
       max_backups: 5
       max_age_days: 90
     route:
+      # Per-category severity threshold (#193): only security/compliance
+      # events at severity >= 7 reach this feed. Per-category min_severity
+      # is authoritative for category matches; route-level min_severity is
+      # not applied here.
       include_categories:
-        - security
-        - compliance
-      min_severity: 7
+        security:
+          min_severity: 7
+        compliance:
+          min_severity: 7
     hmac:
       enabled: "ref+openbao://secret/data/audit/hmac-v2#enabled"
       salt:
