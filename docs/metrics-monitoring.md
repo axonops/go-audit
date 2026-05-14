@@ -11,7 +11,7 @@
 - [Per-Output Metrics](#per-output-metrics)
 - [Testing Metrics](#testing-metrics)
 
-## ❓ Why Monitor Your Audit Pipeline?
+## Why Monitor Your Audit Pipeline?
 
 An audit pipeline that silently drops events is worse than no audit
 pipeline at all — it gives a false sense of compliance. Monitoring
@@ -87,7 +87,7 @@ into a Prometheus registry. The capstone example
 shows the same pattern in a full production-grade context with
 Postgres, Loki, HMAC, and Grafana dashboards.
 
-## 🔍 What to Monitor
+## What to Monitor
 
 ### Critical — Alert Immediately
 
@@ -144,7 +144,7 @@ if your taxonomy is large or unknown event types can leak through,
 these vectors become high-cardinality. Budget accordingly, or drop
 the `event_type` label on methods where you only need a global count.
 
-## 📊 Event Accounting
+## Event Accounting
 
 The pipeline metrics form a closed accounting equation:
 
@@ -190,7 +190,7 @@ Consumers that want a single "events lost" counter should sum
 already includes retry-exhaustion drops for webhook/loki, so no
 double-counting with `RecordDelivery(EventError)` is needed).
 
-## 🚨 Recommended Alerts
+## Recommended Alerts
 
 | Alert | Condition | Action |
 |-------|-----------|--------|
@@ -199,7 +199,7 @@ double-counting with `RecordDelivery(EventError)` is needed).
 | Delivery error rate | `RecordDelivery(_, EventError)` / total > 5% | Investigate failing output |
 | Validation spike | `RecordValidationError` > threshold | Application bug — check recent deployments |
 
-## 🩺 Health Endpoint
+## Health Endpoint
 
 Operators running audit behind a Kubernetes probe or load
 balancer typically expose two HTTP endpoints driven by the
@@ -330,7 +330,7 @@ operator-correctable belongs in `/readyz`.
 A complete runnable implementation lives at
 [examples/18-health-endpoint](../examples/18-health-endpoint/).
 
-## 🔀 Per-Output Metrics (`OutputMetrics`)
+## Per-Output Metrics (`OutputMetrics`)
 
 Every async output (file, syslog, webhook, Loki) can receive a
 scoped metrics instance via the unified `OutputMetrics` interface.
@@ -445,7 +445,7 @@ Consumers SHOULD embed `audit.NoOpOutputMetrics` for forward
 compatibility — new methods added to the interface in future
 versions will be absorbed by the embedded no-op.
 
-## 🧪 Testing Metrics
+## Testing Metrics
 
 The `audittest.MetricsRecorder` captures all metrics calls in memory:
 
@@ -458,7 +458,7 @@ assert.Equal(t, 1, metrics.EventDeliveries("recorder", audit.EventSuccess))
 assert.Equal(t, 0, metrics.BufferDrops())
 ```
 
-## 📚 Further Reading
+## Further Reading
 
 - [Progressive Example: Capstone](../examples/17-capstone/) — Prometheus metrics integration
 - [Async Delivery](async-delivery.md) — buffer sizing and backpressure

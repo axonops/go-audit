@@ -5,6 +5,40 @@
 Progressive examples from "hello world" to a complete CRUD REST API.
 Each example introduces one new concept and builds on the previous.
 
+## Start Here — Reading Paths
+
+The full list is below in numeric order, but most readers want one
+of these paths through the set. Pick the one that matches your
+goal:
+
+- **First contact (~10 minutes)** → [01-basic](01-basic/),
+  [02-code-generation](02-code-generation/). Audit your first
+  event programmatically, then add typed builders via the YAML
+  taxonomy + `go generate` flow.
+- **Core mechanics** → [03-file-output](03-file-output/),
+  [04-testing](04-testing/), [05-formatters](05-formatters/),
+  [06-middleware](06-middleware/). Wiring outputs, asserting
+  delivery in tests, picking a wire format, automatic HTTP
+  request auditing.
+- **Wire an output** → [07-syslog-output](07-syslog-output/),
+  [08-webhook-output](08-webhook-output/),
+  [09-multi-output](09-multi-output/),
+  [14-loki-output](14-loki-output/). Each output type's setup,
+  failure modes, and configuration.
+- **Production patterns** → [10-event-routing](10-event-routing/),
+  [11-sensitivity-labels](11-sensitivity-labels/),
+  [12-hmac-integrity](12-hmac-integrity/),
+  [13-standard-fields](13-standard-fields/),
+  [15-tls-policy](15-tls-policy/), [16-buffering](16-buffering/).
+  Per-output routing, PII stripping, tamper detection, fleet
+  metadata, TLS hardening, queue tuning.
+- **Capstone & advanced** → [17-capstone](17-capstone/),
+  [18-health-endpoint](18-health-endpoint/),
+  [19-migration](19-migration/),
+  [20-prometheus-reference](20-prometheus-reference/). Full
+  inventory demo, kubelet health probes, `log/slog`
+  coexistence, Prometheus metrics surface.
+
 ## Examples
 
 | # | Example | What it teaches |

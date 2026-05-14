@@ -272,6 +272,27 @@ type Taxonomy struct {
 // DevTaxonomy is for prototyping and testing only. It accepts any
 // event type with any fields and MUST NOT be used in production.
 // [New] emits a [log/slog] warning when a DevTaxonomy is used.
+//
+// # Migrating to production
+//
+// When the prototype is ready, migrate to a strict taxonomy by:
+//
+//  1. Listing every event type the application emits (the dev-only
+//     log warning will not flag stale call sites — `grep` for
+//     `audit.NewEvent(`, `auditor.AuditEvent(`, and the generated
+//     event-constructor names).
+//  2. Authoring a YAML taxonomy or constructing
+//     [Taxonomy] / [CategoryDef] / [EventDef] literals listing
+//     required fields, categories, and severities for each event.
+//  3. Replacing `audit.WithTaxonomy(audit.DevTaxonomy(...))` with
+//     `audit.WithTaxonomy(parsedTaxonomy)` — `audit.New` will then
+//     enforce the schema and reject unknown event types and
+//     unknown fields at runtime.
+//  4. Optionally generating typed event builders via `audit-gen`
+//     so the schema is enforced at compile time.
+//
+// See `docs/taxonomy-validation.md` and `examples/02-code-generation`
+// for a worked migration.
 func DevTaxonomy(eventTypes ...string) *Taxonomy {
 	events := make(map[string]*EventDef, len(eventTypes))
 	for _, et := range eventTypes {

@@ -174,6 +174,6 @@ affecting the file output.
 ## Further Reading
 
 - [Two-Level Buffering](../../docs/async-delivery.md#two-level-buffering) — complete architecture reference
-- [Output Types](../../docs/outputs.md#-buffering-and-delivery-model) — sync vs async comparison table
+- [Output Types](../../docs/outputs.md#buffering-and-delivery-model) — sync vs async comparison table
 - [Webhook Output](../../docs/webhook-output.md#buffering-architecture) — webhook buffering details
 - [Loki Output](../../docs/loki-output.md#buffering-architecture) — Loki buffering details

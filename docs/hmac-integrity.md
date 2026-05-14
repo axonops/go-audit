@@ -1,6 +1,6 @@
 [&larr; Back to README](../README.md)
 
-# 🔐 HMAC Integrity Verification
+# HMAC Integrity Verification
 
 - [What Is HMAC?](#what-is-hmac)
 - [Why Use It?](#why-use-it)
@@ -41,7 +41,7 @@ SOX (Sections 302/404), HIPAA (§164.312(c)(1)), FedRAMP/NIST 800-53
 - **Salt compromise** — if an attacker has the salt, they can forge HMACs
 - **Key management** — the library does not manage salts; that is the consumer's responsibility
 
-## ⚠️ Performance Impact
+## Performance Impact
 
 > **HMAC computation has a CPU cost.** Every event delivered to an
 > HMAC-enabled output pays for a cryptographic hash computation.
@@ -62,7 +62,7 @@ SOX (Sections 302/404), HIPAA (§164.312(c)(1)), FedRAMP/NIST 800-53
 | HMAC-SHA-512 (~110 byte event) | ~400 ns | 4 allocs |
 | No HMAC (baseline) | 0 ns | 0 allocs |
 
-## ⚙️ Configuration
+## Configuration
 
 HMAC is configured **per-output** in the output YAML:
 
@@ -96,7 +96,7 @@ outputs:
 | `hmac.salt.value` | Yes (when enabled) | The salt value. Min 16 bytes (128 bits). Supports `${VAR}` env vars. |
 | `hmac.algorithm` | Yes (when enabled) | HMAC algorithm. See [Supported Algorithms](#supported-algorithms). |
 
-## 📋 Supported Algorithms
+## Supported Algorithms
 
 Per **NIST SP 800-224**, only approved cryptographic hash functions
 are supported. SHA-1 and MD5 are explicitly **not supported**.
@@ -121,7 +121,7 @@ are supported. SHA-1 and MD5 are explicitly **not supported**.
 supported, 128-bit security, used by TLS 1.3, JWT (HS256), and most
 API authentication schemes.
 
-## 🔑 Salt Management
+## Salt Management
 
 ### Why Salt Is Mandatory
 
@@ -149,7 +149,7 @@ Use Vault, KMS, or your own key management system.
 - **Rotate periodically** — use the version field to track rotations
 - **Don't reuse** — use different salts for different purposes
 
-## 🔒 What Is Authenticated
+## What Is Authenticated
 
 The HMAC covers the following bytes, in this exact order:
 
@@ -171,7 +171,7 @@ The library enforces this contract in two ways:
 - **`HMACSalt.Version` character set** is restricted to `[A-Za-z0-9._:-]` (up to 64 characters) at config-time validation. Control characters, spaces, CEF/JSON escape metacharacters, and quote characters are all rejected. This eliminates escape ambiguity between the bytes that are hashed and the bytes that appear on the wire.
 - **Reserved-field collision**: consumer-supplied event fields named `_hmac` or `_hmac_version` are rejected at runtime regardless of `ValidationMode`. This prevents accidentally-or-maliciously emitting a duplicate `_hmac_version` earlier in the payload, which would introduce canonicalisation ambiguity for verifiers.
 
-## ✅ Verification
+## Verification
 
 The library provides exported functions for HMAC verification:
 
@@ -227,7 +227,7 @@ output must look for `_hmacVersion`.
 - **Format cache:** The base serialised event is cached. HMAC is
   computed per-delivery (after event_category + field stripping + `_hmac_version` append).
 
-## 🔄 Alternative Approaches
+## Alternative Approaches
 
 ### Hash Chaining
 
@@ -248,7 +248,7 @@ complementary — it proves integrity at the **source** (your
 application), while storage verification proves integrity at the
 **destination**.
 
-## 📚 Further Reading
+## Further Reading
 
 - [Progressive Example: HMAC Integrity](../examples/12-hmac-integrity/) — per-output HMAC with selective routing
 - [Output Configuration YAML](output-configuration.md) — full HMAC config reference

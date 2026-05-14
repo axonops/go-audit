@@ -277,7 +277,7 @@ cosign verify \
   ghcr.io/axonops/audit-gen:v1.0.0
 ```
 
-See [docs/code-generation.md § Container Image](code-generation.md#-container-image)
+See [docs/code-generation.md § Container Image](code-generation.md#container-image)
 for usage and CI-pipeline guidance.
 
 ### Composition with build provenance

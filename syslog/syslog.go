@@ -227,6 +227,38 @@ type Output struct {
 // config, establishes the initial connection, and starts the
 // background writeLoop goroutine.
 //
+// # Construction errors
+//
+// New returns wrapped errors (unwrappable to [audit.ErrConfigInvalid]
+// or a wrapped transport error) for:
+//
+//   - Empty [Config.Address] — rejected before any I/O. Returns a
+//     validation error wrapping ErrConfigInvalid.
+//   - Unknown [Config.Network] — only "tcp", "tcp4", "tcp6", "udp",
+//     "udp4", "udp6", "unix", "unixgram", and "tcp+tls" are
+//     accepted. The "tcp+tls" value activates TLS using
+//     [Config.TLSCertFile] / [Config.TLSKeyFile]; anything else is
+//     rejected at validation time.
+//   - Unknown [Config.Facility] — one of the RFC 5424 facility
+//     names; mismatch returns "facility %q: …" wrapped error.
+//   - Invalid TLS configuration — missing cert/key file paths,
+//     unreadable files, PEM-decode failure, or a TLS policy
+//     violation (insecure curves, weak ciphers) all surface here
+//     as a wrapped TLS error.
+//   - Initial dial failure — TCP/UDP connect refused, name
+//     resolution failure, or TLS handshake error returns a
+//     wrapped *net.OpError or TLS-handshake error.
+//
+// # Connection lifecycle
+//
+// New eagerly dials the destination. If the initial dial fails,
+// New returns an error and no output is created (no goroutine is
+// started). Once construction succeeds, transport failures during
+// runtime are handled by the writeLoop's reconnect-with-backoff
+// path (see syslog/reconnect.go) — operators do not need to
+// reconstruct the Output to recover from a transient remote
+// outage.
+//
 // Per-output metrics may be supplied at construction via
 // [WithOutputMetrics]. When omitted, telemetry calls become no-ops.
 //

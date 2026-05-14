@@ -62,7 +62,7 @@ read the `.Error()` string for specifics.
 
 ---
 
-## ⚡ Core Errors
+## Core Errors
 
 ### `ErrQueueFull`
 
@@ -88,7 +88,7 @@ audit: auditor is closed
 | **When** | `AuditEvent()` is called after `Auditor.Close()` has been called |
 | **Meaning** | The auditor has been shut down — no more events can be emitted |
 | **Transient?** | No — permanent. The auditor cannot be reopened. |
-| **What to do** | This usually means your shutdown ordering is wrong. Make sure you stop generating events (e.g., stop the HTTP server) before calling `auditor.Close()`. See [Graceful Shutdown](async-delivery.md#-graceful-shutdown). |
+| **What to do** | This usually means your shutdown ordering is wrong. Make sure you stop generating events (e.g., stop the HTTP server) before calling `auditor.Close()`. See [Graceful Shutdown](async-delivery.md#graceful-shutdown). |
 
 ### `ErrDuplicateDestination`
 
@@ -105,7 +105,7 @@ audit: duplicate destination
 
 ---
 
-## ⚙️ Configuration Errors
+## Configuration Errors
 
 ### `ErrConfigInvalid`
 
@@ -194,7 +194,7 @@ The full chain is preserved so `grep`-friendly searches work end to end.
 
 ---
 
-## 📡 Output Errors
+## Output Errors
 
 ### `ErrOutputClosed`
 
@@ -224,7 +224,7 @@ audit: underlying ResponseWriter does not support hijacking
 
 ---
 
-## 🔐 HMAC Errors
+## HMAC Errors
 
 HMAC validation errors occur when `outputconfig.Load()` encounters an
 invalid HMAC configuration on an output, or when the programmatic API
@@ -258,7 +258,7 @@ audit: hmac value malformed
 
 ---
 
-## 📡 Loki Output Errors
+## Loki Output Errors
 
 | Error | When |
 |-------|------|
@@ -272,7 +272,7 @@ audit: hmac value malformed
 
 ---
 
-## 📡 Webhook Output Errors
+## Webhook Output Errors
 
 | Error | When |
 |-------|------|
@@ -290,7 +290,7 @@ audit: hmac value malformed
 
 ---
 
-## 📡 Syslog Output Errors
+## Syslog Output Errors
 
 | Error | When |
 |-------|------|
@@ -376,7 +376,7 @@ audit/secrets: unresolved secret reference in config
 
 ---
 
-## 📋 Taxonomy Errors
+## Taxonomy Errors
 
 ### `ErrTaxonomyInvalid`
 
@@ -550,7 +550,7 @@ The path appears in the wrapped `*PathError` from `os.File.Sync` — same redact
 
 ---
 
-## 📚 Further Reading
+## Further Reading
 
 - [Async Delivery](async-delivery.md) — buffer sizing, delivery guarantee, graceful shutdown
 - [Taxonomy YAML Reference](taxonomy-validation.md) — fixing taxonomy validation errors

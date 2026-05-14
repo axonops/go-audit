@@ -10,7 +10,7 @@
 - [Configuration](#configuration)
 - [Escaping and Security](#escaping-and-security)
 
-## 🔍 What Is CEF?
+## What Is CEF?
 
 The Common Event Format (CEF) is a standardised log format designed for
 interoperability between security products. Originally developed by
@@ -23,7 +23,7 @@ custom configuration. Where JSON requires each SIEM to be configured
 with field mappings, CEF uses a well-known schema that SIEM platforms
 understand out of the box.
 
-## 📐 Format Structure
+## Format Structure
 
 A CEF message is a single line with a fixed header and a variable
 extension section:
@@ -55,9 +55,9 @@ CEF:0|MyCompany|MyApp|1.0|auth_failure|An authentication attempt failed|8|rt=170
 > when not explicitly set.
 >
 > The `cat` extension (ArcSight `deviceEventCategory`) is appended automatically when the
-> event belongs to a category. See [Taxonomy: Event Category](taxonomy-validation.md#-event-category-in-output).
+> event belongs to a category. See [Taxonomy: Event Category](taxonomy-validation.md#event-category-in-output).
 
-## ⚖️ CEF vs JSON
+## CEF vs JSON
 
 | Aspect | CEF | JSON |
 |--------|-----|------|
@@ -74,7 +74,7 @@ go to log aggregators (ELK, Datadog) or custom analytics pipelines.
 You can use both simultaneously — audit supports per-output
 formatter overrides.
 
-## 🗺️ Field Mapping
+## Field Mapping
 
 audit maps audit field names to standard CEF extension keys:
 
@@ -126,7 +126,7 @@ Custom field mappings can override the defaults via `CEFFormatter.FieldMapping`.
 See [`DefaultCEFFieldMapping`](https://pkg.go.dev/github.com/axonops/audit#DefaultCEFFieldMapping)
 for the complete default mapping.
 
-## 📊 Severity Levels
+## Severity Levels
 
 CEF uses a 0-10 severity scale. Choose severity levels based on the
 operational response each event should trigger:
@@ -167,7 +167,7 @@ events:
       outcome: { required: true }
 ```
 
-## ⚙️ Configuration
+## Configuration
 
 ### YAML (recommended)
 
@@ -194,7 +194,7 @@ cef := &audit.CEFFormatter{
 }
 ```
 
-## 🔒 Escaping and Security
+## Escaping and Security
 
 CEF escaping follows the standard specification with different rules
 for headers and extension values:
@@ -212,7 +212,7 @@ the key=value pair separator in the CEF specification. Avoid embedding
 literal spaces in field values intended for CEF output; use underscores
 or structured identifiers at the application level.
 
-## 📚 Further Reading
+## Further Reading
 
 - [Progressive Example: Formatters](../examples/05-formatters/) — JSON and CEF side-by-side
 - [Event Routing](event-routing.md) — route security events to a CEF-formatted SIEM output

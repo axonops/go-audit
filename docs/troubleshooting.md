@@ -15,19 +15,19 @@
 
 ---
 
-## 🔇 Events Not Appearing in Output
+## Events Not Appearing in Output
 
 This is the most common problem. Work through this checklist:
 
 | Check | How to Verify | Fix |
 |-------|--------------|-----|
-| **`auditor.Close()` not called** | Events are async — they sit in the buffer until the drain goroutine processes them. If your program exits without calling `Close()`, buffered events are lost. | Call `auditor.Close()` before exit. See [Graceful Shutdown](async-delivery.md#-graceful-shutdown). |
+| **`auditor.Close()` not called** | Events are async — they sit in the buffer until the drain goroutine processes them. If your program exits without calling `Close()`, buffered events are lost. | Call `auditor.Close()` before exit. See [Graceful Shutdown](async-delivery.md#graceful-shutdown). |
 | **Auditor disabled** | A disabled logger silently discards all events. | Remove `WithDisabled()` from your `New` call, or set `auditor: { enabled: true }` in your outputs YAML. |
 | **Category disabled at runtime** | If `DisableCategory()` was called, events in that category are silently discarded. | Check your code for `DisableCategory()` calls. All categories are enabled by default. |
 | **Per-output route filtering** | An output with `route: include_categories: {security: {}}` only receives security events — write events are silently filtered. | Check your output YAML `route:` block. Remove the route to receive all events. See [Event Routing](event-routing.md). |
 | **Output disabled in YAML** | `enabled: false` on an output silently disables it. | Check your output YAML for `enabled: false`. |
 | **Sensitivity label stripping** | `exclude_labels: [pii]` removes PII-labeled fields — the event is delivered but with fewer fields than expected. | Check your output YAML `exclude_labels`. The event itself is delivered; only labeled fields are stripped. See [Sensitivity Labels](sensitivity-labels.md). |
-| **Wrong output type blank import** | If you use `type: file` in YAML but forgot `_ "github.com/axonops/audit/file"`, `outputconfig.Load` returns an error. | Add the blank import for every output type you use. See [Output Configuration](output-configuration.md#-factory-registry). |
+| **Wrong output type blank import** | If you use `type: file` in YAML but forgot `_ "github.com/axonops/audit/file"`, `outputconfig.Load` returns an error. | Add the blank import for every output type you use. See [Output Configuration](output-configuration.md#factory-registry). |
 
 > 💡 **Quick diagnostic:** Add a `stdout` output with no route. If
 > events appear on stdout but not in your file/syslog/webhook, the
@@ -35,7 +35,7 @@ This is the most common problem. Work through this checklist:
 
 ---
 
-## 📦 ErrQueueFull at Runtime
+## ErrQueueFull at Runtime
 
 ```
 audit: queue full
@@ -61,7 +61,7 @@ the complete pipeline architecture and tuning guidance.
 
 ---
 
-## ⏱️ Drain Timeout at Shutdown
+## Drain Timeout at Shutdown
 
 ```
 INFO audit: shutdown started
@@ -82,7 +82,7 @@ but couldn't flush all buffered events in time.
 
 ---
 
-## ❌ Validation Errors on Valid-Looking Events
+## Validation Errors on Valid-Looking Events
 
 ```
 audit: unknown event type "user_created"
@@ -92,9 +92,9 @@ audit: event "user_create": unknown field "actorid"
 
 | Error | Cause | Fix |
 |-------|-------|-----|
-| **Unknown event type** | The event type string doesn't match any event in your taxonomy. Likely a typo. | Use generated constants (`EventUserCreate`) instead of string literals. Check your taxonomy YAML `events:` section. |
+| **Unknown event type** | The event type string doesn't match any event in your taxonomy. Likely a typo. | Use generated constants (`EventUserCreate`) instead of string literals. Check your taxonomy YAML `events:` section.<br>☑ Have you regenerated after editing the taxonomy? If you use code generation, run `go generate ./...` — stale generated constants reference removed event types and refuse newly added ones until they are regenerated. |
 | **Missing required field** | A field marked `required: true` in the taxonomy is not present in the event. | Add the missing field. Check your taxonomy for which fields are required. |
-| **Unknown field** (strict mode) | A field not declared in the taxonomy was included. In `strict` mode (default), this is rejected. | Either add the field to your taxonomy, or switch to `warn` or `permissive` validation mode. See [Validation Modes](taxonomy-validation.md#-validation-modes). |
+| **Unknown field** (strict mode) | A field not declared in the taxonomy was included. In `strict` mode (default), this is rejected. | Either add the field to your taxonomy, or switch to `warn` or `permissive` validation mode. See [Validation Modes](taxonomy-validation.md#validation-modes). |
 
 > 💡 **Use code generation** to eliminate these errors entirely.
 > Generated builders have required fields as constructor parameters
@@ -103,7 +103,7 @@ audit: event "user_create": unknown field "actorid"
 
 ---
 
-## 📡 Syslog Connection Failures
+## Syslog Connection Failures
 
 ```
 audit: output "siem": dial tcp syslog.example.com:6514: connection refused
@@ -128,7 +128,7 @@ reconnection events.
 
 ---
 
-## 🌐 Webhook Events Not Delivered
+## Webhook Events Not Delivered
 
 ```
 audit: output "alerts": POST https://ingest.example.com/audit: 403 Forbidden
@@ -136,16 +136,35 @@ audit: output "alerts": POST https://ingest.example.com/audit: 403 Forbidden
 
 | Cause | Fix |
 |-------|-----|
-| **Missing authentication** | Set `headers: { Authorization: "Bearer <token>" }` in webhook YAML |
+| **Missing authentication** | The webhook has no built-in auth field — every credential travels via the `headers:` config. See the [Webhook Auth Patterns](#webhook-auth-patterns) sub-section below for Bearer / Basic / mTLS / API-key / HMAC / custom forms. |
 | **HTTPS required** | The webhook output requires `https://` by default. Set `allow_insecure_http: true` only for local development. |
 | **SSRF protection blocking** | Private/loopback IPs are blocked by default. Set `allow_private_ranges: true` for local development. |
 | **Server returning errors** | 4xx errors are not retried (client error). 5xx errors are retried up to `max_retries` times. Check the server-side logs. |
 | **Buffer full** | The webhook has its own internal buffer. If events arrive faster than batches can be sent, events are dropped. Monitor `RecordDrop` and increase `buffer_size` if needed. |
 | **Redirect blocked** | Webhook follows no redirects. Make sure the URL is the final endpoint, not a redirect. |
 
+### Webhook Auth Patterns
+
+The webhook output has no `auth:` block — every credential rides
+on the `headers:` map. The library validates header names and
+values at construction and rejects CRLF injection. Common patterns:
+
+| Pattern | `headers:` snippet | Notes |
+|---------|--------------------|-------|
+| **Bearer token** | `Authorization: "Bearer ${WEBHOOK_TOKEN}"` | Most common for SaaS receivers (Datadog, Splunk HEC, etc.). |
+| **Basic auth** | `Authorization: "Basic ${WEBHOOK_BASIC_B64}"` | Pre-encode `user:pass` as base64 outside the YAML so the secret is not literal. |
+| **API key header** | `X-API-Key: "${WEBHOOK_API_KEY}"` | The vendor's docs will name the header; common names: `X-Api-Key`, `X-Auth-Token`, `Apikey`. |
+| **mTLS** | (no `headers:` entry) — use `tls_ca`, `tls_client_cert`, `tls_client_key` | The webhook output's TLS block presents a client certificate. See [Output Configuration](output-configuration.md). |
+| **HMAC body signature** | `X-Signature: "..."` — must be computed per request | The library does NOT sign request bodies. For receivers that require per-body HMAC (e.g. GitHub-style `X-Hub-Signature-256`), front the audit webhook with a small signing reverse-proxy that wraps each request, or open an issue if first-class support would help your use case. |
+| **Custom / vendor-specific** | Any single header value the receiver requires | Use any header name. Validation rejects CRLF/NUL/control-character values. |
+
+Use `${ENV_VAR}` substitution to keep secrets out of the YAML
+file; load the value from your deployment secret store and export
+it before launching the auditor.
+
 ---
 
-## 🔶 Loki Events Not Appearing
+## Loki Events Not Appearing
 
 | Cause | Fix |
 |-------|-----|
@@ -161,7 +180,7 @@ audit: output "alerts": POST https://ingest.example.com/audit: 403 Forbidden
 
 ---
 
-## 📁 File Output Not Writing
+## File Output Not Writing
 
 | Cause | Fix |
 |-------|-----|
@@ -173,7 +192,7 @@ audit: output "alerts": POST https://ingest.example.com/audit: 403 Forbidden
 
 ---
 
-## 🧪 Goroutine Leak in Tests
+## Goroutine Leak in Tests
 
 ```
 goleak: found unexpected goroutines
@@ -300,9 +319,32 @@ audit/secrets: secret resolution failed: loopback address 127.0.0.1 blocked
 
 ---
 
-## 📚 Further Reading
+## Diagnostic Cookbook
 
-- [Outputs § Failure Mode Matrix](outputs.md#-failure-mode-matrix) — concrete behaviour per output × failure mode (down, slow, auth, disk full, TLS expired, DNS, rate-limited)
+When something is silent or unexpected, the [`Auditor`](https://pkg.go.dev/github.com/axonops/audit#Auditor)
+exposes read-only introspection methods that let you confirm what
+the runtime actually sees — without restarting the auditor or
+re-reading the YAML. Common symptoms and the call that
+diagnoses them:
+
+| Symptom | Method | Example | What it confirms |
+|---------|--------|---------|------------------|
+| Output is silent — no events arriving | `OutputNames()` | `for _, name := range auditor.OutputNames() { fmt.Println(name) }` | The output is actually registered and named the way your code references it. |
+| Output is silent — events ARE being emitted | `LastDeliveryAge("name")` | `if age := auditor.LastDeliveryAge("siem"); age > 30*time.Second { /* alert */ }` | Time since the last successful delivery on that output; growing values point at a stalled retry loop or remote outage. |
+| A whole category seems suppressed | `IsCategoryEnabled("security")` | `if !auditor.IsCategoryEnabled("security") { /* DisableCategory was called */ }` | Whether `DisableCategory` was called for that category. |
+| One specific event type silently dropped | `IsEventEnabled("auth_failure")` | `if !auditor.IsEventEnabled("auth_failure") { /* DisableEvent was called */ }` | Per-event override that beats the category-level state. |
+| Output route filtering more than expected | `OutputRoute("name")` | `r, _ := auditor.OutputRoute("siem"); fmt.Printf("%+v\n", r)` | The exact route currently bound — including any runtime changes via `SetOutputRoute`. |
+| Queue backpressure (intermittent drops) | `QueueLen()` / `QueueCap()` | `if auditor.QueueLen() > auditor.QueueCap()*9/10 { /* tune queue_size */ }` | Real-time intake-queue depth and capacity for tuning. |
+| "Why isn't anything dispatching?" | `IsDisabled()` / `IsSynchronous()` | `auditor.IsDisabled() // true if cfg.Disabled` | Confirms the auditor is not in a degenerate config or in synchronous mode. |
+
+All of these are safe to call from any goroutine and never block —
+suitable for a health-check endpoint or an admin diagnostic page.
+
+---
+
+## Further Reading
+
+- [Outputs § Failure Mode Matrix](outputs.md#failure-mode-matrix) — concrete behaviour per output × failure mode (down, slow, auth, disk full, TLS expired, DNS, rate-limited)
 - [Error Reference](error-reference.md) — all sentinel errors with recovery guidance
 - [Async Delivery](async-delivery.md) — buffering, drain, shutdown
 - [Metrics & Monitoring](metrics-monitoring.md) — tracking drops and errors

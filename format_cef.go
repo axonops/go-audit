@@ -266,10 +266,21 @@ var cefSeverityStrings = [11]string{"0", "1", "2", "3", "4", "5", "6", "7", "8",
 func (cf *CEFFormatter) ContentType() string { return "text/plain" }
 
 // Format serialises a single audit event as a CEF line. The returned
-// slice is owned by the caller (defensive copy from the pooled buffer).
+// slice is owned by the caller — Format takes a leased buffer from
+// the internal pool, copies its contents into a fresh slice, and
+// releases the buffer before returning. This defensive copy costs
+// one allocation per event but means callers can retain the slice
+// indefinitely without interfering with the pool.
 //
-// Internal callers in the drain pipeline use [CEFFormatter.formatBuf]
-// to obtain the leased buffer directly and skip the copy.
+// The audit drain pipeline does not pay this copy. Built-in
+// formatters opt into an unexported `bufferedFormatter` fast path
+// (`formatBuf` / `releaseFormatBuf`) so the pipeline can read the
+// pooled buffer directly and release it after [Output.Write]
+// returns. Third-party [Formatter] implementations have no access
+// to that fast path and always go through the defensive-copy
+// public method — which is the right trade-off: a one-allocation
+// copy is acceptable for safety; only first-party code with
+// drain-pipeline ownership semantics can safely skip it.
 func (cf *CEFFormatter) Format(ts time.Time, eventType string, fields Fields, def *EventDef, opts *FormatOptions) ([]byte, error) {
 	buf, err := cf.formatBuf(ts, eventType, fields, def, opts)
 	if err != nil {

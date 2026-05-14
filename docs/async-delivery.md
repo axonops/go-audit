@@ -10,7 +10,7 @@
 - [Graceful Shutdown](#graceful-shutdown)
 - [Thread Safety](#thread-safety)
 
-## 🔧 How Events Flow
+## How Events Flow
 
 ```mermaid
 flowchart LR
@@ -26,7 +26,7 @@ flowchart LR
     J --> K["Output.Write()"]
 ```
 
-## ❓ Why Async?
+## Why Async?
 
 Audit logging must not slow down the operations it audits, and
 **output isolation is a security requirement**. If one output stalls
@@ -75,7 +75,7 @@ HTTP handler blocks on syslog TCP writes, which creates cascading
 failures when the syslog server is slow or unreachable. Async delivery
 with monitoring is both safer and more reliable in practice.
 
-## 📦 Buffering and Backpressure
+## Buffering and Backpressure
 
 Events are held in a buffered channel. The drain goroutine reads from
 this channel continuously — events are processed as fast as the
@@ -125,7 +125,7 @@ events continuously with no timeout.
 Monitor `RecordBufferDrop()` — if it fires, your buffer is too small
 or your outputs are too slow.
 
-## 🏗️ Two-Level Buffering
+## Two-Level Buffering
 
 audit has a two-level buffering architecture. Understanding it is
 essential for tuning performance and diagnosing event drops.
@@ -269,7 +269,7 @@ memory-constrained environments.
 | High event latency | Events queued too long before flushing | Decrease `flush_interval` or `batch_size` for faster delivery |
 | Excessive memory | Large buffers with large events | Decrease `buffer_size` on outputs you can afford to drop from |
 
-## 📤 Delivery Guarantee
+## Delivery Guarantee
 
 **At-most-once within a process lifetime.**
 
@@ -284,7 +284,7 @@ Events are never duplicated at the pipeline level. (The webhook output
 has its own at-least-once retry semantics for HTTP delivery — see
 [Outputs](outputs.md).)
 
-## 🛑 Graceful Shutdown
+## Graceful Shutdown
 
 `Auditor.Close()` MUST be called when the auditor is no longer needed:
 
@@ -360,14 +360,14 @@ func main() {
 See [Progressive Example: Capstone](../examples/17-capstone/) for a
 complete working example with signal handling.
 
-## 🔒 Thread Safety
+## Thread Safety
 
 - `AuditEvent()` is safe for concurrent use from any number of goroutines
 - Category enable/disable uses lock-free reads on the hot path
 - The single drain goroutine means outputs do not need to be thread-safe
 - `Close()` is idempotent via `sync.Once`
 
-## 📚 Further Reading
+## Further Reading
 
 - [Progressive Example: Buffering](../examples/16-buffering/) — runnable demo of both levels of backpressure
 - [Metrics and Monitoring](metrics-monitoring.md) — tracking buffer drops and output failures

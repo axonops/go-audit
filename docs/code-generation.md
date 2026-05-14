@@ -8,14 +8,14 @@
 - [What Gets Generated](#what-gets-generated)
 - [CLI Flags](#cli-flags)
 
-## 🔍 What Is audit-gen?
+## What Is audit-gen?
 
 `audit-gen` is a CLI tool that reads your taxonomy YAML and generates
 type-safe Go code: constants for event types, field names, and
 categories, plus per-event builder structs with required-field
 constructors.
 
-## ❓ Why Code Generation?
+## Why Code Generation?
 
 Without code generation, emitting an audit event looks like this:
 
@@ -38,7 +38,7 @@ Required fields become constructor parameters — you cannot forget them.
 Optional fields are chainable setters. A typo in an event name or field
 name is a compile error, not a runtime surprise.
 
-## ⚙️ Workflow
+## Workflow
 
 1. Define your taxonomy in `taxonomy.yaml`
 2. Add a `go:generate` directive to your Go code
@@ -155,7 +155,7 @@ type comes from one of two places:
 
 | Field origin | Setter type | Can `type:` change it? |
 |---|---|---|
-| Reserved standard field (see [Reserved Field Names](taxonomy-validation.md#-reserved-field-names) for the canonical list) | Library-authoritative Go type — `string` for most names; `int` for `source_port`, `dest_port`, `file_size`; `time.Time` for `start_time`, `end_time` | No. `type:` MUST NOT be declared on a reserved standard field; the taxonomy parser rejects any such override with an error wrapping `audit.ErrConfigInvalid`. |
+| Reserved standard field (see [Reserved Field Names](taxonomy-validation.md#reserved-field-names) for the canonical list) | Library-authoritative Go type — `string` for most names; `int` for `source_port`, `dest_port`, `file_size`; `time.Time` for `start_time`, `end_time` | No. `type:` MUST NOT be declared on a reserved standard field; the taxonomy parser rejects any such override with an error wrapping `audit.ErrConfigInvalid`. |
 | Consumer-declared field with `type:` annotation | Annotated Go type (see [Typed Custom Fields](#typed-custom-fields)) | — the annotation *is* the source. |
 | Consumer-declared field with no `type:` annotation | `string` (default) | Yes — add `type:` to widen to `int`, `bool`, `time.Time`, etc. |
 
@@ -212,7 +212,7 @@ Unknown type values are rejected at taxonomy parse time with the
 valid-set listed in the error message (e.g. `unknown type "strng"
 (valid: string, int, int64, float64, bool, time, duration)`).
 
-## 🐳 Container Image
+## Container Image
 
 Each tagged release publishes a multi-arch (amd64 + arm64) OCI
 image at `ghcr.io/axonops/audit-gen` with three tags:
@@ -260,7 +260,7 @@ project's published release workflow at the named tag, with a
 transparency-log entry recorded in Rekor. See
 [docs/releasing.md](releasing.md) for the full verification model.
 
-## ⌨️ CLI Flags
+## CLI Flags
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -275,7 +275,7 @@ transparency-log entry recorded in Rekor. See
 | `-builders` | `true` | Generate typed event builder structs (Go format only) |
 | `-standard-setters` | `all` | `all` = every builder gets a setter for every reserved standard field (IDE-autocomplete-friendly); `explicit` = only taxonomy-declared reserved fields produce setters (cuts generator output by ~80 % for small schemas; Go format only) |
 
-## 📜 Generating language-neutral schemas (#548)
+## Generating language-neutral schemas (#548)
 
 Non-Go consumers (SIEM rule authors, Python/Java services, compliance teams) can validate audit events against a published JSON Schema or
 align CEF parsers using a published mapping template. Both artifacts
@@ -298,7 +298,7 @@ consumers who do not have access to the producer's taxonomy. See
 shape, validation examples in Python / Java / TypeScript, and SIEM
 rule authoring patterns.
 
-## ⚡ Performance
+## Performance
 
 Generated builders satisfy the [`FieldsDonor`] extension interface via
 the unexported `donateFields()` sentinel method. When an event reaches
@@ -320,7 +320,7 @@ benchmark methodology see [`docs/performance.md`](performance.md).
 [`FieldsDonor`]: https://pkg.go.dev/github.com/axonops/audit#FieldsDonor
 [`Auditor.AuditEvent`]: https://pkg.go.dev/github.com/axonops/audit#Auditor.AuditEvent
 
-## 📚 Further Reading
+## Further Reading
 
 - [Progressive Example: Code Generation](../examples/02-code-generation/) — complete working example
 - [Taxonomy Validation](taxonomy-validation.md) — YAML schema reference

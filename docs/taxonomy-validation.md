@@ -10,7 +10,7 @@ are classified for sensitivity filtering.
 This is a complete reference for everything that can go in a
 `taxonomy.yaml` file.
 
-## ❓ Why a Taxonomy?
+## Why a Taxonomy?
 
 Application logs are best-effort — a missing field doesn't break
 anything. Audit logs are compliance artefacts. A security event
@@ -21,12 +21,12 @@ The taxonomy is a contract: "these are the audit events we produce,
 and each one always includes these fields." The library validates
 every event against this contract at runtime.
 
-## 📋 Complete Schema
+## Complete Schema
 
 ```yaml
 version: 1
 
-# ── Categories ──────────────────────────────────────────────
+# Categories ──────────────────────────────────────────────
 # Group related events. Used for per-output event routing.
 
 categories:
@@ -46,7 +46,7 @@ categories:
       - auth_failure
       - auth_success
 
-# ── Sensitivity Labels (optional) ──────────────────────────
+# Sensitivity Labels (optional) ──────────────────────────
 # Classify fields by data sensitivity. Used with per-output
 # exclude_labels to strip fields before delivery.
 
@@ -64,7 +64,7 @@ sensitivity:
       patterns:
         - "^card_"
 
-# ── Events ──────────────────────────────────────────────────
+# Events ──────────────────────────────────────────────────
 # Define each audit event type and its fields.
 
 events:
@@ -89,16 +89,16 @@ events:
       actor_id: { required: true }
 ```
 
-## 📋 Top-Level Fields
+## Top-Level Fields
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `version` | Yes | Must be `1`. Schema version for future migration. See [Taxonomy Schema Versioning](#-taxonomy-schema-versioning) below. |
+| `version` | Yes | Must be `1`. Schema version for future migration. See [Taxonomy Schema Versioning](#taxonomy-schema-versioning) below. |
 | `categories` | Yes | Map of category name to event list or struct. |
 | `events` | Yes | Map of event type name to event definition. |
 | `sensitivity` | No | Sensitivity label configuration for field classification. |
 
-## 🔄 Taxonomy Schema Versioning
+## Taxonomy Schema Versioning
 
 The taxonomy YAML carries a top-level `version:` field so the
 library can recognise the shape of the document and apply
@@ -201,7 +201,7 @@ The schema-bump workflow is:
 4. Update this section with the new version literal and the
    shape change.
 
-## 📂 Categories
+## Categories
 
 Categories group related events. Each category supports two equivalent
 forms — both parse to the same internal representation, and mixing
@@ -249,7 +249,7 @@ consistently makes the file easier to skim.
 An event can belong to multiple categories. Events not in any
 category are valid and always globally enabled.
 
-## 📋 Events
+## Events
 
 Each event defines its description, optional severity override, and
 fields:
@@ -303,7 +303,7 @@ fields:
 | `labels` | `[]` | List of sensitivity label names applied to this field. |
 | `type` | `string` | Go type emitted by [audit-gen] in the typed setter for this custom field. Accepts `string`, `int`, `int64`, `float64`, `bool`, `time` (→ `time.Time`), `duration` (→ `time.Duration`). Reserved standard fields (`actor_id`, `source_ip`, etc.) reject `type:` — their Go type is library-authoritative. Unknown values are rejected at parse time. |
 
-## 🔒 Sensitivity Labels
+## Sensitivity Labels
 
 Sensitivity labels classify fields by data sensitivity. There are
 three ways to assign labels to fields:
@@ -354,7 +354,7 @@ Per-output field stripping is configured in `outputs.yaml`, not in
 the taxonomy. See [Sensitivity Labels](sensitivity-labels.md) and
 [Outputs](outputs.md) for the `exclude_labels` configuration.
 
-## 🛡️ Name Character Set and Length
+## Name Character Set and Length
 
 Every consumer-controlled taxonomy identifier — category name, event
 type key, required/optional field name, and sensitivity label name —
@@ -423,7 +423,7 @@ The same rule is enforced by the `cmd/audit-gen` code generator — a
 malformed name causes codegen to fail before any Go source is written,
 preventing a "generates fine, never loads at runtime" trap.
 
-## 🚫 Reserved Field Names
+## Reserved Field Names
 
 The following field names are managed by the framework and cannot be
 used as required or optional fields in your taxonomy:
@@ -452,7 +452,7 @@ event "auth.login" field "event_category" is a reserved framework field
 > but is NOT reserved — it can be used as an optional field because
 > the HTTP middleware legitimately sets it as a user-provided value.
 
-## 📂 Event Category in Output
+## Event Category in Output
 
 When an event belongs to a category, the `event_category` field is
 automatically appended to the serialised output (JSON and CEF). This
@@ -497,7 +497,7 @@ once (cached); only the appended category differs per delivery.
 Events not in any category do not include `event_category` in the
 output — the field is omitted entirely (not null, not empty string).
 
-## 📊 Severity Resolution
+## Severity Resolution
 
 Severity is a 0-10 scale used in CEF output and event routing.
 Resolution order:
@@ -509,7 +509,7 @@ Resolution order:
 See [CEF Format — Severity Levels](cef-format.md#severity-levels)
 for practical guidance on choosing severity values.
 
-## ✅ Validation Modes
+## Validation Modes
 
 | Mode | Behaviour |
 |------|-----------|
@@ -521,7 +521,7 @@ Set via `audit.WithValidationMode(audit.ValidationWarn)` on
 `New`, the `validation_mode` key in your outputs YAML, or
 `audittest.WithValidationMode(audit.ValidationWarn)` in tests.
 
-## 🧬 Supported Field Value Types
+## Supported Field Value Types
 
 `audit.Fields` accepts `map[string]any`, but only this set of value
 types is guaranteed to render faithfully across both the JSON and
@@ -572,7 +572,68 @@ deployment-time defaults whose Go type does not match the declared
 reserved-field type. The error wraps `audit.ErrConfigInvalid` and
 surfaces at `audit.New` time, before any event is processed.
 
-## 📦 Loading a Taxonomy
+## Prototyping with DevTaxonomy
+
+[`audit.DevTaxonomy`](https://pkg.go.dev/github.com/axonops/audit#DevTaxonomy)
+is a permissive taxonomy for prototyping. It accepts any event
+type with any fields, places every event into a single "dev"
+category, and emits a runtime warning so the trade-off is visible
+in logs.
+
+```go
+auditor, _ := audit.New(
+    audit.WithTaxonomy(audit.DevTaxonomy("user_login", "user_logout")),
+    audit.WithAppName("prototype"),
+    audit.WithHost("dev"),
+    audit.WithOutputs(stdoutOut),
+)
+```
+
+DevTaxonomy is **not for production**. It bypasses every schema
+guarantee the library provides: typos in event names, unknown
+fields, missing required fields — all accepted without error.
+
+### Migrating from DevTaxonomy to a strict taxonomy
+
+The migration is a four-step swap:
+
+```go
+// BEFORE — prototype
+auditor, _ := audit.New(
+    audit.WithTaxonomy(audit.DevTaxonomy("user_login", "user_logout")),
+    // ...
+)
+
+// AFTER — production
+//go:embed taxonomy.yaml
+var taxonomyYAML []byte
+
+tax, err := audit.ParseTaxonomyYAML(taxonomyYAML)
+if err != nil { /* handle */ }
+auditor, _ := audit.New(
+    audit.WithTaxonomy(tax),
+    // ...
+)
+```
+
+1. **Enumerate event sites.** Grep for every `audit.NewEvent(`,
+   `auditor.AuditEvent(`, and any generated event-builder
+   constructor names (`NewUserLoginEvent(...)` etc.). The
+   DevTaxonomy warning does not flag stale call sites — strict
+   validation does, at first event.
+2. **Author the YAML.** For each event type, declare its required
+   fields, category, and severity. See [Events](#events) and
+   [Severity Resolution](#severity-resolution) for the schema.
+3. **Swap the constructor.** Replace
+   `audit.WithTaxonomy(audit.DevTaxonomy(...))` with
+   `audit.WithTaxonomy(parsedTaxonomy)`. The first event after
+   swap will surface `audit: unknown event type` for any
+   leftover site.
+4. **Optionally regenerate.** Run `audit-gen` to produce typed
+   event builders (see [examples/02-code-generation](../examples/02-code-generation/));
+   the schema is then enforced at compile time, not just runtime.
+
+## Loading a Taxonomy
 
 The library accepts `[]byte` only — not file paths. Use `go:embed`
 to bundle the YAML into your binary:
@@ -590,7 +651,7 @@ tax, err := audit.ParseTaxonomyYAML(taxonomyYAML)
 - Unknown YAML keys are rejected. A typo like `sevrity` instead
   of `severity` produces a parse error, not a silently ignored field.
 
-## 📐 Size and Scale
+## Size and Scale
 
 `ParseTaxonomyYAML` imposes **no input-size cap**. The taxonomy is
 developer-owned input — typically embedded at compile time via
@@ -620,7 +681,7 @@ remains in place — outputs config is ops-controlled (Kubernetes
 ConfigMap, env-substituted templates) and crosses a different trust
 boundary.
 
-## 📚 Further Reading
+## Further Reading
 
 - [Progressive Example: Basic](../examples/01-basic/) — inline taxonomy
 - [Progressive Example: Code Generation](../examples/02-code-generation/) — YAML taxonomy with audit-gen
