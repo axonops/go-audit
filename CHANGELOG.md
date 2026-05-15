@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Breaking
 
+- [`audit.EventRoute.IncludeCategories`](https://pkg.go.dev/github.com/axonops/audit#EventRoute)
+  changes from `map[string]*SeverityRange` to
+  `map[string]SeverityRange` (value type, not pointer). The
+  canonical "no severity constraint for this category" value
+  changes from `nil` (typed-nil pointer) to `SeverityRange{}`
+  (zero-value struct). Inner fields `MinSeverity *int` and
+  `MaxSeverity *int` remain as pointers (sentinel-nil = no
+  bound). YAML configuration is unchanged. The library is
+  pre-release; no back-compat shim. (#867 part 1)
 - The [`audit.Formatter`](https://pkg.go.dev/github.com/axonops/audit#Formatter)
   interface gains a `ContentType() string` method. Built-in
   formatters implement it (`JSONFormatter` → `application/x-ndjson`,

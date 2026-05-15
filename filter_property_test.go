@@ -98,7 +98,7 @@ func genFilterOps(rt *rapid.T) []filterOp {
 			op.route = &audit.EventRoute{}
 			if rapid.Bool().Draw(rt, "include_categories") {
 				cat := rapid.SampledFrom(categories).Draw(rt, "include_cat")
-				op.route.IncludeCategories = map[string]*audit.SeverityRange{cat: nil}
+				op.route.IncludeCategories = map[string]audit.SeverityRange{cat: {}}
 			}
 		case opClearOutputRoute:
 			op.output = rapid.SampledFrom(outputs).Draw(rt, "output")
@@ -181,11 +181,11 @@ func formatRoute(r *audit.EventRoute) string {
 		" exclude_evts=" + joinSorted(r.ExcludeEventTypes)
 }
 
-// joinSortedMap collapses a map[string]*audit.SeverityRange to a
+// joinSortedMap collapses a map[string]audit.SeverityRange to a
 // deterministic "[a,b,c]" string of the keys. Per-category severity
 // ranges are not part of the property-test domain today; if a future
 // op introduces them, extend this to include the range too.
-func joinSortedMap(m map[string]*audit.SeverityRange) string {
+func joinSortedMap(m map[string]audit.SeverityRange) string {
 	if len(m) == 0 {
 		return "[]"
 	}

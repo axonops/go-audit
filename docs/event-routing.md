@@ -264,15 +264,15 @@ Routes can be modified at runtime without restarting the auditor:
 ```go
 // Restrict an output to security events only.
 err := auditor.SetOutputRoute("siem", &audit.EventRoute{
-    IncludeCategories: map[string]*audit.SeverityRange{
-        "security": nil, // any severity
+    IncludeCategories: map[string]audit.SeverityRange{
+        "security": {}, // zero value — any severity
     },
 })
 
 // Restrict to high-severity security events.
 sev7 := 7
 err = auditor.SetOutputRoute("siem", &audit.EventRoute{
-    IncludeCategories: map[string]*audit.SeverityRange{
+    IncludeCategories: map[string]audit.SeverityRange{
         "security": {MinSeverity: &sev7},
     },
 })

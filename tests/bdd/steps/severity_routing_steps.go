@@ -186,7 +186,7 @@ func createPerCategorySeverityRoutedAuditor(tc *AuditTestContext, cat string, mi
 		return fmt.Errorf("create stdout: %w", err)
 	}
 	route := &audit.EventRoute{
-		IncludeCategories: map[string]*audit.SeverityRange{
+		IncludeCategories: map[string]audit.SeverityRange{
 			cat: {MinSeverity: minSev, MaxSeverity: maxSev},
 		},
 	}
@@ -250,7 +250,7 @@ func tryPerCategoryAuditorCreation(tc *AuditTestContext, cat string, minSev, max
 		return fmt.Errorf("create stdout: %w", err)
 	}
 	route := &audit.EventRoute{
-		IncludeCategories: map[string]*audit.SeverityRange{
+		IncludeCategories: map[string]audit.SeverityRange{
 			cat: {MinSeverity: minSev, MaxSeverity: maxSev},
 		},
 	}
@@ -306,7 +306,7 @@ func registerSeverityRuntimeSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 				return fmt.Errorf("auditor not created")
 			}
 			route := &audit.EventRoute{
-				IncludeCategories: map[string]*audit.SeverityRange{
+				IncludeCategories: map[string]audit.SeverityRange{
 					cat: {MinSeverity: &minSev},
 				},
 			}
@@ -324,7 +324,7 @@ func registerSeverityRuntimeSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 				return fmt.Errorf("create stdout: %w", err)
 			}
 			route := &audit.EventRoute{
-				IncludeCategories: map[string]*audit.SeverityRange{cat: nil},
+				IncludeCategories: map[string]audit.SeverityRange{cat: {}},
 				MinSeverity:       &minSev,
 			}
 			auditor, lErr := audit.New(

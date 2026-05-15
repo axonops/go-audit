@@ -335,7 +335,7 @@ func TestLogger_MultiCategory_IncludeRoute(t *testing.T) {
 		audit.WithAppName("test-app"),
 		audit.WithHost("test-host"),
 		audit.WithNamedOutput(out, audit.WithRoute(&audit.EventRoute{
-			IncludeCategories: map[string]*audit.SeverityRange{"security": nil},
+			IncludeCategories: map[string]audit.SeverityRange{"security": {}},
 		})),
 	)
 	require.NoError(t, err)

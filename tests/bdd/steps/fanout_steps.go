@@ -73,16 +73,16 @@ events:
 `
 
 // includeCats builds an EventRoute.IncludeCategories map from a list
-// of category names with nil SeverityRange (the "no severity filter"
-// shorthand). Used throughout the fanout step definitions to keep
-// the call sites concise.
-func includeCats(names ...string) map[string]*audit.SeverityRange {
+// of category names with zero-value SeverityRange (the "no severity
+// filter" shorthand). Used throughout the fanout step definitions
+// to keep the call sites concise.
+func includeCats(names ...string) map[string]audit.SeverityRange {
 	if len(names) == 0 {
 		return nil
 	}
-	m := make(map[string]*audit.SeverityRange, len(names))
+	m := make(map[string]audit.SeverityRange, len(names))
 	for _, n := range names {
-		m[n] = nil
+		m[n] = audit.SeverityRange{}
 	}
 	return m
 }

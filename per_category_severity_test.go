@@ -36,8 +36,8 @@ import (
 func TestPerCat_ModeA_AnySeverityPasses(t *testing.T) {
 	t.Parallel()
 	route := audit.EventRoute{
-		IncludeCategories: map[string]*audit.SeverityRange{
-			"security": nil,
+		IncludeCategories: map[string]audit.SeverityRange{
+			"security": {},
 		},
 	}
 	// Category match with nil filter passes regardless of severity.
@@ -59,7 +59,7 @@ func TestPerCat_ModeA_AnySeverityPasses(t *testing.T) {
 func TestPerCat_ModeB_MinOnly(t *testing.T) {
 	t.Parallel()
 	route := audit.EventRoute{
-		IncludeCategories: map[string]*audit.SeverityRange{
+		IncludeCategories: map[string]audit.SeverityRange{
 			"security": {MinSeverity: intPtr(7)},
 		},
 	}
@@ -79,7 +79,7 @@ func TestPerCat_ModeB_MinOnly(t *testing.T) {
 func TestPerCat_ModeB_MaxOnly(t *testing.T) {
 	t.Parallel()
 	route := audit.EventRoute{
-		IncludeCategories: map[string]*audit.SeverityRange{
+		IncludeCategories: map[string]audit.SeverityRange{
 			"read": {MaxSeverity: intPtr(3)},
 		},
 	}
@@ -99,7 +99,7 @@ func TestPerCat_ModeB_MaxOnly(t *testing.T) {
 func TestPerCat_ModeB_MinAndMax(t *testing.T) {
 	t.Parallel()
 	route := audit.EventRoute{
-		IncludeCategories: map[string]*audit.SeverityRange{
+		IncludeCategories: map[string]audit.SeverityRange{
 			"security": {MinSeverity: intPtr(4), MaxSeverity: intPtr(7)},
 		},
 	}
@@ -120,9 +120,9 @@ func TestPerCat_ModeB_MixedFilters(t *testing.T) {
 	t.Parallel()
 	// security ≥ 7, read any severity.
 	route := audit.EventRoute{
-		IncludeCategories: map[string]*audit.SeverityRange{
+		IncludeCategories: map[string]audit.SeverityRange{
 			"security": {MinSeverity: intPtr(7)},
-			"read":     nil,
+			"read":     {},
 		},
 	}
 	// Security: only ≥7 passes.
@@ -145,8 +145,8 @@ func TestPerCat_RouteLevelDoesNotApplyToCategoryMatch(t *testing.T) {
 	// Route-level min=9, but the category has a nil filter → all
 	// severities pass for category matches.
 	route := audit.EventRoute{
-		IncludeCategories: map[string]*audit.SeverityRange{
-			"security": nil,
+		IncludeCategories: map[string]audit.SeverityRange{
+			"security": {},
 		},
 		MinSeverity: intPtr(9),
 	}
@@ -161,7 +161,7 @@ func TestPerCat_RouteLevelAppliesToEventTypeMatch(t *testing.T) {
 	// admin_action event-type, route-level min=5 applies ONLY to the
 	// event-type fallback path.
 	route := audit.EventRoute{
-		IncludeCategories: map[string]*audit.SeverityRange{
+		IncludeCategories: map[string]audit.SeverityRange{
 			"security": {MinSeverity: intPtr(7)},
 		},
 		IncludeEventTypes: []string{"admin_action"},
@@ -194,28 +194,27 @@ func TestPerCat_ModeC_SeverityOnly(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Empty {} vs absent vs nil pointer — semantic equivalence
+// Presence vs absence — key-in-map is the include signal
 // ---------------------------------------------------------------------------
 
-func TestPerCat_NilFilter_EquivalentToEmptyStruct(t *testing.T) {
+func TestPerCat_AbsentKey_DoesNotMatch(t *testing.T) {
 	t.Parallel()
-	// Both forms should behave identically: "all severities pass for
-	// this category". The library normalises empty filters to nil at
-	// parse time (see outputconfig.convertIncludeCategories), but
-	// programmatic construction can produce either. Both must match.
-	nilForm := audit.EventRoute{
-		IncludeCategories: map[string]*audit.SeverityRange{"security": nil},
-	}
-	emptyForm := audit.EventRoute{
-		IncludeCategories: map[string]*audit.SeverityRange{
-			"security": {}, // non-nil pointer with both bounds nil
+	// Presence of a key in IncludeCategories is the include signal;
+	// the zero-value SeverityRange{} means "no severity constraint".
+	// An absent category key must NOT match the route; a present
+	// zero-value key MUST match at every severity.
+	route := audit.EventRoute{
+		IncludeCategories: map[string]audit.SeverityRange{
+			"security": {}, // present, zero value
 		},
 	}
 	for sev := 0; sev <= 10; sev++ {
-		nilGot := audit.MatchesRoute(&nilForm, "auth_failure", "security", sev)
-		emptyGot := audit.MatchesRoute(&emptyForm, "auth_failure", "security", sev)
-		assert.Equal(t, nilGot, emptyGot,
-			"nil filter and empty-struct filter must behave identically; sev=%d", sev)
+		// Present key — all severities pass.
+		assert.True(t, audit.MatchesRoute(&route, "auth_failure", "security", sev),
+			"present zero-value key must match every severity; sev=%d", sev)
+		// Absent key — never matches regardless of severity.
+		assert.False(t, audit.MatchesRoute(&route, "user_create", "write", sev),
+			"absent key must not match; sev=%d", sev)
 	}
 }
 
@@ -227,7 +226,7 @@ func TestPerCat_Validation_OutOfRangeMin(t *testing.T) {
 	t.Parallel()
 	tax := testhelper.TestTaxonomy()
 	route := audit.EventRoute{
-		IncludeCategories: map[string]*audit.SeverityRange{
+		IncludeCategories: map[string]audit.SeverityRange{
 			"security": {MinSeverity: intPtr(11)},
 		},
 	}
@@ -244,7 +243,7 @@ func TestPerCat_Validation_OutOfRangeMax(t *testing.T) {
 	t.Parallel()
 	tax := testhelper.TestTaxonomy()
 	route := audit.EventRoute{
-		IncludeCategories: map[string]*audit.SeverityRange{
+		IncludeCategories: map[string]audit.SeverityRange{
 			"security": {MaxSeverity: intPtr(-1)},
 		},
 	}
@@ -258,7 +257,7 @@ func TestPerCat_Validation_MinGreaterThanMax(t *testing.T) {
 	t.Parallel()
 	tax := testhelper.TestTaxonomy()
 	route := audit.EventRoute{
-		IncludeCategories: map[string]*audit.SeverityRange{
+		IncludeCategories: map[string]audit.SeverityRange{
 			"security": {MinSeverity: intPtr(8), MaxSeverity: intPtr(3)},
 		},
 	}
@@ -273,8 +272,8 @@ func TestPerCat_Validation_UnknownCategory(t *testing.T) {
 	t.Parallel()
 	tax := testhelper.TestTaxonomy()
 	route := audit.EventRoute{
-		IncludeCategories: map[string]*audit.SeverityRange{
-			"nonexistent": nil,
+		IncludeCategories: map[string]audit.SeverityRange{
+			"nonexistent": {},
 		},
 	}
 	err := audit.ValidateEventRoute(&route, tax)
@@ -290,7 +289,7 @@ func TestPerCat_Validation_DeterministicErrorOrder(t *testing.T) {
 	// iterates sorted keys and returns on the first failure.
 	tax := testhelper.TestTaxonomy()
 	route := audit.EventRoute{
-		IncludeCategories: map[string]*audit.SeverityRange{
+		IncludeCategories: map[string]audit.SeverityRange{
 			"zzz_unknown": {MinSeverity: intPtr(11)},
 			"security":    {MinSeverity: intPtr(11)},
 		},
@@ -321,24 +320,25 @@ func TestPerCat_RoundTrip_DeepClonePreservesSeverityRange(t *testing.T) {
 	t.Cleanup(func() { _ = auditor.Close() })
 
 	original := &audit.EventRoute{
-		IncludeCategories: map[string]*audit.SeverityRange{
+		IncludeCategories: map[string]audit.SeverityRange{
 			"security": {MinSeverity: intPtr(7), MaxSeverity: intPtr(9)},
-			"read":     nil,
+			"read":     {},
 		},
 	}
 	require.NoError(t, auditor.SetOutputRoute("test", original))
 
 	got, err := auditor.OutputRoute("test")
 	require.NoError(t, err)
+	require.Len(t, got.IncludeCategories, 2,
+		"both keys must round-trip; absent keys would also return a zero-value SeverityRange from the map")
 	require.Contains(t, got.IncludeCategories, "security")
-	require.NotNil(t, got.IncludeCategories["security"])
 	require.NotNil(t, got.IncludeCategories["security"].MinSeverity)
 	assert.Equal(t, 7, *got.IncludeCategories["security"].MinSeverity)
 	require.NotNil(t, got.IncludeCategories["security"].MaxSeverity)
 	assert.Equal(t, 9, *got.IncludeCategories["security"].MaxSeverity)
-	// Nil filter for "read" survives the round-trip.
+	// Zero-value SeverityRange for "read" survives the round-trip.
 	require.Contains(t, got.IncludeCategories, "read")
-	assert.Nil(t, got.IncludeCategories["read"])
+	assert.Equal(t, audit.SeverityRange{}, got.IncludeCategories["read"])
 
 	// Mutating the returned route's SeverityRange must not affect
 	// the stored route. This is the core deep-clone invariant.
@@ -366,7 +366,7 @@ func TestPerCat_RoundTrip_CallerMutationOfInputCannotCorrupt(t *testing.T) {
 	// after SetOutputRoute returns must NOT change the stored value.
 	min7 := 7
 	original := &audit.EventRoute{
-		IncludeCategories: map[string]*audit.SeverityRange{
+		IncludeCategories: map[string]audit.SeverityRange{
 			"security": {MinSeverity: &min7},
 		},
 	}
@@ -375,7 +375,7 @@ func TestPerCat_RoundTrip_CallerMutationOfInputCannotCorrupt(t *testing.T) {
 	// Mutation #1: the SAME *int pointee.
 	min7 = 99
 	// Mutation #2: insert a new key into the caller's map.
-	original.IncludeCategories["new_cat"] = nil
+	original.IncludeCategories["new_cat"] = audit.SeverityRange{}
 
 	got, err := auditor.OutputRoute("test")
 	require.NoError(t, err)
@@ -394,11 +394,11 @@ func TestPerCat_RoundTrip_CallerMutationOfInputCannotCorrupt(t *testing.T) {
 func BenchmarkMatchesRoute_PerCategorySeverity(b *testing.B) {
 	// Mode B — Per-category severity gating, the new capability.
 	route := audit.EventRoute{
-		IncludeCategories: map[string]*audit.SeverityRange{
+		IncludeCategories: map[string]audit.SeverityRange{
 			"security":   {MinSeverity: intPtr(7)},
 			"compliance": {MinSeverity: intPtr(5)},
 			"write":      {MinSeverity: intPtr(3)},
-			"read":       nil,
+			"read":       {},
 		},
 	}
 	b.ResetTimer()
@@ -412,11 +412,11 @@ func BenchmarkMatchesRoute_MixedNilAndFilter(b *testing.B) {
 	// Worst branch-predictor case: some categories with nil filter,
 	// some with thresholds, calls alternate between the two paths.
 	route := audit.EventRoute{
-		IncludeCategories: map[string]*audit.SeverityRange{
+		IncludeCategories: map[string]audit.SeverityRange{
 			"security": {MinSeverity: intPtr(7)},
-			"read":     nil,
+			"read":     {},
 			"write":    {MinSeverity: intPtr(3)},
-			"admin":    nil,
+			"admin":    {},
 		},
 	}
 	categories := []string{"security", "read", "write", "admin"}

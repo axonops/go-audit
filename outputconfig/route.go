@@ -22,10 +22,10 @@ import (
 )
 
 // yamlSeverityRange is the YAML representation of a per-category
-// severity filter. An empty YAML mapping (`{}`) unmarshals to a
-// non-nil *yamlSeverityRange with both fields nil; buildRoute
-// normalises this to a nil *audit.SeverityRange so consumers have
-// exactly one canonical "no filter" value.
+// severity filter. An empty YAML mapping (`{}`) or an explicit `~`
+// / null unmarshals to a zero-value audit.SeverityRange (both inner
+// pointers nil) so "no severity constraint for this category" is
+// represented by a single canonical value.
 type yamlSeverityRange struct {
 	MinSeverity *int `yaml:"min_severity"`
 	MaxSeverity *int `yaml:"max_severity"`
@@ -76,20 +76,20 @@ func buildRoute(name string, raw any, taxonomy *audit.Taxonomy) (*audit.EventRou
 
 // convertIncludeCategories translates the parsed YAML map to the
 // audit package's typed map. An empty inline mapping (`{}`) or an
-// explicit `~` / null is normalised to a nil *audit.SeverityRange —
-// there is exactly one canonical "no filter" value so equality and
-// golden-file tests are stable.
-func convertIncludeCategories(in map[string]*yamlSeverityRange) map[string]*audit.SeverityRange {
+// explicit `~` / null becomes a zero-value audit.SeverityRange —
+// the canonical "no severity constraint" representation that
+// flows through MatchesRoute without a special case.
+func convertIncludeCategories(in map[string]*yamlSeverityRange) map[string]audit.SeverityRange {
 	if in == nil {
 		return nil
 	}
-	out := make(map[string]*audit.SeverityRange, len(in))
+	out := make(map[string]audit.SeverityRange, len(in))
 	for cat, yf := range in {
-		if yf == nil || (yf.MinSeverity == nil && yf.MaxSeverity == nil) {
-			out[cat] = nil
+		if yf == nil {
+			out[cat] = audit.SeverityRange{}
 			continue
 		}
-		out[cat] = &audit.SeverityRange{
+		out[cat] = audit.SeverityRange{
 			MinSeverity: yf.MinSeverity,
 			MaxSeverity: yf.MaxSeverity,
 		}
