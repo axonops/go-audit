@@ -10,7 +10,7 @@ require (
 
 require (
 	github.com/axonops/audit/file v0.1.13 // indirect
-	github.com/axonops/audit/iouring v0.0.0-20260513160545-006350cee067 // indirect
+	github.com/axonops/audit/iouring v0.0.0-20260514164029-4bac75903df8 // indirect
 	github.com/axonops/audit/loki v0.1.13 // indirect
 	github.com/axonops/audit/secrets v0.1.13 // indirect
 	github.com/axonops/audit/secrets/openbao v0.1.13 // indirect

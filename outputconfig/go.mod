@@ -17,7 +17,7 @@ require (
 )
 
 require (
-	github.com/axonops/audit/iouring v0.0.0-20260513160545-006350cee067 // indirect
+	github.com/axonops/audit/iouring v0.0.0-20260514164029-4bac75903df8 // indirect
 	github.com/cucumber/gherkin/go/v26 v26.2.0 // indirect
 	github.com/cucumber/messages/go/v21 v21.0.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect

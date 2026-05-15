@@ -1,5 +1,7 @@
 github.com/axonops/srslog v1.0.1 h1:TucvspQNxwL18w3xo9r3p+ulxJ5ltR8S9DalDTYDfA4=
 github.com/axonops/srslog v1.0.1/go.mod h1:KmR9aaV5bdRj/WE95Nzfwwed8MKdDpjFCcFO5syaJWg=
+github.com/axonops/syncmap v1.0.0 h1:LioA4tccTuYsMG+i4XeJJ9tXsoxrbdiLCxUrUmQuN5o=
+github.com/axonops/syncmap v1.0.0/go.mod h1:UzPuU30i9SaKB5xYEbkYuuuXcy1yrasWfv+1oZnuVCs=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
 github.com/beorn7/perks v1.0.1/go.mod h1:G2ZrVWU2WbWT9wwq4/hrbKbnv/1ERSJQ0ibhJ6rlkpw=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=

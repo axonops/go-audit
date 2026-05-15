@@ -12,7 +12,7 @@ require (
 )
 
 require (
-	github.com/axonops/audit/iouring v0.0.0-20260513160545-006350cee067 // indirect
+	github.com/axonops/audit/iouring v0.0.0-20260514164029-4bac75903df8 // indirect
 	github.com/axonops/srslog v1.0.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/goccy/go-yaml v1.19.2 // indirect
