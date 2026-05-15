@@ -323,7 +323,7 @@ func ExampleNewStdoutOutput() {
 func ExampleEventRoute_include() {
 	// Include mode: only security events are delivered to this output.
 	route := audit.EventRoute{
-		IncludeCategories: map[string]*audit.SeverityRange{"security": nil},
+		IncludeCategories: map[string]audit.SeverityRange{"security": {}},
 	}
 	fmt.Println("empty:", route.IsEmpty())
 	// Output: empty: false
@@ -333,6 +333,22 @@ func ExampleEventRoute_exclude() {
 	// Exclude mode: all events except reads are delivered.
 	route := audit.EventRoute{
 		ExcludeCategories: []string{"read"},
+	}
+	fmt.Println("empty:", route.IsEmpty())
+	// Output: empty: false
+}
+
+func ExampleEventRoute_perCategorySeverity() {
+	// Per-category severity: the value's SeverityRange constrains
+	// each included category independently. The zero value
+	// SeverityRange{} means "no severity constraint" — the
+	// category is included at every severity.
+	sev7 := 7
+	route := audit.EventRoute{
+		IncludeCategories: map[string]audit.SeverityRange{
+			"security": {MinSeverity: &sev7}, // sev 7+ only
+			"read":     {},                   // all severities
+		},
 	}
 	fmt.Println("empty:", route.IsEmpty())
 	// Output: empty: false
@@ -373,7 +389,7 @@ func ExampleAuditor_SetOutputRoute() {
 
 	// Restrict output to security events only at runtime.
 	if err := auditor.SetOutputRoute("stdout", &audit.EventRoute{
-		IncludeCategories: map[string]*audit.SeverityRange{"security": nil},
+		IncludeCategories: map[string]audit.SeverityRange{"security": {}},
 	}); err != nil {
 		fmt.Println("route error:", err)
 		return

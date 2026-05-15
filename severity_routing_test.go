@@ -120,7 +120,7 @@ func TestMatchesRoute_MinAndMaxSeverity_Reject(t *testing.T) {
 func TestMatchesRoute_SeverityWithCategoryFilter(t *testing.T) {
 	t.Parallel()
 	route := audit.EventRoute{
-		IncludeCategories: map[string]*audit.SeverityRange{
+		IncludeCategories: map[string]audit.SeverityRange{
 			"security": {MinSeverity: intPtr(6)},
 		},
 	}
@@ -149,7 +149,7 @@ func TestMatchesRoute_SeverityWithCategoryFilter(t *testing.T) {
 func TestMatchesRoute_RouteLevelSeverity_DoesNotApplyToCategoryMatch(t *testing.T) {
 	t.Parallel()
 	route := audit.EventRoute{
-		IncludeCategories: map[string]*audit.SeverityRange{"security": nil},
+		IncludeCategories: map[string]audit.SeverityRange{"security": {}},
 		MinSeverity:       intPtr(6), // applies only to event-type matches
 	}
 	got := audit.MatchesRoute(&route, "auth_failure", "security", 3)
@@ -221,7 +221,7 @@ func TestMatchesRoute_NilSeverity_NoFilter(t *testing.T) {
 	// Include-mode route with nil severity pointers: only the category
 	// filter applies; severity plays no role.
 	route := audit.EventRoute{
-		IncludeCategories: map[string]*audit.SeverityRange{"security": nil},
+		IncludeCategories: map[string]audit.SeverityRange{"security": {}},
 		// MinSeverity and MaxSeverity are nil (zero value).
 	}
 
@@ -504,7 +504,7 @@ func TestSetRoute_NilSeverityPointersPreserved(t *testing.T) {
 
 	// Set a route that has no severity constraints.
 	route := &audit.EventRoute{
-		IncludeCategories: map[string]*audit.SeverityRange{"write": nil},
+		IncludeCategories: map[string]audit.SeverityRange{"write": {}},
 		// MinSeverity and MaxSeverity intentionally nil.
 	}
 	require.NoError(t, auditor.SetOutputRoute("nil-sev", route))
@@ -812,7 +812,7 @@ func TestValidateEventRoute_SeverityWithMixedIncludeExclude(t *testing.T) {
 	tax := testhelper.TestTaxonomy()
 
 	route := audit.EventRoute{
-		IncludeCategories: map[string]*audit.SeverityRange{"write": nil},
+		IncludeCategories: map[string]audit.SeverityRange{"write": {}},
 		ExcludeCategories: []string{"read"},
 		MinSeverity:       intPtr(3),
 		MaxSeverity:       intPtr(8),
@@ -870,7 +870,7 @@ func BenchmarkMatchesRoute_Severity(b *testing.B) {
 	b.Run("include_categories_with_severity", func(b *testing.B) {
 		// Category include filter combined with severity range.
 		route := audit.EventRoute{
-			IncludeCategories: map[string]*audit.SeverityRange{"write": nil, "security": nil, "admin": nil, "read": nil},
+			IncludeCategories: map[string]audit.SeverityRange{"write": {}, "security": {}, "admin": {}, "read": {}},
 			MinSeverity:       intPtr(5),
 			MaxSeverity:       intPtr(9),
 		}
@@ -886,9 +886,9 @@ func BenchmarkMatchesRoute_Severity(b *testing.B) {
 		// category's SeverityRange. Event in matching category but
 		// below the per-cat min → rejected on filter deref.
 		route := audit.EventRoute{
-			IncludeCategories: map[string]*audit.SeverityRange{
+			IncludeCategories: map[string]audit.SeverityRange{
 				"write":    {MinSeverity: intPtr(9)},
-				"security": nil,
+				"security": {},
 			},
 		}
 		b.ResetTimer()
@@ -902,9 +902,9 @@ func BenchmarkMatchesRoute_Severity(b *testing.B) {
 		// Per-category severity (#193): event in matching category and
 		// above the per-cat min → passes via the per-cat fast path.
 		route := audit.EventRoute{
-			IncludeCategories: map[string]*audit.SeverityRange{
+			IncludeCategories: map[string]audit.SeverityRange{
 				"write":    {MinSeverity: intPtr(5)},
-				"security": nil,
+				"security": {},
 			},
 		}
 		b.ResetTimer()

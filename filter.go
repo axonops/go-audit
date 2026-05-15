@@ -27,8 +27,8 @@ import (
 // scale (0-10). Used as the value type of
 // [EventRoute.IncludeCategories] to express per-category severity
 // thresholds in a route. A nil pointer in either field disables that
-// side of the bound; a nil *SeverityRange (or a *SeverityRange with
-// both fields nil) means "no severity constraint" for the associated
+// side of the bound; the zero value SeverityRange{} (both inner
+// pointers nil) means "no severity constraint" for the associated
 // category.
 type SeverityRange struct {
 	// MinSeverity is the inclusive lower bound on CEF severity
@@ -61,9 +61,10 @@ type SeverityRange struct {
 // the event:
 //
 //   - If the event's category is a key in [EventRoute.IncludeCategories],
-//     the value's [SeverityRange] applies. A nil value means "no
-//     severity constraint for this category", and route-level
-//     [EventRoute.MinSeverity]/[EventRoute.MaxSeverity] are NOT applied.
+//     the value's [SeverityRange] applies. The zero value
+//     SeverityRange{} means "no severity constraint for this
+//     category", and route-level [EventRoute.MinSeverity] /
+//     [EventRoute.MaxSeverity] are NOT applied.
 //   - Else if the event's type is in [EventRoute.IncludeEventTypes],
 //     the route-level severity bounds apply.
 //   - Else (no include categories or event types — the severity-only
@@ -74,10 +75,11 @@ type SeverityRange struct {
 type EventRoute struct {
 	// IncludeCategories maps category names to per-category severity
 	// filters. Presence of a key allows events in that category; the
-	// value (when non-nil) further restricts by severity. A nil value
-	// means "all severities allowed for this category". Mutually
-	// exclusive with ExcludeCategories and ExcludeEventTypes.
-	IncludeCategories map[string]*SeverityRange
+	// value's [SeverityRange] optionally restricts by severity. The
+	// zero value SeverityRange{} means "all severities allowed for
+	// this category". Mutually exclusive with ExcludeCategories and
+	// ExcludeEventTypes.
+	IncludeCategories map[string]SeverityRange
 
 	// IncludeEventTypes lists event type names to allow. Events whose
 	// type is in this list are delivered using the route-level
@@ -159,9 +161,9 @@ func ValidateEventRoute(route *EventRoute, taxonomy *Taxonomy) error {
 	slices.Sort(cats)
 	for _, cat := range cats {
 		f := route.IncludeCategories[cat]
-		if f == nil {
-			continue
-		}
+		// Zero-value SeverityRange{} (both inner pointers nil) means
+		// "no severity constraint" — validateSeverityRange returns
+		// nil for that input, so no special case is needed here.
 		ctx := fmt.Sprintf("EventRoute category %q", cat)
 		if err := validateSeverityRange(f.MinSeverity, f.MaxSeverity, ctx); err != nil {
 			return err
@@ -220,7 +222,7 @@ func checkCategories(unknown, cats []string, taxonomy *Taxonomy) []string {
 // iteration is non-deterministic in Go — the caller (validateRouteEntries)
 // sorts the resulting unknown slice before formatting the error so the
 // error message is reproducible.
-func checkCategoryMap(unknown []string, cats map[string]*SeverityRange, taxonomy *Taxonomy) []string {
+func checkCategoryMap(unknown []string, cats map[string]SeverityRange, taxonomy *Taxonomy) []string {
 	for cat := range cats {
 		if _, ok := taxonomy.Categories[cat]; !ok {
 			unknown = append(unknown, fmt.Sprintf("category %q", cat))
@@ -299,13 +301,13 @@ func MatchesRoute(route *EventRoute, eventType, category string, severity int) b
 	}
 
 	if route.isIncludeMode() {
-		// Category-key match wins; the per-category filter (or nil)
+		// Category-key match wins; the per-category filter
 		// determines severity entirely — route-level severity does
-		// not apply to category matches.
+		// not apply to category matches. The zero-value
+		// SeverityRange{} flows through checkSeverity(nil, nil, _)
+		// which returns true, so no special-case nil branch is
+		// needed.
 		if filter, ok := route.IncludeCategories[category]; ok {
-			if filter == nil {
-				return true
-			}
 			return checkSeverity(filter.MinSeverity, filter.MaxSeverity, severity)
 		}
 		// Event-type fallback uses route-level severity.

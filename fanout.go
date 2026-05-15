@@ -81,8 +81,8 @@ func (oe *outputEntry) effectiveFormatter(defaultFmt Formatter) Formatter {
 
 // setRoute atomically replaces the output's event route. The route is
 // deep-copied into a new EventRoute to prevent the caller from
-// mutating backing arrays, the IncludeCategories map, or any
-// *SeverityRange values after the call returns.
+// mutating backing arrays, the IncludeCategories map, or the inner
+// *int pointers of any SeverityRange values after the call returns.
 func (oe *outputEntry) setRoute(route *EventRoute) {
 	cp := &EventRoute{
 		IncludeCategories: cloneIncludeCategories(route.IncludeCategories),
@@ -97,8 +97,9 @@ func (oe *outputEntry) setRoute(route *EventRoute) {
 }
 
 // getRoute returns a deep copy of the output's current event route.
-// Both the IncludeCategories map and every *SeverityRange value are
-// freshly allocated so the caller cannot mutate the stored route.
+// The IncludeCategories map is freshly allocated and every
+// SeverityRange value's inner *int pointers are deep-copied so the
+// caller cannot mutate the stored route.
 func (oe *outputEntry) getRoute() EventRoute {
 	route := oe.route.Load()
 	if route == nil {
@@ -115,20 +116,16 @@ func (oe *outputEntry) getRoute() EventRoute {
 }
 
 // cloneIncludeCategories returns a deep copy of an IncludeCategories
-// map: the outer map is freshly allocated, and every non-nil
-// *SeverityRange is also freshly allocated with its own *int
-// pointers. A nil input returns nil.
-func cloneIncludeCategories(in map[string]*SeverityRange) map[string]*SeverityRange {
+// map: the outer map is freshly allocated, and every value's inner
+// *int pointers (MinSeverity, MaxSeverity) are deep-copied. A nil
+// input returns nil.
+func cloneIncludeCategories(in map[string]SeverityRange) map[string]SeverityRange {
 	if in == nil {
 		return nil
 	}
-	out := make(map[string]*SeverityRange, len(in))
+	out := make(map[string]SeverityRange, len(in))
 	for k, v := range in {
-		if v == nil {
-			out[k] = nil
-			continue
-		}
-		out[k] = &SeverityRange{
+		out[k] = SeverityRange{
 			MinSeverity: copyIntPtr(v.MinSeverity),
 			MaxSeverity: copyIntPtr(v.MaxSeverity),
 		}

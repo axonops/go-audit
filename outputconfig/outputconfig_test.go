@@ -124,7 +124,7 @@ func TestLoad_FileWithRoute(t *testing.T) {
 	// Second output: file with route
 	assert.Equal(t, "audit_log", result.OutputMetadata()[1].Name)
 	require.NotNil(t, result.OutputMetadata()[1].Route)
-	assert.Equal(t, map[string]*audit.SeverityRange{"write": nil, "security": nil}, result.OutputMetadata()[1].Route.IncludeCategories)
+	assert.Equal(t, map[string]audit.SeverityRange{"write": {}, "security": {}}, result.OutputMetadata()[1].Route.IncludeCategories)
 }
 
 func TestLoad_MultipleOutputs(t *testing.T) {
