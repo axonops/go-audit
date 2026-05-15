@@ -214,6 +214,6 @@ or structured identifiers at the application level.
 
 ## Further Reading
 
-- [Progressive Example: Formatters](../examples/05-formatters/) — JSON and CEF side-by-side
+- [Progressive Example: Formatters](../examples/04-formatters/) — JSON and CEF side-by-side
 - [Event Routing](event-routing.md) — route security events to a CEF-formatted SIEM output
 - [API Reference: CEFFormatter](https://pkg.go.dev/github.com/axonops/audit#CEFFormatter)

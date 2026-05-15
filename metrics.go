@@ -49,7 +49,7 @@ const (
 //
 // The library never imports a concrete metrics library (Prometheus,
 // OpenTelemetry, etc.). Consumers wire their own. The
-// [examples/17-capstone] Prometheus adapter shows a complete
+// [examples/20-capstone] Prometheus adapter shows a complete
 // implementation in under 50 lines using a table-driven registration
 // pattern; copy it as a starting point.
 //

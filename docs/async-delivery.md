@@ -357,7 +357,7 @@ func main() {
 }
 ```
 
-See [Progressive Example: Capstone](../examples/17-capstone/) for a
+See [Progressive Example: Capstone](../examples/20-capstone/) for a
 complete working example with signal handling.
 
 ## Thread Safety
@@ -369,7 +369,7 @@ complete working example with signal handling.
 
 ## Further Reading
 
-- [Progressive Example: Buffering](../examples/16-buffering/) — runnable demo of both levels of backpressure
+- [Progressive Example: Buffering](../examples/14-buffering/) — runnable demo of both levels of backpressure
 - [Metrics and Monitoring](metrics-monitoring.md) — tracking buffer drops and output failures
 - [Outputs](outputs.md) — output types and fan-out architecture
 - [Architecture](../ARCHITECTURE.md) — pipeline implementation details

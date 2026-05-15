@@ -258,7 +258,7 @@ type FrameworkContext struct { //nolint:govet // fieldalignment: readability pre
 // point), or 0 if no delivery has yet succeeded. Wall-clock means
 // the value can jump on system time changes; /healthz thresholds
 // SHOULD be ≥ 10 s to absorb sub-second NTP slews. The reference
-// example in [examples/18-health-endpoint] uses 30 s — see that
+// example in [examples/16-health-endpoint] uses 30 s — see that
 // example's README for picking a threshold for your workload.
 //
 // The returned value is NOT guaranteed monotonic across calls —

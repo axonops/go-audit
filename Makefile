@@ -268,15 +268,15 @@ test-bdd-verify:
 # Example compilation tests (no runtime — examples are documentation)
 test-examples:
 	@for dir in examples/01-basic examples/02-code-generation \
-	            examples/03-file-output examples/04-testing \
-	            examples/05-formatters examples/06-middleware \
-	            examples/07-syslog-output examples/08-webhook-output \
+	            examples/03-file-output examples/04-formatters \
+	            examples/05-standard-fields examples/06-syslog-output \
+	            examples/07-webhook-output examples/08-loki-output \
 	            examples/09-multi-output examples/10-event-routing \
 	            examples/11-sensitivity-labels examples/12-hmac-integrity \
-	            examples/13-standard-fields examples/14-loki-output \
-	            examples/15-tls-policy examples/16-buffering \
-	            examples/17-capstone examples/18-health-endpoint \
-	            examples/19-migration examples/20-prometheus-reference; do \
+	            examples/13-tls-policy examples/14-buffering \
+	            examples/15-middleware examples/16-health-endpoint \
+	            examples/17-testing examples/18-migration \
+	            examples/19-prometheus-reference examples/20-capstone; do \
 		echo "=== build $$dir ==="; \
 		(cd $$dir && go build -o /dev/null .) || exit 1; \
 	done
@@ -614,7 +614,7 @@ check-license-headers:
 	@echo "All .go files have the standard license header."
 
 # Reject broken numeric cross-references in example READMEs (e.g.
-# `../05-file-output/` when `examples/05-formatters/` is the actual
+# `../05-file-output/` when `examples/04-formatters/` is the actual
 # directory at index 05). Catches drift after example renumbering.
 #
 # Greps every `examples/*/README.md` for relative links of the form

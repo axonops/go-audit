@@ -1,8 +1,7 @@
 [← Back to examples](../README.md)
 
 > **Previous:** [11 — Sensitivity Labels](../11-sensitivity-labels/) |
-> **Next:** [13 — Standard Fields](../13-standard-fields/)
-
+> **Next:** [13 — TLS Policy](../13-tls-policy/)
 # Example 12: HMAC Integrity
 
 Per-output tamper detection using HMAC. This example shows two HMAC

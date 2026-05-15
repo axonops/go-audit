@@ -397,5 +397,5 @@ Use `evt.RawJSON` for format-level assertions with non-JSON formatters.
 
 ## Further Reading
 
-- [Progressive Example: Testing](../examples/04-testing/) — three testing patterns
+- [Progressive Example: Testing](../examples/17-testing/) — three testing patterns
 - [API Reference: audittest](https://pkg.go.dev/github.com/axonops/audit/audittest)

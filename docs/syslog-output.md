@@ -68,7 +68,7 @@ import _ "github.com/axonops/audit/syslog"  // registers "syslog" factory
 The syslog server MUST be reachable at startup — the connection is
 established immediately when the output is created.
 
-**[→ Progressive example with embedded TCP receiver](../examples/07-syslog-output/)**
+**[→ Progressive example with embedded TCP receiver](../examples/06-syslog-output/)**
 
 ## How It Works
 
@@ -748,7 +748,7 @@ outputs:
 
 - [Output Types Overview](outputs.md) — summary of all five outputs
 - [Output Configuration Reference](output-configuration.md) — YAML field tables
-- [Progressive Example](../examples/07-syslog-output/) — working code with embedded TCP receiver
+- [Progressive Example](../examples/06-syslog-output/) — working code with embedded TCP receiver
 - [CEF Format Reference](cef-format.md) — CEF field mapping for SIEM integration
 - [Deployment Guide](deployment.md) — systemd / Kubernetes / Docker patterns; capacity planning
 - [RFC 5424: The Syslog Protocol](https://datatracker.ietf.org/doc/html/rfc5424)

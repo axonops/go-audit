@@ -137,7 +137,7 @@ func TestCreateUser_EmitsAudit(t *testing.T) {
 }
 ```
 
-`audittest.NewQuick` shares the production validation path — full reference at [docs/testing.md](docs/testing.md) and [examples/04-testing/](examples/04-testing/).
+`audittest.NewQuick` shares the production validation path — full reference at [docs/testing.md](docs/testing.md) and [examples/17-testing/](examples/17-testing/).
 
 ### Output
 
@@ -293,7 +293,7 @@ func TestUserCreation(t *testing.T) {
 }
 ```
 
-See [Example 4](examples/04-testing/) and [Testing docs](docs/testing.md) for more.
+See [Example 17 — Testing](examples/17-testing/) and [Testing docs](docs/testing.md) for more.
 
 ---
 
@@ -317,7 +317,7 @@ for the full table of 31 names, types, and CEF mappings.
 
 | Resource | Description |
 |----------|-------------|
-| 📖 [Progressive Examples](examples/) | 20 examples from "hello world" to a [complete inventory demo](examples/17-capstone/), an [/healthz endpoint](examples/18-health-endpoint/), a [slog-coexistence migration demo](examples/19-migration/), and a [drop-in Prometheus reference adapter](examples/20-prometheus-reference/) — every output type, TLS policy, routing, formatters, testing, and buffering |
+| 📖 [Progressive Examples](examples/) | 20 examples from "hello world" to a [complete inventory demo](examples/20-capstone/), an [/healthz endpoint](examples/16-health-endpoint/), a [slog-coexistence migration demo](examples/18-migration/), and a [drop-in Prometheus reference adapter](examples/19-prometheus-reference/) — every output type, TLS policy, routing, formatters, testing, and buffering |
 | 📘 [API Reference](https://pkg.go.dev/github.com/axonops/audit) | pkg.go.dev documentation |
 | 🏗️ [Architecture](ARCHITECTURE.md) | Pipeline design, module boundaries, thread safety |
 | 🤝 [Contributing](CONTRIBUTING.md) | Development setup, PR process, code standards |

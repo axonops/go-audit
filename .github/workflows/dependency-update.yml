@@ -52,7 +52,7 @@ jobs:
 
       - name: Save pre-update go.mod files
         run: |
-          for mod in . file syslog webhook loki outputconfig outputs cmd/audit-gen cmd/audit-validate secrets secrets/env secrets/file secrets/openbao secrets/vault examples/01-basic examples/02-code-generation examples/03-file-output examples/04-testing examples/05-formatters examples/06-middleware examples/07-syslog-output examples/08-webhook-output examples/09-multi-output examples/10-event-routing examples/11-sensitivity-labels examples/12-hmac-integrity examples/13-standard-fields examples/14-loki-output examples/15-tls-policy examples/16-buffering examples/17-capstone examples/18-health-endpoint examples/19-migration examples/20-prometheus-reference; do
+          for mod in . file syslog webhook loki outputconfig outputs cmd/audit-gen cmd/audit-validate secrets secrets/env secrets/file secrets/openbao secrets/vault examples/01-basic examples/02-code-generation examples/03-file-output examples/04-formatters examples/05-standard-fields examples/06-syslog-output examples/07-webhook-output examples/08-loki-output examples/09-multi-output examples/10-event-routing examples/11-sensitivity-labels examples/12-hmac-integrity examples/13-tls-policy examples/14-buffering examples/15-middleware examples/16-health-endpoint examples/17-testing examples/18-migration examples/19-prometheus-reference examples/20-capstone; do
             cp "$mod/go.mod" "$mod/go.mod.before"
           done
 
@@ -60,7 +60,7 @@ jobs:
         shell: bash
         run: |
           set -eo pipefail
-          MODULES=". file syslog webhook loki outputconfig outputs cmd/audit-gen cmd/audit-validate secrets secrets/env secrets/file secrets/openbao secrets/vault examples/01-basic examples/02-code-generation examples/03-file-output examples/04-testing examples/05-formatters examples/06-middleware examples/07-syslog-output examples/08-webhook-output examples/09-multi-output examples/10-event-routing examples/11-sensitivity-labels examples/12-hmac-integrity examples/13-standard-fields examples/14-loki-output examples/15-tls-policy examples/16-buffering examples/17-capstone examples/18-health-endpoint examples/19-migration examples/20-prometheus-reference"
+          MODULES=". file syslog webhook loki outputconfig outputs cmd/audit-gen cmd/audit-validate secrets secrets/env secrets/file secrets/openbao secrets/vault examples/01-basic examples/02-code-generation examples/03-file-output examples/04-formatters examples/05-standard-fields examples/06-syslog-output examples/07-webhook-output examples/08-loki-output examples/09-multi-output examples/10-event-routing examples/11-sensitivity-labels examples/12-hmac-integrity examples/13-tls-policy examples/14-buffering examples/15-middleware examples/16-health-endpoint examples/17-testing examples/18-migration examples/19-prometheus-reference examples/20-capstone"
           CORE_MODULE="github.com/axonops/audit"
           FAILED=""
 
@@ -141,7 +141,7 @@ jobs:
       - name: Check for changes
         id: changes
         run: |
-          MODULES=". file syslog webhook loki outputconfig outputs cmd/audit-gen cmd/audit-validate secrets secrets/env secrets/file secrets/openbao secrets/vault examples/01-basic examples/02-code-generation examples/03-file-output examples/04-testing examples/05-formatters examples/06-middleware examples/07-syslog-output examples/08-webhook-output examples/09-multi-output examples/10-event-routing examples/11-sensitivity-labels examples/12-hmac-integrity examples/13-standard-fields examples/14-loki-output examples/15-tls-policy examples/16-buffering examples/17-capstone examples/18-health-endpoint examples/19-migration examples/20-prometheus-reference"
+          MODULES=". file syslog webhook loki outputconfig outputs cmd/audit-gen cmd/audit-validate secrets secrets/env secrets/file secrets/openbao secrets/vault examples/01-basic examples/02-code-generation examples/03-file-output examples/04-formatters examples/05-standard-fields examples/06-syslog-output examples/07-webhook-output examples/08-loki-output examples/09-multi-output examples/10-event-routing examples/11-sensitivity-labels examples/12-hmac-integrity examples/13-tls-policy examples/14-buffering examples/15-middleware examples/16-health-endpoint examples/17-testing examples/18-migration examples/19-prometheus-reference examples/20-capstone"
           HAS_CHANGES="false"
 
           for mod in $MODULES; do
@@ -188,7 +188,7 @@ jobs:
         shell: bash
         run: |
           set -eo pipefail
-          MODULES=". file syslog webhook loki outputconfig outputs cmd/audit-gen cmd/audit-validate secrets secrets/env secrets/file secrets/openbao secrets/vault examples/01-basic examples/02-code-generation examples/03-file-output examples/04-testing examples/05-formatters examples/06-middleware examples/07-syslog-output examples/08-webhook-output examples/09-multi-output examples/10-event-routing examples/11-sensitivity-labels examples/12-hmac-integrity examples/13-standard-fields examples/14-loki-output examples/15-tls-policy examples/16-buffering examples/17-capstone examples/18-health-endpoint examples/19-migration examples/20-prometheus-reference"
+          MODULES=". file syslog webhook loki outputconfig outputs cmd/audit-gen cmd/audit-validate secrets secrets/env secrets/file secrets/openbao secrets/vault examples/01-basic examples/02-code-generation examples/03-file-output examples/04-formatters examples/05-standard-fields examples/06-syslog-output examples/07-webhook-output examples/08-loki-output examples/09-multi-output examples/10-event-routing examples/11-sensitivity-labels examples/12-hmac-integrity examples/13-tls-policy examples/14-buffering examples/15-middleware examples/16-health-endpoint examples/17-testing examples/18-migration examples/19-prometheus-reference examples/20-capstone"
           BODY=""
 
           for mod in $MODULES; do
@@ -265,7 +265,7 @@ jobs:
           SAVE=/tmp/depupdate-save
           rm -rf "$SAVE" && mkdir -p "$SAVE"
 
-          MODULES=". file syslog webhook loki outputconfig outputs cmd/audit-gen cmd/audit-validate secrets secrets/env secrets/file secrets/openbao secrets/vault examples/01-basic examples/02-code-generation examples/03-file-output examples/04-testing examples/05-formatters examples/06-middleware examples/07-syslog-output examples/08-webhook-output examples/09-multi-output examples/10-event-routing examples/11-sensitivity-labels examples/12-hmac-integrity examples/13-standard-fields examples/14-loki-output examples/15-tls-policy examples/16-buffering examples/17-capstone examples/18-health-endpoint examples/19-migration examples/20-prometheus-reference"
+          MODULES=". file syslog webhook loki outputconfig outputs cmd/audit-gen cmd/audit-validate secrets secrets/env secrets/file secrets/openbao secrets/vault examples/01-basic examples/02-code-generation examples/03-file-output examples/04-formatters examples/05-standard-fields examples/06-syslog-output examples/07-webhook-output examples/08-loki-output examples/09-multi-output examples/10-event-routing examples/11-sensitivity-labels examples/12-hmac-integrity examples/13-tls-policy examples/14-buffering examples/15-middleware examples/16-health-endpoint examples/17-testing examples/18-migration examples/19-prometheus-reference examples/20-capstone"
 
           # Snapshot only go.mod / go.sum from each module — those are
           # the only files the dep-update step modifies.

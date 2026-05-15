@@ -516,19 +516,19 @@ ok  	github.com/axonops/audit/audittest	0.004s
 ?   	github.com/axonops/audit/examples/02-code-generation	[no test files]
 ?   	github.com/axonops/audit/examples/03-file-output	[no test files]
 PASS
-ok  	github.com/axonops/audit/examples/04-testing	0.004s
-?   	github.com/axonops/audit/examples/05-formatters	[no test files]
-?   	github.com/axonops/audit/examples/06-middleware	[no test files]
-?   	github.com/axonops/audit/examples/07-syslog-output	[no test files]
-?   	github.com/axonops/audit/examples/08-webhook-output	[no test files]
+ok  	github.com/axonops/audit/examples/17-testing	0.004s
+?   	github.com/axonops/audit/examples/04-formatters	[no test files]
+?   	github.com/axonops/audit/examples/15-middleware	[no test files]
+?   	github.com/axonops/audit/examples/06-syslog-output	[no test files]
+?   	github.com/axonops/audit/examples/07-webhook-output	[no test files]
 ?   	github.com/axonops/audit/examples/09-multi-output	[no test files]
 ?   	github.com/axonops/audit/examples/10-event-routing	[no test files]
 ?   	github.com/axonops/audit/examples/11-sensitivity-labels	[no test files]
 ?   	github.com/axonops/audit/examples/12-hmac-integrity	[no test files]
-?   	github.com/axonops/audit/examples/13-standard-fields	[no test files]
-?   	github.com/axonops/audit/examples/14-loki-output	[no test files]
-?   	github.com/axonops/audit/examples/15-tls-policy	[no test files]
-?   	github.com/axonops/audit/examples/16-buffering	[no test files]
+?   	github.com/axonops/audit/examples/05-standard-fields	[no test files]
+?   	github.com/axonops/audit/examples/08-loki-output	[no test files]
+?   	github.com/axonops/audit/examples/13-tls-policy	[no test files]
+?   	github.com/axonops/audit/examples/14-buffering	[no test files]
 ?   	github.com/axonops/audit/internal/testhelper	[no test files]
 ?   	github.com/axonops/audit/tests/bdd/steps	[no test files]
 === bench file ===

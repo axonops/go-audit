@@ -2,7 +2,6 @@
 
 > **Previous:** [09 — Multi-Output](../09-multi-output/) |
 > **Next:** [11 — Sensitivity Labels](../11-sensitivity-labels/)
-
 # Example 10: Event Routing
 
 Route different event categories to different outputs: security events
@@ -58,7 +57,7 @@ audit supports two ways to define categories:
   the event defines its own.
 
 Both formats can be mixed in the same taxonomy file. The
-[Capstone](../17-capstone/) example shows every category using the struct
+[Capstone](../20-capstone/) example shows every category using the struct
 format with different severity levels.
 
 ### Per-Event Severity Override
@@ -74,7 +73,7 @@ events:
 ```
 
 Resolution chain: event severity (if set) -> category severity -> 5.
-The [Capstone](../17-capstone/) example uses this: `auth_failure` is
+The [Capstone](../20-capstone/) example uses this: `auth_failure` is
 severity 9 while other security events are severity 8.
 
 ### Routes in YAML

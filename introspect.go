@@ -129,7 +129,7 @@ func (a *Auditor) IsDisabled() bool {
 // wall-clock arithmetic. Wall-clock means the value can jump on
 // system time changes; /healthz thresholds SHOULD be ≥ 10 s to
 // absorb sub-second NTP slews. The reference example in
-// [examples/18-health-endpoint] uses 30 s.
+// [examples/16-health-endpoint] uses 30 s.
 //
 // Concurrency: safe to call from any goroutine. Reads are atomic;
 // no mutex.

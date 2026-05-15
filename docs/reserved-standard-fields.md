@@ -142,5 +142,5 @@ When extending the reserved-field set:
   output, including the extension keys above.
 - [`docs/sensitivity-labels.md`](sensitivity-labels.md) — how to
   label reserved standard fields and exclude them per-output.
-- `examples/13-standard-fields/` — runnable example demonstrating
+- `examples/05-standard-fields/` — runnable example demonstrating
   all 31 setters via the typed-builder API.

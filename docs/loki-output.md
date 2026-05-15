@@ -60,7 +60,7 @@ import _ "github.com/axonops/audit/loki"
 ```
 
 For a working example with code, see the
-[progressive example](../examples/14-loki-output/).
+[progressive example](../examples/08-loki-output/).
 
 ---
 
@@ -1012,7 +1012,7 @@ delivered to all others.
 
 - [Output Types Overview](outputs.md) — summary of all outputs
 - [Output Configuration Reference](output-configuration.md) — YAML field tables
-- [Progressive Example](../examples/14-loki-output/) — working code with real query output
+- [Progressive Example](../examples/08-loki-output/) — working code with real query output
 - [Grafana Dashboard Issue](https://github.com/axonops/audit/issues/273) — pre-built dashboard for audit
 - [Event Routing](event-routing.md) — per-output event filtering
 - [Sensitivity Labels](sensitivity-labels.md) — per-output field stripping

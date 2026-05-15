@@ -1,7 +1,6 @@
 [← Back to examples](../README.md)
 
 > **Next:** [02 — Code Generation](../02-code-generation/)
-
 # Example 01: Basic Audit Logging (Programmatic)
 
 The minimum viable audit event: create an auditor, emit an event, and see

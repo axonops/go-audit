@@ -8,7 +8,7 @@ what, when, and to which resource** for compliance, forensics, and
 accountability.
 
 The runnable companion to this guide is
-[`examples/19-migration/`](../examples/19-migration/), which shows
+[`examples/18-migration/`](../examples/18-migration/), which shows
 the coexistence pattern in a small HTTP service.
 
 ## Audit logging vs application logging
@@ -154,7 +154,7 @@ errors instead of runtime errors.
 ## Coexistence pattern: an HTTP handler
 
 The runnable HTTP example at
-[`examples/19-migration/`](../examples/19-migration/) demonstrates
+[`examples/18-migration/`](../examples/18-migration/) demonstrates
 both loggers in the same handler. Sketch:
 
 ```go
@@ -234,8 +234,8 @@ aggregator, not the SIEM.
 
 ## See also
 
-- [`examples/19-migration/`](../examples/19-migration/) — runnable HTTP service showing the coexistence pattern
-- [`examples/06-middleware/`](../examples/06-middleware/) — HTTP middleware that auto-captures request fields
+- [`examples/18-migration/`](../examples/18-migration/) — runnable HTTP service showing the coexistence pattern
+- [`examples/15-middleware/`](../examples/15-middleware/) — HTTP middleware that auto-captures request fields
 - [`docs/json-format.md`](json-format.md) — wire format for audit events on the application log channel
 - [`docs/output-configuration.md`](output-configuration.md) — destinations and formatters
 - [`docs/testing.md`](testing.md) — `audittest` package for unit-testing audit emission alongside HTTP handlers
