@@ -16,18 +16,28 @@ The CI pipeline runs `make bench` on every PR and compares against `bench-baseli
 
 ## Current Baseline
 
-**Date:** 2026-04-19
-**Commit:** feature/497-fieldsdonor-fast-path (post-W2 zero-copy drain)
+**Date:** 2026-05-15
+**Commit:** main post-#869 (matchesRoute inline fast path + routeMode peephole)
 **Go:** 1.26+
 **CPU:** AMD Ryzen 9 7950X 16-Core (32 threads)
 **OS:** Linux 6.14.0
 **Samples:** `count=5` per benchmark; benchstat confidence requires ≥6 so the current report is indicative (`± ∞`). Compare rather than read absolutes.
 
-> **#497 W2 zero-copy drain landed in this baseline.** Most Audit-path
-> benchmarks dropped from 2 → 1 allocs/op with byte-allocation
-> reductions of 40–55 %. The donor fast path (generated builders that
-> satisfy `FieldsDonor`) reaches 0 allocs/op on the drain side end-to-
-> end. See [`docs/performance.md`](docs/performance.md) for the full
+> **#867 matchesRoute fix landed in this baseline.** The +112 %
+> regression in `MatchesRoute/include_categories` (introduced by
+> #193's per-category severity) is recovered from 6.8 ns →
+> ~4.0 ns — restoring most of the gap to the 3.2 ns pre-#193 floor
+> via an inline `[4]inlineCat` fast path and a `routeMode`
+> discriminator. Three less-common benchmarks regressed 0.4–3.8 ns
+> absolute due to the 256-byte EventRoute struct footprint
+> (was 120 B) — accepted trade documented in
+> [ADR 0007](docs/adr/0007-matchesroute-perf.md).
+>
+> **#497 W2 zero-copy drain remains in this baseline.** Most Audit-path
+> benchmarks are 1 alloc/op with byte-allocation reductions of 40–55 %.
+> The donor fast path (generated builders that satisfy `FieldsDonor`)
+> reaches 0 allocs/op on the drain side end-to-end. See
+> [`docs/performance.md`](docs/performance.md) for the full
 > ownership model and methodology.
 
 ## Release Soak-Test Summary
@@ -185,15 +195,32 @@ drain-side fast path, benchmarked as `BenchmarkAudit_FastPath_FanOut4_NoopOutput
 
 ### Route Matching
 
+Inline `[4]inlineCat` fast path + `routeMode` discriminator landed
+in #869. Numbers below are post-#867 fix.
+
 | Benchmark | ns/op | allocs/op | Notes |
 |-----------|------:|----------:|-------|
-| MatchesRoute/empty_route | 1.7 | 0 | Trivial pass-through |
-| MatchesRoute/include_categories | 3.2 | 0 | 4-entry include list |
-| MatchesRoute/exclude_categories | 8.4 | 0 | 3-entry exclude list |
-| MatchesRoute/include_event_types | 4.1 | 0 | 4-entry include list |
-| MatchesRoute/include_20_categories | 6.7 | 0 | 20-entry include list |
+| MatchesRoute/empty_route | 2.5 | 0 | Trivial pass-through |
+| MatchesRoute/include_categories | 4.0 | 0 | 4-entry include list — inline fast path (recovered from 6.8 ns post-#193) |
+| MatchesRoute/exclude_categories | 9.7 | 0 | 3-entry exclude list |
+| MatchesRoute/include_event_types | 7.9 | 0 | 4-entry include list — event-types-only path |
+| MatchesRoute/include_20_categories | 7.7 | 0 | 20-entry include list — map fallback |
+| MatchesRoute_Severity/nil_severity | 2.5 | 0 | Empty route severity short-circuit |
+| MatchesRoute_Severity/severity_only_min | 1.5 | 0 | Severity-only catchall, Min bound |
+| MatchesRoute_Severity/severity_only_range | 1.5 | 0 | Severity-only catchall, Min+Max bounds |
+| MatchesRoute_Severity/severity_only_catchall_reject | 1.5 | 0 | Severity-only catchall, reject path |
+| MatchesRoute_Severity/include_categories_with_severity | 4.0 | 0 | Category include + route-level severity |
+| MatchesRoute_Severity/per_category_severity_accept | 3.6 | 0 | Per-category SeverityRange accept (#193) |
+| MatchesRoute_Severity/per_category_severity_reject | 3.6 | 0 | Per-category SeverityRange reject (#193) |
+| MatchesRoute_LargeInclude/N=4 | 4.7 | 0 | Inline-array boundary at maximum |
+| MatchesRoute_LargeInclude/N=5 | 8.3 | 0 | Just over the inline threshold — map fallback fires |
+| MatchesRoute_LargeInclude/N=16 | 7.3 | 0 | Map fallback, medium size |
+| MatchesRoute_LargeInclude/N=32 | 7.4 | 0 | Map fallback, large size — no scaling beyond ~7 ns |
+| MatchesRoute_FanoutMix | 5.6 | 0 | 5 distinct route shapes × 8 events — branch-prediction stress |
+| MatchesRoute_PerCategorySeverity | 9.5 | 0 | Per-category severity end-to-end (#193) |
+| MatchesRoute_MixedNilAndFilter | 9.1 | 0 | Mix of zero-value and bounded SeverityRange entries |
 | FilterCheck_Parallel | 1.0 | 0 | GOMAXPROCS goroutines, sync.Map lock-free reads |
-| FilterCheck_ReadWriteContention | 1.0 | 0 | GOMAXPROCS readers + 1 writer toggling category |
+| FilterCheck_ReadWriteContention | 1.1 | 0 | GOMAXPROCS readers + 1 writer toggling category |
 
 ### Output Backends
 

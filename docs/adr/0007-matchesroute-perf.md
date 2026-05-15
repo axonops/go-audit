@@ -184,30 +184,40 @@ All numbers on AMD Ryzen 7950X, Linux 6.14, Go 1.26.3,
 measured on the same machine within the same day to minimise
 thermal drift.
 
-| Benchmark | Pre-#193 | Post-#193 / pre-PR-2 | Post-PR-2 | Δ vs baseline |
+| Benchmark | Pre-#193 | Post-#193 / pre-PR-2 | Post-PR-2 (bench-baseline) | Δ vs baseline |
 |---|---:|---:|---:|---:|
-| `MatchesRoute/include_categories` | 3.207 ns | 6.799 ns | **~2.8 ns** | **−13 %** (beats baseline) |
-| `MatchesRoute_Severity/include_categories_with_severity` | 3.203 ns | 6.603 ns | **~2.5 ns** | **−22 %** (beats baseline) |
-| `MatchesRoute_Severity/per_category_severity_accept` | n/a (new in #193) | 7.05 ns | **~2.8 ns** | −60 % |
-| `MatchesRoute_Severity/per_category_severity_reject` | n/a (new in #193) | 6.73 ns | ~2.8 ns | −58 % |
-| `MatchesRoute/empty_route` | 1.698 ns | 1.694 ns | 2.08 ns | +22 % (struct size cost) |
-| `MatchesRoute/exclude_categories` | 8.420 ns | 8.066 ns | ~8.8 ns | +4 % vs baseline |
-| `MatchesRoute/include_event_types` | 4.145 ns | 4.705 ns | ~6.5 ns | +57 % vs baseline |
-| `MatchesRoute/include_20_categories` | 6.838 ns | 6.803 ns | ~6.6 ns | −3 % |
-| `MatchesRoute_LargeInclude/N=4` (new) | n/a | n/a | ~3.5 ns | n/a |
-| `MatchesRoute_LargeInclude/N=5` (new) | n/a | n/a | ~7.3 ns | n/a |
-| `MatchesRoute_LargeInclude/N=16` (new) | n/a | n/a | ~6.7 ns | n/a |
-| `MatchesRoute_LargeInclude/N=32` (new) | n/a | n/a | ~6.7 ns | n/a |
-| `MatchesRoute_FanoutMix` (new) | n/a | n/a | ~5.1 ns | n/a |
+| `MatchesRoute/include_categories` | 3.2 ns | 6.8 ns | **4.0 ns** | +25 % (recovers ~80 % of the regression) |
+| `MatchesRoute_Severity/include_categories_with_severity` | 3.2 ns | 6.6 ns | **4.0 ns** | +25 % |
+| `MatchesRoute_Severity/per_category_severity_accept` | n/a (new in #193) | 7.05 ns | **3.6 ns** | −49 % vs #193 |
+| `MatchesRoute_Severity/per_category_severity_reject` | n/a (new in #193) | 6.73 ns | 3.6 ns | −46 % vs #193 |
+| `MatchesRoute/empty_route` | 1.7 ns | 1.7 ns | 2.5 ns | +47 % (struct-size cost) |
+| `MatchesRoute/exclude_categories` | 8.4 ns | 8.1 ns | 9.7 ns | +15 % vs baseline |
+| `MatchesRoute/include_event_types` | 4.1 ns | 4.7 ns | 7.9 ns | +92 % vs baseline |
+| `MatchesRoute/include_20_categories` | 6.8 ns | 6.8 ns | 7.7 ns | +13 % vs baseline |
+| `MatchesRoute_LargeInclude/N=4` (new) | n/a | n/a | 4.7 ns | n/a |
+| `MatchesRoute_LargeInclude/N=5` (new) | n/a | n/a | 8.3 ns | n/a |
+| `MatchesRoute_LargeInclude/N=16` (new) | n/a | n/a | 7.3 ns | n/a |
+| `MatchesRoute_LargeInclude/N=32` (new) | n/a | n/a | 7.4 ns | n/a |
+| `MatchesRoute_FanoutMix` (new) | n/a | n/a | 5.6 ns | n/a |
+
+Numbers above are 5-iteration averages from the regenerated
+`bench-baseline.txt`, on warm CPU (matches the methodology used
+for the original 2026-04-21 baseline). PR #869 description and
+the original ADR text cited tighter 10-iteration spot-check
+numbers (~2.8 ns on the hot path); the formal 5-iteration
+baseline lands ~1.2 ns higher on the inline path because map
+iteration order randomises which inline slot the lookup key
+falls into. The 4.0 ns figure is the honest steady-state cost
+of the inline fast path under random key-position distribution.
 
 ## Trade-offs
 
-PR-2 introduces real but small regressions on benchmarks that do
-not use the inline fast path:
+PR-2 introduces real regressions on benchmarks that do not use
+the inline fast path. Numbers from the regenerated baseline:
 
-- `empty_route` +0.4 ns
-- `exclude_categories` +0.7 ns
-- `include_event_types` +1.8 ns (from 4.7 to ~6.5 ns)
+- `empty_route` +0.8 ns (1.7 → 2.5 ns)
+- `exclude_categories` +1.3 ns (8.4 → 9.7 ns)
+- `include_event_types` +3.8 ns (4.1 → 7.9 ns) — largest collateral cost
 
 These are attributable to the larger `EventRoute` struct (256 B
 post-PR-2 vs 120 B pre-PR-2) — the additional cache footprint
@@ -244,10 +254,11 @@ paths.
 
 ### Positive
 
-- The targeted +112 % `include_categories` regression is
-  recovered AND beats the pre-#193 baseline by ~13 %.
-- Per-category severity (the common case after #193) now
-  matches at sub-3 ns.
+- The targeted +112 % `include_categories` regression
+  (3.2 → 6.8 ns) is recovered to 4.0 ns — restoring ~80 % of the
+  gap to the pre-#193 floor.
+- Per-category severity (the common case after #193) now matches
+  at 3.6 ns vs the regressed 7.05 ns.
 - The `routeMode` peephole eliminates three `len()`-of-map scans
   per `MatchesRoute` call across all routes.
 - Zero new public API surface — `buildRouteSets` stays internal;

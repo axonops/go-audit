@@ -33,14 +33,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   lookup entirely in favour of a 4-element linear scan over an
   inline array populated at route-build time. Combined with a
   precomputed `routeMode` discriminator that replaces three
-  `len()`-of-map scans per `MatchesRoute` call, this recovers the
-  +112 % regression introduced by #193 (per-category severity) and
-  beats the pre-#193 baseline on the targeted benchmark:
-  `BenchmarkMatchesRoute/include_categories` 6.80 ns → ~2.8 ns
-  (−58 % vs current main, −13 % vs the 2026-04-21 baseline).
+  `len()`-of-map scans per `MatchesRoute` call, this recovers
+  ~80 % of the +112 % regression introduced by #193 (per-category
+  severity) on the targeted benchmark:
+  `BenchmarkMatchesRoute/include_categories` 6.80 ns → 4.0 ns
+  (−41 % vs current main, +25 % vs the 2026-04-21 baseline at
+  3.2 ns — see ADR 0007 for why the inline path doesn't fully
+  match the original `[]string` linear-scan baseline).
   Three less-common benchmarks (`empty_route`,
   `exclude_categories`, `include_event_types`) regressed by
-  0.4–1.8 ns due to the larger `EventRoute` struct footprint —
+  0.8–3.8 ns due to the larger `EventRoute` struct footprint —
   accepted trade-off documented in
   [ADR 0007](docs/adr/0007-matchesroute-perf.md). (#867 part 2)
 
