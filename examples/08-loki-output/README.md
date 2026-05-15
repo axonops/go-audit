@@ -473,6 +473,26 @@ curl -H 'X-Scope-OrgID: example' 'http://localhost:3100/loki/api/v1/query_range?
 
 Without the header, Loki returns 401 Unauthorized.
 
+## Fail-Fast on Startup (#286)
+
+The Loki output verifies connectivity to the push API at
+construction time by default. `audit.New` returns a wrapped
+error if the URL is unreachable, the TLS handshake fails, the
+auth credentials are rejected, or the verification budget
+elapses — surfacing the misconfiguration at application start-up
+instead of as silent event loss on the first flush.
+
+```yaml
+loki:
+  url: "http://loki:3100/loki/api/v1/push"
+  verify_on_startup: true                 # default — fail at New()
+  verify_on_startup_timeout: 5s           # default — budget for dial + handshake
+```
+
+Set `verify_on_startup: false` for sidecar deployments where Loki
+may come up after the application, or for short-lived CLI tools
+that must start regardless of receiver availability.
+
 ## Troubleshooting
 
 | Problem | Cause | Fix |

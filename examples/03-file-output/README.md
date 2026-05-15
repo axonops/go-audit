@@ -59,6 +59,46 @@ type-specific settings are nested under a key matching the type name
 | `max_age_days` | 30 | Delete rotated files older than this. |
 | `group_readable` | `false` | When `true`, mode is `0o640` (owner + group read) for SIEM forwarders running in the file's group. Default `false` is `0o600` (owner only). |
 | `compress` | `true` | Gzip rotated files. |
+| `fsync_each_batch` | `false` | When `true`, each batched write is `writev(2)` + `fsync(2)`. See [Durability vs Throughput](#durability-vs-throughput) below. |
+
+### Durability vs Throughput
+
+By default the file output writes events to the OS page cache and
+lets the kernel flush to disk on its own schedule. This is fast
+but creates a brief window where a crash (kernel panic, power
+loss, container OOM-kill of the writer's host) can lose the most
+recent batch. For compliance use cases that require each event be
+on stable storage before the next acknowledgement, set:
+
+```yaml
+file:
+  path: "./audit.log"
+  fsync_each_batch: true   # see #678
+```
+
+With `fsync_each_batch: true`, every flushed batch becomes
+`writev(2) + fsync(2)`. The drain goroutine's throughput is then
+bounded by the disk's fsync latency:
+
+- Rotational disks: ~5–50 ms per batch.
+- Local SSD: ~0.1–2 ms per batch.
+- Network filesystems (NFS, EFS): highly variable; benchmark before
+  enabling.
+
+The sustained event rate is approximately
+`batch_size / (writev_latency + fsync_latency)`. For a 256-event
+batch on an SSD this is still tens of thousands of events per
+second — well above most audit workloads — but the latency floor
+matters for back-pressure tuning. See `BENCHMARKS.md` for figures
+on your platform.
+
+**Partial guarantee.** `fsync_each_batch: true` fsyncs the audit
+log file, but does NOT fsync the parent directory. After a crash
+during log rotation the post-rotation file's directory entry may
+not yet be on disk. For directory-level durability, mount the
+audit-log directory with `dirsync` (Linux), or accept that the
+rotated tail may not survive a crash that hits at exactly the
+rotation moment.
 
 ### Enabling the File Output Type
 

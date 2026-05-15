@@ -131,10 +131,20 @@ events that won't be delivered.
 ### Severity-Based Routing
 
 Each output's route can filter by severity level (0-10). This
-example's `outputs.yaml` includes a `critical_alerts` output with
-`min_severity: 7`. Below are the three routing modes you can use:
+example's `outputs.yaml` demonstrates four routing shapes:
 
-**Category only** — filter by category, all severity levels:
+- **No route** — `console` receives every event.
+- **Mode A — category only** — `security_log` and `writes_log`.
+- **Mode B — per-category severity** (#193) — `audit_feed`
+  carries different thresholds per category in a single route
+  (security ≥ 7 AND every read event).
+- **Mode C — severity-only catch-all** — `critical_alerts`
+  routes any event at severity ≥ 7 regardless of category.
+
+The Mode B form is the v1.0.0 addition (#193); see the inline
+comments in `outputs.yaml` and the per-mode snippets below.
+
+**Mode A — category only** — filter by category, all severity levels:
 ```yaml
   security_log:
     type: file
@@ -144,7 +154,7 @@ example's `outputs.yaml` includes a `critical_alerts` output with
       include_categories: {security: {}}
 ```
 
-**Category with per-category severity** (#193) — each included
+**Mode B — per-category severity** (#193) — each included
 category can carry its own severity bound. The bound goes **inside**
 the category mapping value, not at the route level. A category
 match never falls back to route-level severity — to constrain a
@@ -160,7 +170,7 @@ category by severity, place the bound inside its mapping:
           min_severity: 7   # only security events at severity >= 7
 ```
 
-**Severity only** — filter by severity regardless of category. This
+**Mode C — severity-only** — filter by severity regardless of category. This
 is the PagerDuty use case — route all high-severity events to an
 alerting webhook:
 ```yaml
@@ -209,7 +219,7 @@ All three events appear on stdout (all events). Each file contains only
 the events matching its route:
 
 ```
-INFO audit: auditor created queue_size=10000 shutdown_timeout=5s validation_mode=strict outputs=4 synchronous=false
+INFO audit: auditor created queue_size=10000 shutdown_timeout=5s validation_mode=strict outputs=5 synchronous=false
 INFO audit: shutdown started
 ... (stdout shows all three events)
 INFO audit: shutdown complete duration=...
@@ -220,15 +230,22 @@ INFO audit: shutdown complete duration=...
 --- writes.log ---
 {"timestamp":"...","event_type":"user_create","severity":5,"app_name":"example","host":"localhost","timezone":"Local","pid":...,"actor_id":"alice","outcome":"success","event_category":"write"}
 
+--- audit-feed.log ---
+{"timestamp":"...","event_type":"user_read","severity":5,"app_name":"example","host":"localhost","timezone":"Local","pid":...,"outcome":"success","event_category":"read"}
+{"timestamp":"...","event_type":"auth_failure","severity":8,"app_name":"example","host":"localhost","timezone":"Local","pid":...,"actor_id":"unknown","outcome":"failure","event_category":"security"}
+
 --- critical.log ---
 {"timestamp":"...","event_type":"auth_failure","severity":8,"app_name":"example","host":"localhost","timezone":"Local","pid":...,"actor_id":"unknown","outcome":"failure","event_category":"security"}
 ```
 
-The `user_read` event doesn't appear in any file — no route includes
-the `read` category, and its severity (5) is below the critical
-threshold (7). The `auth_failure` event appears in both `security.log`
-(category route) and `critical.log` (severity route) — it matches both
-independently.
+`audit-feed.log` shows Mode B in action: the `user_read` event lands
+because the `read` category accepts every severity, while the
+severity-8 `auth_failure` clears the `min_severity: 7` bound on the
+`security` category mapping. The severity-5 `user_read` is below
+the threshold for `critical.log` (Mode C wants ≥ 7), so it does not
+appear there. `auth_failure` appears in `security.log` (Mode A
+category match) and `critical.log` (Mode C severity-only match) —
+each route is evaluated independently.
 
 ## Further Reading
 

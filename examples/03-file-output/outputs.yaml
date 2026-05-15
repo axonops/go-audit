@@ -8,3 +8,5 @@ outputs:
       path: "./audit.log"
       max_size_mb: 10
       max_backups: 3
+      # fsync_each_batch: false  # default — see README "Durability
+      #                          #   vs Throughput" before flipping to true
