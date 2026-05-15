@@ -25,6 +25,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   type of the bytes they emit. The library is pre-release; no
   back-compat shim. (#463)
 
+### Performance
+
+- [`audit.MatchesRoute`](https://pkg.go.dev/github.com/axonops/audit#MatchesRoute)
+  inline fast path for the common "include with 1-4 categories"
+  routing pattern. Skips the `IncludeCategories` map hash / bucket
+  lookup entirely in favour of a 4-element linear scan over an
+  inline array populated at route-build time. Combined with a
+  precomputed `routeMode` discriminator that replaces three
+  `len()`-of-map scans per `MatchesRoute` call, this recovers the
+  +112 % regression introduced by #193 (per-category severity) and
+  beats the pre-#193 baseline on the targeted benchmark:
+  `BenchmarkMatchesRoute/include_categories` 6.80 ns → ~2.8 ns
+  (−58 % vs current main, −13 % vs the 2026-04-21 baseline).
+  Three less-common benchmarks (`empty_route`,
+  `exclude_categories`, `include_event_types`) regressed by
+  0.4–1.8 ns due to the larger `EventRoute` struct footprint —
+  accepted trade-off documented in
+  [ADR 0007](docs/adr/0007-matchesroute-perf.md). (#867 part 2)
+
 ### Added
 
 - New optional output interface

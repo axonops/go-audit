@@ -22,3 +22,25 @@ var IsFrameworkField = isFrameworkField
 // no longer reachable through AuditEvent (#595 B-43 coerces those
 // types to string upstream of OmitEmpty in non-strict modes).
 var IsZeroValueForTest = isZeroValue
+
+// BuildRouteForTest exposes buildRouteSets so external (audit_test)
+// benchmarks and tests can opt routes into the same inline fast
+// path that production uses via Auditor.SetOutputRoute. Production
+// callers go through the auditor; consumers never need to build
+// routes themselves. The export_test.go naming ensures this symbol
+// is NOT part of the public audit package surface — it lives only
+// in the test binary. (#867 PR-2.)
+func BuildRouteForTest(r *EventRoute) {
+	buildRouteSets(r)
+}
+
+// InlineCatCountForTest exposes the unexported inlineCatCount
+// field so white-box tests can assert which path MatchesRoute
+// dispatches through after BuildRouteForTest is called.
+func InlineCatCountForTest(r *EventRoute) int8 { return r.inlineCatCount }
+
+// KindForTest exposes the unexported route kind discriminator so
+// white-box tests can assert the routeMode classification. Values
+// match the unexported routeMode constants: 0=empty, 1=include,
+// 2=exclude, 3=severity-only.
+func KindForTest(r *EventRoute) uint8 { return uint8(r.kind) }

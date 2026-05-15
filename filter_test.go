@@ -287,6 +287,7 @@ func TestMatchesRoute(t *testing.T) {
 func BenchmarkMatchesRoute(b *testing.B) {
 	b.Run("empty_route", func(b *testing.B) {
 		route := audit.EventRoute{}
+		audit.BuildRouteForTest(&route)
 		b.ResetTimer()
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
@@ -298,6 +299,7 @@ func BenchmarkMatchesRoute(b *testing.B) {
 		route := audit.EventRoute{
 			IncludeCategories: map[string]audit.SeverityRange{"write": {}, "security": {}, "admin": {}, "read": {}},
 		}
+		audit.BuildRouteForTest(&route)
 		b.ResetTimer()
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
@@ -309,6 +311,7 @@ func BenchmarkMatchesRoute(b *testing.B) {
 		route := audit.EventRoute{
 			ExcludeCategories: []string{"debug", "trace", "internal"},
 		}
+		audit.BuildRouteForTest(&route)
 		b.ResetTimer()
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
@@ -320,6 +323,7 @@ func BenchmarkMatchesRoute(b *testing.B) {
 		route := audit.EventRoute{
 			IncludeEventTypes: []string{"user_create", "user_delete", "schema_register", "auth_failure"},
 		}
+		audit.BuildRouteForTest(&route)
 		b.ResetTimer()
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
@@ -334,6 +338,7 @@ func BenchmarkMatchesRoute(b *testing.B) {
 		}
 		cats["write"] = audit.SeverityRange{} // ensure the match key is present
 		route := audit.EventRoute{IncludeCategories: cats}
+		audit.BuildRouteForTest(&route)
 		b.ResetTimer()
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
@@ -344,3 +349,75 @@ func BenchmarkMatchesRoute(b *testing.B) {
 }
 
 // BenchmarkMatchesRoute_Severity is defined in severity_routing_test.go.
+
+// BenchmarkMatchesRoute_LargeInclude exercises the inline-fast-path
+// boundary at N=4 (last inline-eligible size) and the map fallback
+// at N=5, 16, 32. Confirms the inline array threshold is correct
+// and the map fallback doesn't regress. The match key is always
+// "write"; map iteration order may place "write" at any inline
+// slot, so the inline timings reflect the average scan position.
+func BenchmarkMatchesRoute_LargeInclude(b *testing.B) {
+	for _, n := range []int{4, 5, 16, 32} {
+		b.Run(fmt.Sprintf("N=%d", n), func(b *testing.B) {
+			cats := make(map[string]audit.SeverityRange, n)
+			for i := 0; i < n-1; i++ {
+				cats[fmt.Sprintf("category_%02d", i)] = audit.SeverityRange{}
+			}
+			cats["write"] = audit.SeverityRange{} // ensure the match key is present
+			route := audit.EventRoute{IncludeCategories: cats}
+			audit.BuildRouteForTest(&route)
+			b.ResetTimer()
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				audit.MatchesRoute(&route, "user_create", "write", 5)
+			}
+		})
+	}
+}
+
+// BenchmarkMatchesRoute_FanoutMix exercises a representative
+// multi-route, multi-event mix — the realistic fanout-time
+// workload. Modulo-indexing flips the route between iterations so
+// the branch predictor can't trivially memoise the inline-vs-map
+// dispatch.
+func BenchmarkMatchesRoute_FanoutMix(b *testing.B) {
+	empty := audit.EventRoute{}
+	audit.BuildRouteForTest(&empty)
+	include2 := audit.EventRoute{
+		IncludeCategories: map[string]audit.SeverityRange{"write": {}, "security": {}},
+	}
+	audit.BuildRouteForTest(&include2)
+	include6 := audit.EventRoute{
+		IncludeCategories: map[string]audit.SeverityRange{
+			"write": {}, "security": {}, "admin": {}, "read": {},
+			"debug": {}, "trace": {},
+		},
+	}
+	audit.BuildRouteForTest(&include6)
+	exclude := audit.EventRoute{ExcludeCategories: []string{"debug", "trace"}}
+	audit.BuildRouteForTest(&exclude)
+	sev := 7
+	sevOnly := audit.EventRoute{MinSeverity: &sev}
+	audit.BuildRouteForTest(&sevOnly)
+	routes := []*audit.EventRoute{&empty, &include2, &include6, &exclude, &sevOnly}
+
+	type evt struct {
+		typ string
+		cat string
+		sev int
+	}
+	events := []evt{
+		{"user_create", "write", 5}, {"auth_failure", "security", 8},
+		{"admin_purge", "admin", 9}, {"user_read", "read", 3},
+		{"trace_call", "trace", 1}, {"debug_log", "debug", 0},
+		{"config_change", "write", 7}, {"login_attempt", "security", 5},
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		r := routes[i%len(routes)]
+		e := events[i%len(events)]
+		_ = audit.MatchesRoute(r, e.typ, e.cat, e.sev)
+	}
+}

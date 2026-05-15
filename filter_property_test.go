@@ -231,3 +231,171 @@ func equalRouteState(a, b map[string]string) bool {
 	}
 	return true
 }
+
+// TestMatchesRoute_BuiltEquivalentToUnbuilt property-checks that
+// MatchesRoute returns the same result regardless of whether the
+// route has been built with Build() (which populates the inline
+// fast path and routeMode discriminator) or is consumed as a raw
+// struct literal (which routes through the field-by-field slow
+// path). This is the regression guard for PR-2 (#867): the inline
+// `[4]inlineCat` fast path and the routeMode switch must produce
+// byte-identical match decisions to the legacy slow path across
+// every combination of include/exclude/severity configuration.
+//
+// rapid draws route shapes spanning the inline-eligible (N≤4)
+// and map-fallback (N>4) ranges so both code paths in the
+// routeModeInclude case are exercised.
+func TestMatchesRoute_BuiltEquivalentToUnbuilt(t *testing.T) {
+	t.Parallel()
+
+	categories := []string{"write", "read", "security", "admin", "audit", "debug", "trace", "info"}
+	events := []string{"user_create", "user_read", "auth_failure", "auth_success", "schema_register", "data_export"}
+
+	rapid.Check(t, func(rt *rapid.T) {
+		built := genRoute(rt, categories, events)
+		// Take a value copy then Build() the copy; never touch the
+		// "unbuilt" reference. The two routes are otherwise identical.
+		unbuilt := cloneRouteForProperty(built)
+		audit.BuildRouteForTest(built)
+
+		cat := rapid.SampledFrom(append(categories, "uncategorised")).Draw(rt, "category")
+		evt := rapid.SampledFrom(append(events, "unknown_event")).Draw(rt, "event")
+		sev := rapid.IntRange(0, 10).Draw(rt, "severity")
+
+		got := audit.MatchesRoute(built, evt, cat, sev)
+		want := audit.MatchesRoute(unbuilt, evt, cat, sev)
+		require.Equal(rt, want, got,
+			"built and unbuilt routes must agree on (event=%q, category=%q, severity=%d)",
+			evt, cat, sev)
+	})
+}
+
+// identityString is the keyFn for rapid.SliceOfNDistinct when the
+// element type is already comparable (strings).
+func identityString(s string) string { return s }
+
+// genRoute draws a random EventRoute spanning include / exclude /
+// severity-only / empty shapes, including inline-eligible (N≤4)
+// and map-fallback (N>4) include-categories sizes.
+func genRoute(rt *rapid.T, categories, events []string) *audit.EventRoute {
+	shape := rapid.IntRange(0, 5).Draw(rt, "route_shape")
+	switch shape {
+	case 0:
+		return &audit.EventRoute{}
+	case 1:
+		return genIncludeCategoriesRoute(rt, categories)
+	case 2:
+		return genIncludeEventTypesRoute(rt, events)
+	case 3:
+		return genIncludeUnionRoute(rt, categories, events)
+	case 4:
+		return genExcludeRoute(rt, categories, events)
+	default:
+		return genSeverityOnlyRoute(rt)
+	}
+}
+
+// genSeverityOnlyRoute draws a severity-only catch-all route with
+// either Min, Max, or both bounds. Adds Max coverage that the
+// earlier "always MinSeverity" generator missed.
+func genSeverityOnlyRoute(rt *rapid.T) *audit.EventRoute {
+	shape := rapid.IntRange(0, 2).Draw(rt, "sev_shape")
+	switch shape {
+	case 0:
+		v := rapid.IntRange(0, 10).Draw(rt, "min_sev")
+		return &audit.EventRoute{MinSeverity: &v}
+	case 1:
+		v := rapid.IntRange(0, 10).Draw(rt, "max_sev")
+		return &audit.EventRoute{MaxSeverity: &v}
+	default:
+		minSev := rapid.IntRange(0, 10).Draw(rt, "min_sev")
+		maxSev := rapid.IntRange(minSev, 10).Draw(rt, "max_sev")
+		return &audit.EventRoute{MinSeverity: &minSev, MaxSeverity: &maxSev}
+	}
+}
+
+// genIncludeUnionRoute draws a route with BOTH IncludeCategories
+// AND IncludeEventTypes populated — the union shape that the
+// earlier generator never produced. Real-world routes commonly
+// combine "all events in these categories OR these specific
+// events outside those categories".
+func genIncludeUnionRoute(rt *rapid.T, categories, events []string) *audit.EventRoute {
+	r := genIncludeCategoriesRoute(rt, categories)
+	ne := rapid.IntRange(1, 3).Draw(rt, "n_include_evts_union")
+	r.IncludeEventTypes = rapid.SliceOfNDistinct(rapid.SampledFrom(events), ne, ne, identityString).Draw(rt, "pick_union_evts")
+	return r
+}
+
+// genIncludeCategoriesRoute draws 1..6 categories with optional
+// per-category severity bounds. The range spans the inline (N≤4)
+// and map (N>4) paths so both code paths in routeModeInclude fire.
+func genIncludeCategoriesRoute(rt *rapid.T, categories []string) *audit.EventRoute {
+	n := rapid.IntRange(1, 6).Draw(rt, "n_include_cats")
+	picks := rapid.SliceOfNDistinct(rapid.SampledFrom(categories), n, n, identityString).Draw(rt, "pick_cats")
+	m := make(map[string]audit.SeverityRange, n)
+	for _, c := range picks {
+		if rapid.Bool().Draw(rt, "cat_has_min") {
+			v := rapid.IntRange(0, 10).Draw(rt, "min_sev")
+			m[c] = audit.SeverityRange{MinSeverity: &v}
+		} else {
+			m[c] = audit.SeverityRange{}
+		}
+	}
+	return &audit.EventRoute{IncludeCategories: m}
+}
+
+// genIncludeEventTypesRoute draws 1..4 event types — the include-
+// event-types-only path that exercises the routeModeInclude case
+// with inlineCatCount==0 and len(IncludeCategories)==0.
+func genIncludeEventTypesRoute(rt *rapid.T, events []string) *audit.EventRoute {
+	n := rapid.IntRange(1, 4).Draw(rt, "n_include_evts")
+	picks := rapid.SliceOfNDistinct(rapid.SampledFrom(events), n, n, identityString).Draw(rt, "pick_evts")
+	return &audit.EventRoute{IncludeEventTypes: picks}
+}
+
+// genExcludeRoute draws an exclude route with either or both of
+// ExcludeCategories and ExcludeEventTypes populated (at least one
+// must be non-empty to make this an exclude-mode route).
+func genExcludeRoute(rt *rapid.T, categories, events []string) *audit.EventRoute {
+	nc := rapid.IntRange(0, 3).Draw(rt, "n_exclude_cats")
+	ne := rapid.IntRange(0, 3).Draw(rt, "n_exclude_evts")
+	if nc == 0 && ne == 0 {
+		nc = 1
+	}
+	r := &audit.EventRoute{}
+	if nc > 0 {
+		r.ExcludeCategories = rapid.SliceOfNDistinct(rapid.SampledFrom(categories), nc, nc, identityString).Draw(rt, "pick_excat")
+	}
+	if ne > 0 {
+		r.ExcludeEventTypes = rapid.SliceOfNDistinct(rapid.SampledFrom(events), ne, ne, identityString).Draw(rt, "pick_exevt")
+	}
+	return r
+}
+
+// cloneRouteForProperty makes a deep-enough copy of an EventRoute
+// for the property test: the SeverityRange map and slices are
+// independent, and Build() called on one route does not affect the
+// other. Inner *int pointers are shared because the property only
+// reads them.
+func cloneRouteForProperty(r *audit.EventRoute) *audit.EventRoute {
+	cp := &audit.EventRoute{
+		MinSeverity: r.MinSeverity,
+		MaxSeverity: r.MaxSeverity,
+	}
+	if r.IncludeCategories != nil {
+		cp.IncludeCategories = make(map[string]audit.SeverityRange, len(r.IncludeCategories))
+		for k, v := range r.IncludeCategories {
+			cp.IncludeCategories[k] = v
+		}
+	}
+	if r.IncludeEventTypes != nil {
+		cp.IncludeEventTypes = append([]string(nil), r.IncludeEventTypes...)
+	}
+	if r.ExcludeCategories != nil {
+		cp.ExcludeCategories = append([]string(nil), r.ExcludeCategories...)
+	}
+	if r.ExcludeEventTypes != nil {
+		cp.ExcludeEventTypes = append([]string(nil), r.ExcludeEventTypes...)
+	}
+	return cp
+}
