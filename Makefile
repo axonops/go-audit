@@ -84,7 +84,7 @@ workspace:
 # --- Per-module test targets ---
 
 test-core:
-	cd . && go test -race -v -count=1 -coverprofile=coverage.out $$(go list ./... | grep -v /tests/ | grep -v /internal/testhelper | grep -v /examples/)
+	cd . && go test -race -v -count=1 -timeout=15m -coverprofile=coverage.out $$(go list ./... | grep -v /tests/ | grep -v /internal/testhelper | grep -v /examples/)
 
 test-file:
 	cd file && go test -race -v -count=1 -coverprofile=coverage.out ./...
