@@ -182,6 +182,27 @@ message. For audit logging, `local0` through `local7` are recommended
 Full list: `kern`, `user`, `mail`, `daemon`, `auth`, `syslog`, `lpr`,
 `news`, `uucp`, `cron`, `authpriv`, `ftp`, `local0`–`local7`.
 
+### Fail-Fast on Startup (#286)
+
+The syslog output verifies connectivity at construction time by
+default. `audit.New` returns a wrapped error if the configured
+address is unreachable, the TLS handshake fails, or the
+verification budget elapses — surfacing the misconfiguration at
+application start-up instead of as silent event loss on the first
+flush.
+
+```yaml
+syslog:
+  network: "tcp+tls"
+  address: "siem.example.com:6514"
+  verify_on_startup: true                 # default — fail at New()
+  verify_on_startup_timeout: 5s           # default — budget for dial + handshake
+```
+
+Set `verify_on_startup: false` for sidecar deployments where the
+SIEM may come up after the application, or for short-lived CLI
+tools that must start regardless of receiver availability.
+
 ### Automatic Reconnection
 
 If the syslog server becomes unavailable, the output automatically

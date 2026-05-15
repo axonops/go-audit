@@ -8,6 +8,13 @@ Define your audit events in a YAML file, generate type-safe Go
 constants, and configure outputs in a separate YAML file. This is the
 recommended workflow for audit — all subsequent examples follow it.
 
+> **Coming from example 01?** If you started with
+> `audit.DevTaxonomy()`, this example is the migration target. Take
+> the event types you've been emitting, list them in
+> `taxonomy.yaml` with their required fields, regenerate, and swap
+> the `WithTaxonomy(...)` call. The full 4-step recipe lives in
+> [`docs/taxonomy-validation.md`](../../docs/taxonomy-validation.md#migrating-from-devtaxonomy-to-a-strict-taxonomy).
+
 ## What You'll Learn
 
 - Why audit events are defined in YAML and embedded in the binary

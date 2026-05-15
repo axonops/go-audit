@@ -2,9 +2,12 @@ version: 1
 app_name: example
 host: localhost
 outputs:
+  # No route — receives every event.
   console:
     type: stdout
 
+  # Mode A — category only. All severities for the listed
+  # categories. Empty inline mapping `{}` = no severity filter.
   security_log:
     type: file
     file:
@@ -21,6 +24,24 @@ outputs:
       include_categories:
         write: {}
 
+  # Mode B — per-category severity (#193). Each included category
+  # can carry its own min_severity / max_severity inside the
+  # mapping value. Route-level severity is NOT applied to category
+  # matches — to constrain a category, put the bound inside its
+  # mapping. Here: security events only at sev >= 7, every read
+  # event regardless of severity.
+  audit_feed:
+    type: file
+    file:
+      path: "./audit-feed.log"
+    route:
+      include_categories:
+        security:
+          min_severity: 7
+        read: {}
+
+  # Mode C — severity-only catch-all. No category filter; any
+  # event at sev >= 7 lands here.
   critical_alerts:
     type: file
     file:

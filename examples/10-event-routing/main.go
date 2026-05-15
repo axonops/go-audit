@@ -60,11 +60,13 @@ func main() {
 	// Show filtered output.
 	printFile("security.log")
 	printFile("writes.log")
+	printFile("audit-feed.log")
 	printFile("critical.log")
 
 	// Clean up.
 	_ = os.Remove("./security.log")
 	_ = os.Remove("./writes.log")
+	_ = os.Remove("./audit-feed.log")
 	_ = os.Remove("./critical.log")
 }
 

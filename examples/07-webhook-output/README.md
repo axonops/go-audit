@@ -80,6 +80,33 @@ line, with a newline (`\n`) separator. The HTTP body looks like:
 This format is efficient (no wrapping array), streamable, and widely
 supported by log aggregators (Elasticsearch, Loki, Datadog, etc.).
 
+### Content-Type Tracks the Formatter (#463)
+
+The default JSON formatter sends `Content-Type: application/x-ndjson`.
+If you switch the webhook to a CEF formatter, the wire body becomes
+newline-separated CEF records and the `Content-Type` automatically
+flips to `text/plain` — the convention accepted by ArcSight
+SmartConnector and Splunk HEC raw endpoints.
+
+```yaml
+audit_webhook:
+  type: webhook
+  formatter:
+    type: cef
+    vendor: "MyCompany"
+    product: "MyApp"
+    version: "1.0"
+  webhook:
+    url: "https://logs.example.com/audit"
+    # request Content-Type becomes "text/plain" automatically
+```
+
+Operators whose receiver demands a specific MIME type can override
+via the `headers:` config — operator headers take precedence over
+the formatter's default. See
+[docs/webhook-output.md](../../docs/webhook-output.md#ndjson-format)
+for the full table.
+
 ### Batch Triggers
 
 Events are buffered internally and flushed as a batch when ANY of these
@@ -133,6 +160,26 @@ This example uses `allow_private_ranges: true` and
 - **Always use HTTPS** — `allow_insecure_http` MUST NOT be `true`
 - **Keep SSRF protection enabled** — only disable for local dev/testing
 
+### Fail-Fast on Startup (#286)
+
+The webhook output verifies connectivity at construction time by
+default. `audit.New` returns a wrapped error if the URL is
+unreachable, the TLS handshake fails, the SSRF policy rejects
+the host, or the verification budget elapses — surfacing the
+misconfiguration at application start-up instead of as silent
+event loss on the first flush.
+
+```yaml
+webhook:
+  url: "https://ingest.example.com/audit"
+  verify_on_startup: true                 # default — fail at New()
+  verify_on_startup_timeout: 5s           # default — budget for dial + handshake
+```
+
+Set `verify_on_startup: false` for sidecar deployments where the
+receiver may come up after the application, or for short-lived
+CLI tools that must start regardless of receiver availability.
+
 ### Retry with Backoff
 
 When the webhook endpoint returns an error, the output retries with
@@ -141,7 +188,7 @@ exponential backoff:
 | Response | Action |
 |----------|--------|
 | **2xx** | Success — batch delivered |
-| **429** (Too Many Requests) | Retry with backoff |
+| **429** (Too Many Requests) | Retry with backoff, honouring the `Retry-After` response header (capped at 30 s, delta-seconds form only — see #291) |
 | **5xx** (Server Error) | Retry with backoff |
 | **4xx** (Client Error, not 429) | No retry — batch dropped (configuration or auth problem) |
 | **Redirect** (3xx) | Rejected — SSRF protection blocks redirects |

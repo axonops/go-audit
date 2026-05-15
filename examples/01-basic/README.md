@@ -173,6 +173,20 @@ asynchronously and `Close()` drains the buffer before finishing.
 This is normal — `Close()` guarantees all buffered events are
 delivered before it returns.
 
+## When to Graduate from DevTaxonomy
+
+`DevTaxonomy()` accepts any event type with any fields. That's
+deliberate — it lets you explore the library without authoring a
+schema first. But every guarantee the library provides (typo
+rejection, required-field enforcement, sensitivity labelling,
+CEF severity resolution) requires a real taxonomy.
+
+The next example — [02-code-generation](../02-code-generation/) —
+shows how to author a `taxonomy.yaml` and generate typed event
+builders so the schema is enforced at compile time. The 4-step
+migration recipe is in
+[`docs/taxonomy-validation.md`](../../docs/taxonomy-validation.md#migrating-from-devtaxonomy-to-a-strict-taxonomy).
+
 ## Further Reading
 
 - [Taxonomy Validation](../../docs/taxonomy-validation.md) — how the library validates events
