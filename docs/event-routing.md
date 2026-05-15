@@ -325,15 +325,20 @@ include_categories:
 
 An empty inline mapping (`{}`) and an explicit `null`/`~` are both
 accepted as "no severity constraint for this category" and are
-normalised to a nil value at parse time.
+normalised to a zero-value `SeverityRange{}` at parse time.
 
 ## Performance Note
 
-The matching path is a single map lookup followed by at most two
-pointer dereferences — zero allocations on the event hot path.
-`include_categories` is the map directly (no parallel pre-computed
-set), so route matching is O(1) regardless of category count. See
-`BENCHMARKS.md` for measured cost.
+`MatchesRoute` dispatches on a precomputed route-mode discriminator
+and uses an inline `[4]inlineCat` fast path for the common
+"include with 1-4 categories" pattern — skipping the map hash /
+bucket lookup entirely. Routes with more than 4 included
+categories fall through to the `map[string]SeverityRange` lookup.
+The hot path is zero allocations end-to-end. Measured cost on AMD
+Zen 4: ~2.8 ns for the inline fast path (N≤4), ~7.3 ns at N=5
+(map fallback just above the threshold), settling to ~6.7 ns at
+N≥16. See [`ADR 0007`](adr/0007-matchesroute-perf.md) for the
+design and [`BENCHMARKS.md`](../BENCHMARKS.md) for the full table.
 
 ## Further Reading
 

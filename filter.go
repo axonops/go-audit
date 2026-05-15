@@ -110,17 +110,77 @@ type EventRoute struct {
 	// category matches. Nil means no maximum filter.
 	MaxSeverity *int
 
+	// kind + inlineCatCount are placed here (immediately after the
+	// exported fields) so MatchesRoute's switch-on-kind dispatches
+	// from the same cache line as the exported map/slice headers
+	// it then reads. Putting kind at the end of the struct adds an
+	// extra cache-line miss per call. See ADR 0007 (#867).
+	kind           routeMode // populated by buildRouteSets; zero == unbuilt or empty
+	inlineCatCount int8      // 0..4; >0 means use the inline fast path
+
 	// Pre-computed sets for O(1) lookup, populated by buildRouteSets.
-	// IncludeCategories is itself a map and serves as its own lookup
-	// (no parallel set needed). The remaining sets back the
-	// IncludeEventTypes / ExcludeCategories / ExcludeEventTypes
-	// slices. Nil when the route was constructed without
-	// buildRouteSets (e.g. direct struct literal in tests);
+	// The sets back the IncludeEventTypes / ExcludeCategories /
+	// ExcludeEventTypes slices. Nil when the route was constructed
+	// without buildRouteSets (e.g. direct struct literal in tests);
 	// MatchesRoute falls back to slices.Contains in that case.
 	includeEvtSet map[string]struct{}
 	excludeCatSet map[string]struct{}
 	excludeEvtSet map[string]struct{}
+
+	// Inline fast path for IncludeCategories when the route has 4 or
+	// fewer included categories — the typical real-world case.
+	// Populated by buildRouteSets; MatchesRoute scans
+	// inlineCats[:inlineCatCount] with a direct string compare,
+	// skipping the map hash / bucket lookup entirely. For
+	// len(IncludeCategories) > 4 the inline fast path is bypassed
+	// and the map is consulted instead.
+	//
+	// The 4-element threshold reflects measurement on AMD Ryzen
+	// (Zen 4): linear scan over a [4]string is ~2 ns, the smallest
+	// Go map lookup is ~3.5 ns. Beyond 4 entries the hash-based
+	// lookup wins. See docs/adr/0007-matchesroute-perf.md (#867).
+	//
+	// Placed last in the struct so the cache lines it occupies
+	// are only loaded when the inline fast path actually fires.
+	inlineCats [4]inlineCat
 }
+
+// inlineCat is one entry of the EventRoute inline-fast-path array.
+// Defined outside the EventRoute struct so it can be named for
+// loops and tests. Field order kept as key-then-value for cache
+// locality on the hot-path string compare; the pointer-byte
+// rearrangement govet/fieldalignment suggests doesn't actually
+// reduce GC scan work (3 pointer slots either way).
+//
+//nolint:govet // intentional field order for cache locality
+type inlineCat struct {
+	key string
+	val SeverityRange
+}
+
+// routeMode classifies an EventRoute by which fields it uses, so
+// MatchesRoute can dispatch on a single byte instead of re-scanning
+// every len()-of-map / nil-of-pointer condition on every call.
+type routeMode uint8
+
+const (
+	// routeModeEmpty is the zero value. Either every field is
+	// empty/nil (route matches all events) OR the route was built
+	// via direct struct literal without calling buildRouteSets —
+	// MatchesRoute falls back to IsEmpty() + slow path in either case.
+	routeModeEmpty routeMode = iota
+	// routeModeInclude — at least one of IncludeCategories /
+	// IncludeEventTypes is non-empty. Excludes are guaranteed empty
+	// because mixing is a validation error.
+	routeModeInclude
+	// routeModeExclude — at least one of ExcludeCategories /
+	// ExcludeEventTypes is non-empty. Includes are guaranteed empty.
+	routeModeExclude
+	// routeModeSeverityOnly — every include/exclude field is empty
+	// but MinSeverity or MaxSeverity is non-nil. The route is a
+	// pure severity-band filter.
+	routeModeSeverityOnly
+)
 
 // IsEmpty reports whether all route fields are empty, meaning the
 // output receives all globally-enabled events.
@@ -240,14 +300,52 @@ func checkEventTypes(unknown, evts []string, taxonomy *Taxonomy) []string {
 	return unknown
 }
 
-// buildRouteSets populates the pre-computed lookup sets on the route
-// for O(1) matching in MatchesRoute. Called by setRoute in fanout.go.
-// IncludeCategories is itself a map and serves as its own lookup, so
-// no parallel set is needed for that field.
+// buildRouteSets populates the pre-computed lookup sets, inline fast
+// path, and routeMode discriminator on the route. Called by setRoute
+// in fanout.go. After this returns MatchesRoute can dispatch on
+// r.kind in O(1) and, for the common "include with 1-4 categories"
+// case, skip the map hash entirely via the inline fast path.
 func buildRouteSets(r *EventRoute) {
 	r.includeEvtSet = toSet(r.IncludeEventTypes)
 	r.excludeCatSet = toSet(r.ExcludeCategories)
 	r.excludeEvtSet = toSet(r.ExcludeEventTypes)
+	populateInlineCats(r)
+	r.kind = classifyRoute(r)
+}
+
+// populateInlineCats fills the inline fast path when the route has
+// 1-4 included categories. For larger maps MatchesRoute consults
+// the IncludeCategories map directly. The inline array is zeroed
+// first so a Build()-then-rebuild on the same route instance does
+// not leak stale entries.
+func populateInlineCats(r *EventRoute) {
+	r.inlineCats = [4]inlineCat{}
+	r.inlineCatCount = 0
+	if n := len(r.IncludeCategories); n > 0 && n <= len(r.inlineCats) {
+		i := 0
+		for k, v := range r.IncludeCategories {
+			r.inlineCats[i].key = k
+			r.inlineCats[i].val = v
+			i++
+		}
+		r.inlineCatCount = int8(i) //nolint:gosec // bounded by len(r.inlineCats) = 4
+	}
+}
+
+// classifyRoute returns the routeMode for a route. The
+// classification is mutually exclusive because ValidateEventRoute
+// rejects routes that mix include and exclude — see the
+// isIncludeMode / isExcludeMode mutex check in ValidateEventRoute.
+func classifyRoute(r *EventRoute) routeMode {
+	switch {
+	case len(r.IncludeCategories) > 0 || len(r.IncludeEventTypes) > 0:
+		return routeModeInclude
+	case len(r.ExcludeCategories) > 0 || len(r.ExcludeEventTypes) > 0:
+		return routeModeExclude
+	case r.MinSeverity != nil || r.MaxSeverity != nil:
+		return routeModeSeverityOnly
+	}
+	return routeModeEmpty
 }
 
 // toSet converts a string slice to a set. Returns nil for empty slices.
@@ -277,47 +375,97 @@ func toSet(ss []string) map[string]struct{} {
 // [EventRoute]:
 //
 //   - In include mode, category-key match wins: that category's
-//     per-category [SeverityRange] applies (nil = pass all severities).
-//     Otherwise, an event-type match uses route-level severity.
+//     per-category [SeverityRange] applies (zero value = pass all
+//     severities). Otherwise, an event-type match uses route-level
+//     severity.
 //   - In exclude mode, route-level severity applies.
 //   - In the severity-only catch-all (no include or exclude lists),
 //     route-level severity applies.
 //
-// When pre-computed sets are available (route created via setRoute),
-// event type / exclude lookups are O(1). Category include lookup is
-// always O(1) since IncludeCategories is itself a map. Falls back to
-// slices.Contains for routes constructed as direct struct literals.
+// Routes built via setRoute (the production path) dispatch on the
+// pre-computed [routeMode] kind in O(1). The "include with 1-4
+// categories" case skips the IncludeCategories map entirely via a
+// linear scan over the inline fast-path array — the typical real-
+// world workload. Routes built via direct struct literal (tests)
+// fall through to the field-by-field slow path.
 func MatchesRoute(route *EventRoute, eventType, category string, severity int) bool {
-	if route.IsEmpty() {
-		return true
+	switch route.kind {
+	case routeModeInclude:
+		return matchesInclude(route, eventType, category, severity)
+	case routeModeExclude:
+		return matchesExclude(route, eventType, category, severity)
+	case routeModeSeverityOnly:
+		return checkSeverity(route.MinSeverity, route.MaxSeverity, severity)
+	case routeModeEmpty:
+		// kind == routeModeEmpty covers two cases:
+		//   (1) every field is genuinely empty — route matches all events
+		//   (2) route was built via direct struct literal without
+		//       buildRouteSets — fall back to the field-by-field path
+		return matchesEmptyOrUnbuilt(route, eventType, category, severity)
 	}
+	return false
+}
 
-	if route.isExcludeMode() {
-		if !checkSeverity(route.MinSeverity, route.MaxSeverity, severity) {
-			return false
+// matchesInclude is the include-mode branch of MatchesRoute. Extracted
+// for clarity (and to satisfy gocognit) — the function-call cost is
+// acceptable because the include path itself is sub-3ns on the
+// inline fast path; the call adds ~1 cycle at most.
+func matchesInclude(route *EventRoute, eventType, category string, severity int) bool {
+	// Inline fast path: scan up to 4 categories with direct
+	// string compare. The branch on inlineCatCount > 0 is stable
+	// per route, so the predictor learns it.
+	if route.inlineCatCount > 0 {
+		for _, ic := range route.inlineCats[:route.inlineCatCount] {
+			if ic.key == category {
+				return checkSeverity(ic.val.MinSeverity, ic.val.MaxSeverity, severity)
+			}
 		}
-		return !inSet(route.excludeCatSet, route.ExcludeCategories, category) &&
-			!inSet(route.excludeEvtSet, route.ExcludeEventTypes, eventType)
-	}
-
-	if route.isIncludeMode() {
-		// Category-key match wins; the per-category filter
-		// determines severity entirely — route-level severity does
-		// not apply to category matches. The zero-value
-		// SeverityRange{} flows through checkSeverity(nil, nil, _)
-		// which returns true, so no special-case nil branch is
-		// needed.
+	} else if len(route.IncludeCategories) > 0 {
+		// N>4 — map fallback. Guarded by len() so include-event-
+		// types-only routes skip the nil-map read entirely.
+		// The zero-value SeverityRange{} flows through
+		// checkSeverity(nil, nil, _) which returns true.
 		if filter, ok := route.IncludeCategories[category]; ok {
 			return checkSeverity(filter.MinSeverity, filter.MaxSeverity, severity)
 		}
-		// Event-type fallback uses route-level severity.
-		if inSet(route.includeEvtSet, route.IncludeEventTypes, eventType) {
-			return checkSeverity(route.MinSeverity, route.MaxSeverity, severity)
-		}
+	}
+	// Event-type fallback uses route-level severity.
+	if inSet(route.includeEvtSet, route.IncludeEventTypes, eventType) {
+		return checkSeverity(route.MinSeverity, route.MaxSeverity, severity)
+	}
+	return false
+}
+
+// matchesExclude is the exclude-mode branch of MatchesRoute. The
+// route-level severity gate is checked first because exclude routes
+// commonly carry a severity bound and rejecting on severity is
+// cheaper than two set lookups.
+func matchesExclude(route *EventRoute, eventType, category string, severity int) bool {
+	if !checkSeverity(route.MinSeverity, route.MaxSeverity, severity) {
 		return false
 	}
+	return !inSet(route.excludeCatSet, route.ExcludeCategories, category) &&
+		!inSet(route.excludeEvtSet, route.ExcludeEventTypes, eventType)
+}
 
-	// Severity-only catch-all — route-level severity decides.
+// matchesEmptyOrUnbuilt handles the routeModeEmpty arm: either a
+// genuinely empty route (matches all events) or a route built via
+// direct struct literal that bypassed buildRouteSets (the
+// field-by-field slow path). Both are folded into one helper so
+// the routeModeEmpty case stays cheap when it can.
+func matchesEmptyOrUnbuilt(route *EventRoute, eventType, category string, severity int) bool {
+	if route.IsEmpty() {
+		return true
+	}
+	if route.isExcludeMode() {
+		return matchesExclude(route, eventType, category, severity)
+	}
+	if route.isIncludeMode() {
+		// matchesInclude reads the inline fast path fields too,
+		// but for an unbuilt route inlineCatCount == 0 and it
+		// falls through to the map fallback — correct.
+		return matchesInclude(route, eventType, category, severity)
+	}
 	return checkSeverity(route.MinSeverity, route.MaxSeverity, severity)
 }
 

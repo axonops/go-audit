@@ -837,6 +837,7 @@ func BenchmarkMatchesRoute_Severity(b *testing.B) {
 	b.Run("nil_severity", func(b *testing.B) {
 		// No severity filter: IsEmpty short-circuit path.
 		route := audit.EventRoute{}
+		audit.BuildRouteForTest(&route)
 		b.ResetTimer()
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
@@ -847,6 +848,7 @@ func BenchmarkMatchesRoute_Severity(b *testing.B) {
 	b.Run("severity_only_min", func(b *testing.B) {
 		// Severity-only route: two nil checks + one int comparison.
 		route := audit.EventRoute{MinSeverity: intPtr(7)}
+		audit.BuildRouteForTest(&route)
 		b.ResetTimer()
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
@@ -860,6 +862,7 @@ func BenchmarkMatchesRoute_Severity(b *testing.B) {
 			MinSeverity: intPtr(3),
 			MaxSeverity: intPtr(8),
 		}
+		audit.BuildRouteForTest(&route)
 		b.ResetTimer()
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
@@ -874,6 +877,7 @@ func BenchmarkMatchesRoute_Severity(b *testing.B) {
 			MinSeverity:       intPtr(5),
 			MaxSeverity:       intPtr(9),
 		}
+		audit.BuildRouteForTest(&route)
 		b.ResetTimer()
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
@@ -891,6 +895,7 @@ func BenchmarkMatchesRoute_Severity(b *testing.B) {
 				"security": {},
 			},
 		}
+		audit.BuildRouteForTest(&route)
 		b.ResetTimer()
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
@@ -907,6 +912,7 @@ func BenchmarkMatchesRoute_Severity(b *testing.B) {
 				"security": {},
 			},
 		}
+		audit.BuildRouteForTest(&route)
 		b.ResetTimer()
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
@@ -919,6 +925,7 @@ func BenchmarkMatchesRoute_Severity(b *testing.B) {
 		// route-level severity is the only gate. Hits the
 		// MatchesRoute final-branch checkSeverity short-circuit.
 		route := audit.EventRoute{MinSeverity: intPtr(9)}
+		audit.BuildRouteForTest(&route)
 		b.ResetTimer()
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
