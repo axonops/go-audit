@@ -1467,11 +1467,29 @@ func benchWriter(b *testing.B, syncOnWrite bool) *rotate.Writer {
 	if err != nil {
 		b.Fatal(err)
 	}
-	b.Cleanup(func() {
-		_ = w.Close()
-		_ = os.Remove(path)
-	})
+	// Glob-remove the active file AND every rotated backup so
+	// /dev/shm does not leak between bench runs. With MaxSize at
+	// 1 GiB a long b.N can still trigger rotations; the previous
+	// per-active-file Remove leaked rotated files. See #871.
+	b.Cleanup(func() { cleanupBenchRotateFiles(w, path) })
 	return w
+}
+
+// cleanupBenchRotateFiles closes the writer and removes the active
+// file plus every rotated / compressed backup matching the same
+// base name. Shared by benchWriter, BenchmarkWriter_Write_WithRotation,
+// and the TestBenchWriter_Cleanup_* regression tests below so the
+// production cleanup behaviour cannot drift from what the tests
+// assert. Glob expression matches: <base>.log, <base>-<RFC3339>.log,
+// <base>-<RFC3339>.log.gz. See ADR-free issue #871 and ADR 0007's
+// pattern precedent for the same approach in BenchmarkMatchesRoute.
+func cleanupBenchRotateFiles(w *rotate.Writer, path string) {
+	_ = w.Close()
+	globPrefix := strings.TrimSuffix(path, ".log") + "*"
+	matches, _ := filepath.Glob(globPrefix)
+	for _, m := range matches {
+		_ = os.Remove(m)
+	}
 }
 
 // BenchmarkWriter_Write_SyncOnWriteTrue measures the #450
@@ -1548,18 +1566,13 @@ func BenchmarkWriter_Write_WithRotation(b *testing.B) {
 		b.Fatal(err)
 	}
 	// Backups are named "<prefix>-<ts>.log" where <prefix> is the
-	// base filename minus the extension. Build a glob that matches
-	// the active file AND every rotated/compressed backup.
+	// base filename minus the extension. cleanupBenchRotateFiles
+	// globs the prefix to match the active file plus every
+	// rotated/compressed backup. Close already happens inside the
+	// benchmark body before the safety-net check; the helper's
+	// extra Close call is a documented no-op (idempotent).
+	b.Cleanup(func() { cleanupBenchRotateFiles(w, path) })
 	globPrefix := strings.TrimSuffix(path, ".log") + "*"
-	b.Cleanup(func() {
-		// Glob-remove the active file and every rotated backup so
-		// /dev/shm does not leak between bench runs. Close already
-		// happened inside the benchmark body; ignore errors here.
-		matches, _ := filepath.Glob(globPrefix)
-		for _, m := range matches {
-			_ = os.Remove(m)
-		}
-	})
 
 	event := []byte(`{"timestamp":"2026-04-14T12:00:00Z","event_type":"user_create","severity":5,"app_name":"bench","host":"localhost","outcome":"success","actor_id":"alice"}` + "\n")
 
@@ -1587,4 +1600,173 @@ func BenchmarkWriter_Write_WithRotation(b *testing.B) {
 	if len(matches) < 2 {
 		b.Fatalf("expected rotation to fire; found only %d file(s) matching %q", len(matches), globPrefix)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Cleanup-helper regression test (#871) — covers the bench helper's
+// glob-based cleanup, which previously leaked rotated backups into
+// /dev/shm across runs.
+// ---------------------------------------------------------------------------
+
+// globPrefixOf returns the glob expression benchWriter uses to
+// match the active file plus all rotated/compressed backups.
+// Defined inline in tests so a test caller can count files via
+// the same expression the production cleanup uses — keeping
+// production cleanup and test assertions in lock-step.
+func globPrefixOf(path string) string {
+	return strings.TrimSuffix(path, ".log") + "*"
+}
+
+// driveWriterRotations creates a rotate.Writer with the given
+// config, writes ~12.8 KiB of payload (50 writes × 256 B) to fire
+// several rotations, and returns the writer (un-closed so the
+// test can pass it to cleanupBenchRotateFiles which Closes it).
+// Compress controls whether rotated backups become .log.gz.
+func driveWriterRotations(t *testing.T, path string, compress bool, maxBackups int) *rotate.Writer {
+	t.Helper()
+	w, err := rotate.New(path, rotate.Config{
+		MaxSize:     1024, // 1 KiB — rotates every ~4 writes of 256 B
+		MaxBackups:  maxBackups,
+		Compress:    compress,
+		Mode:        0o600,
+		SyncOnWrite: false,
+	})
+	require.NoError(t, err)
+
+	event := bytes.Repeat([]byte("x"), 256)
+	for range 50 {
+		_, werr := w.Write(event)
+		require.NoError(t, werr)
+	}
+	return w
+}
+
+// TestCleanupBenchRotateFiles_RotationsKeptUnbounded asserts that
+// with MaxBackups=0 (unlimited) and enough writes to trigger several
+// rotations, cleanupBenchRotateFiles removes the active file plus
+// every rotated backup. Regression guard for #871 — the previous
+// cleanup only removed the active file and leaked ~94 GB of backups
+// into /dev/shm over a month of bench runs. Calls the same helper
+// benchWriter uses so production cleanup and test cannot drift.
+func TestCleanupBenchRotateFiles_RotationsKeptUnbounded(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "rotate-cleanup-test.log")
+	w := driveWriterRotations(t, path, false, 0)
+	// Snapshot file count BEFORE cleanup — must close first so
+	// the rotate mill goroutine has drained.
+	require.NoError(t, w.Sync())
+
+	before, gerr := filepath.Glob(globPrefixOf(path))
+	require.NoError(t, gerr)
+	require.GreaterOrEqual(t, len(before), 2,
+		"setup: expected at least 2 files (active + ≥1 backup), got %d: %v",
+		len(before), before)
+
+	// Exercise the actual production helper.
+	cleanupBenchRotateFiles(w, path)
+
+	after, _ := filepath.Glob(globPrefixOf(path))
+	assert.Empty(t, after, "cleanup left files behind: %v", after)
+}
+
+// TestCleanupBenchRotateFiles_WithCompression asserts that the
+// glob prefix matches compressed .log.gz backups as well as the
+// active .log file. Verifies empirically that the production
+// cleanup helper handles the compressed case.
+func TestCleanupBenchRotateFiles_WithCompression(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "rotate-cleanup-compress-test.log")
+	w := driveWriterRotations(t, path, true, 0)
+	// Sync forces the bufio.Writer to flush so the count under
+	// glob is stable; cleanupBenchRotateFiles will Close+drain.
+	require.NoError(t, w.Sync())
+
+	// Trigger Close indirectly via the helper to drain compression.
+	cleanupBenchRotateFiles(w, path)
+
+	after, _ := filepath.Glob(globPrefixOf(path))
+	assert.Empty(t, after, "cleanup left files behind: %v", after)
+
+	// Sanity: re-run the bench scenario without cleanup so we can
+	// observe a .gz file existed pre-cleanup. Use a fresh path.
+	path2 := filepath.Join(t.TempDir(), "rotate-cleanup-compress-test2.log")
+	w2 := driveWriterRotations(t, path2, true, 0)
+	require.NoError(t, w2.Close())
+	pre, _ := filepath.Glob(globPrefixOf(path2))
+	var sawGz bool
+	for _, m := range pre {
+		if strings.HasSuffix(m, ".gz") {
+			sawGz = true
+			break
+		}
+	}
+	require.True(t, sawGz,
+		"setup: expected at least one .log.gz backup pre-cleanup, got %v", pre)
+}
+
+// TestCleanupBenchRotateFiles_BoundedMaxBackups exercises the
+// real BenchmarkWriter_Write_WithRotation configuration
+// (MaxBackups=2) — the rotate mill goroutine prunes older backups
+// before cleanup runs. cleanupBenchRotateFiles must still empty
+// the directory of whatever survived the prune.
+func TestCleanupBenchRotateFiles_BoundedMaxBackups(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "rotate-cleanup-bounded-test.log")
+	w := driveWriterRotations(t, path, false, 2)
+	// Sync so the bench's "Close drains mill" precondition matches.
+	require.NoError(t, w.Sync())
+
+	cleanupBenchRotateFiles(w, path)
+
+	after, _ := filepath.Glob(globPrefixOf(path))
+	assert.Empty(t, after, "cleanup left files behind: %v", after)
+}
+
+// TestCleanupBenchRotateFiles_IdempotentSecondCall asserts the
+// helper is safe to invoke on a directory it has already emptied
+// — no panic, no error, zero removals.
+func TestCleanupBenchRotateFiles_IdempotentSecondCall(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "rotate-cleanup-idempotent-test.log")
+	w := driveWriterRotations(t, path, false, 0)
+
+	// First cleanup removes everything.
+	cleanupBenchRotateFiles(w, path)
+	matches, _ := filepath.Glob(globPrefixOf(path))
+	require.Empty(t, matches, "first cleanup left files: %v", matches)
+
+	// Second call on the same closed writer over an empty
+	// directory must not panic or error. Writer.Close is
+	// documented idempotent; filepath.Glob on a no-match prefix
+	// returns nil; os.Remove on no files is a no-op.
+	cleanupBenchRotateFiles(w, path)
+	matches2, _ := filepath.Glob(globPrefixOf(path))
+	assert.Empty(t, matches2, "second cleanup left files: %v", matches2)
+}
+
+// TestCleanupBenchRotateFiles_NoRotationsActiveOnly covers the
+// degenerate case: a single write below the rotate threshold
+// leaves only the active file. Cleanup must still remove it.
+func TestCleanupBenchRotateFiles_NoRotationsActiveOnly(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "rotate-cleanup-active-only-test.log")
+	w, err := rotate.New(path, rotate.Config{
+		MaxSize:     1 << 30, // 1 GiB — single write will not rotate
+		MaxBackups:  0,
+		Mode:        0o600,
+		SyncOnWrite: false,
+	})
+	require.NoError(t, err)
+	_, err = w.Write([]byte("single line\n"))
+	require.NoError(t, err)
+	require.NoError(t, w.Sync())
+
+	before, _ := filepath.Glob(globPrefixOf(path))
+	require.Len(t, before, 1,
+		"setup: expected exactly 1 file (active only), got %v", before)
+
+	cleanupBenchRotateFiles(w, path)
+
+	after, _ := filepath.Glob(globPrefixOf(path))
+	assert.Empty(t, after, "cleanup left files behind: %v", after)
 }
