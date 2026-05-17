@@ -456,8 +456,12 @@ jobs:
           - module: "."
             target: test-integration-core
             flag: integration-core
-            infra-up: ""
-            infra-down: ""
+            # Core integration covers tests/integration/e2e_secrets_webhook_test.go
+            # (needs openbao + webhook) and fanout_test.go (needs
+            # syslog + webhook + loki). Spin the full stack — narrowing
+            # to a per-test-file subset is a future optimisation.
+            infra-up: test-infra-up
+            infra-down: test-infra-down
           - module: file
             target: test-integration-file
             flag: integration-file
