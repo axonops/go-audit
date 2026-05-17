@@ -394,6 +394,10 @@ jobs:
         uses: ./.github/actions/setup-audit
         with:
           install-make-on-windows: 'true'
+          # Required so the test recipes can find gotestsum when PR B
+          # (#877) wires JUNIT_REPORT_FILE for cross-platform artefacts.
+          # See `BINEXT` handling in the Makefile for Windows .exe.
+          install-tools: 'true'
 
       - name: Run unit tests with coverage
         shell: bash
@@ -685,6 +689,7 @@ jobs:
           - cmd/audit-gen
           - cmd/audit-validate
           - cmd/bdd-report
+          - cmd/junit-report
           - secrets
           - secrets/env
           - secrets/file

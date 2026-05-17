@@ -1,10 +1,11 @@
-.PHONY: test test-all test-core test-file test-syslog test-webhook test-loki test-outputconfig test-audit-gen test-audit-validate test-bdd-report \
+.PHONY: test test-all test-core test-file test-syslog test-webhook test-loki test-outputconfig test-audit-gen test-audit-validate test-bdd-report test-junit-report \
        test-secrets test-secrets-env test-secrets-file test-secrets-openbao test-secrets-vault \
        test-integration test-bdd test-bdd-core test-bdd-outputconfig test-bdd-file test-bdd-file-os test-bdd-syslog test-bdd-webhook test-bdd-loki test-bdd-fanout \
        test-bdd-verify \
        test-examples \
-       lint lint-all lint-core lint-file lint-syslog lint-webhook lint-loki lint-outputconfig lint-audit-gen lint-audit-validate lint-bdd-report lint-examples \
+       lint lint-all lint-core lint-file lint-syslog lint-webhook lint-loki lint-outputconfig lint-audit-gen lint-audit-validate lint-bdd-report lint-junit-report lint-examples \
        lint-secrets lint-secrets-openbao lint-secrets-vault \
+       check-report-parity \
        vet vet-all fmt fmt-check \
        build build-all bench bench-save bench-compare bench-baseline-check coverage \
        tidy tidy-check verify check-replace check-todos check-example-links check-bdd-strict check-insecure-skip-verify check-license-headers check-static \
@@ -36,7 +37,7 @@
 SHELL      := bash
 .SHELLFLAGS := -e -o pipefail -c
 
-MODULES           := . file iouring syslog webhook loki outputconfig outputs cmd/audit-gen cmd/audit-validate cmd/bdd-report secrets secrets/env secrets/file secrets/openbao secrets/vault
+MODULES           := . file iouring syslog webhook loki outputconfig outputs cmd/audit-gen cmd/audit-validate cmd/bdd-report cmd/junit-report secrets secrets/env secrets/file secrets/openbao secrets/vault
 # EXAMPLE_MODULES is auto-discovered from any examples/*/go.mod so new
 # examples are picked up without touching the Makefile. Sorted for
 # deterministic workspace generation.
@@ -44,6 +45,10 @@ EXAMPLE_MODULES   := $(sort $(patsubst %/go.mod,%,$(wildcard examples/*/go.mod))
 WORKSPACE_MODULES := $(MODULES) $(EXAMPLE_MODULES)
 GOBIN             := $(shell go env GOPATH)/bin
 GO_TOOLCHAIN      := go1.26.3
+# Windows go install appends .exe to executables; everything else is
+# bare. Used when the recipe must invoke an installed tool by absolute
+# path (cross-platform CI legs run under Git Bash).
+BINEXT            := $(if $(filter Windows_NT,$(OS)),.exe,)
 
 # Tool versions — pinned for supply chain safety, single source
 # of truth for both this Makefile and the CI cache key. The CI
@@ -63,6 +68,7 @@ install-tools:
 	GOTOOLCHAIN=$(GO_TOOLCHAIN) go install golang.org/x/perf/cmd/benchstat@$(BENCHSTAT_VER)
 	GOTOOLCHAIN=$(GO_TOOLCHAIN) go install golang.org/x/exp/cmd/gorelease@$(GORELEASE_VER)
 	GOTOOLCHAIN=$(GO_TOOLCHAIN) go install github.com/go-gremlins/gremlins/cmd/gremlins@$(GREMLINS_VER)
+	GOTOOLCHAIN=$(GO_TOOLCHAIN) go install gotest.tools/gotestsum@$(GOTESTSUM_VER)
 	@echo "Tools installed to $(GOBIN)"
 
 install-benchstat:
@@ -82,50 +88,77 @@ workspace:
 	go work init $(WORKSPACE_MODULES)
 
 # --- Per-module test targets ---
+#
+# Every test-<module> target honours JUNIT_REPORT_FILE: when set, the
+# test run is driven by gotestsum and a JUnit XML report is written
+# to that path alongside the existing coverage profile. With the env
+# var unset, behaviour is exactly as before (plain `go test -v`).
+#
+# Local example (single module):
+#   make install-tools                            # one-off: installs gotestsum
+#   JUNIT_REPORT_FILE=/tmp/r.xml make test-core
+#   go run ./cmd/junit-report -input /tmp/r.xml -suite core -format html > r.html
+#
+# The CI artefact wiring lands in a follow-up PR (#877 PR B).
+#
+# test-integration runs multiple `go test` invocations in one recipe
+# (see lines below); its JUnit emission is intentionally NOT wired in
+# this PR because a single JUNIT_REPORT_FILE would be overwritten by
+# the last invocation. PR B will matrix-split it and wire per-leg.
+define go_test_with_junit
+	if [ -n "$$JUNIT_REPORT_FILE" ]; then \
+	    $(GOBIN)/gotestsum$(BINEXT) --junitfile="$$JUNIT_REPORT_FILE" --format=testname -- $(1) $(2); \
+	else \
+	    go test -v $(1) $(2); \
+	fi
+endef
 
 test-core:
-	cd . && go test -race -v -count=1 -timeout=15m -coverprofile=coverage.out $$(go list ./... | grep -v /tests/ | grep -v /internal/testhelper | grep -v /examples/)
+	cd . && $(call go_test_with_junit,-race -count=1 -timeout=15m -coverprofile=coverage.out,$$(go list ./... | grep -v /tests/ | grep -v /internal/testhelper | grep -v /examples/))
 
 test-file:
-	cd file && go test -race -v -count=1 -coverprofile=coverage.out ./...
+	cd file && $(call go_test_with_junit,-race -count=1 -coverprofile=coverage.out,./...)
 
 test-syslog:
-	cd syslog && go test -race -v -count=1 -coverprofile=coverage.out ./...
+	cd syslog && $(call go_test_with_junit,-race -count=1 -coverprofile=coverage.out,./...)
 
 test-webhook:
-	cd webhook && go test -race -v -count=1 -coverprofile=coverage.out ./...
+	cd webhook && $(call go_test_with_junit,-race -count=1 -coverprofile=coverage.out,./...)
 
 test-loki:
-	cd loki && go test -race -v -count=1 -coverprofile=coverage.out ./...
+	cd loki && $(call go_test_with_junit,-race -count=1 -coverprofile=coverage.out,./...)
 
 test-outputconfig:
-	cd outputconfig && go test -race -v -count=1 -coverprofile=coverage.out $$(go list ./... | grep -v /tests/)
+	cd outputconfig && $(call go_test_with_junit,-race -count=1 -coverprofile=coverage.out,$$(go list ./... | grep -v /tests/))
 
 test-audit-gen:
-	cd cmd/audit-gen && go test -race -v -count=1 -coverprofile=coverage.out ./...
+	cd cmd/audit-gen && $(call go_test_with_junit,-race -count=1 -coverprofile=coverage.out,./...)
 
 test-audit-validate:
-	cd cmd/audit-validate && go test -race -v -count=1 -coverprofile=coverage.out ./...
+	cd cmd/audit-validate && $(call go_test_with_junit,-race -count=1 -coverprofile=coverage.out,./...)
 
 test-bdd-report:
-	cd cmd/bdd-report && go test -race -v -count=1 -coverprofile=coverage.out ./...
+	cd cmd/bdd-report && $(call go_test_with_junit,-race -count=1 -coverprofile=coverage.out,./...)
+
+test-junit-report:
+	cd cmd/junit-report && $(call go_test_with_junit,-race -count=1 -coverprofile=coverage.out,./...)
 
 test-secrets:
-	cd secrets && go test -race -v -count=1 -coverprofile=coverage.out ./...
+	cd secrets && $(call go_test_with_junit,-race -count=1 -coverprofile=coverage.out,./...)
 
 test-secrets-openbao:
-	cd secrets/openbao && go test -race -v -count=1 -coverprofile=coverage.out ./...
+	cd secrets/openbao && $(call go_test_with_junit,-race -count=1 -coverprofile=coverage.out,./...)
 
 test-secrets-vault:
-	cd secrets/vault && go test -race -v -count=1 -coverprofile=coverage.out ./...
+	cd secrets/vault && $(call go_test_with_junit,-race -count=1 -coverprofile=coverage.out,./...)
 
 test-secrets-env:
-	cd secrets/env && go test -race -v -count=1 -coverprofile=coverage.out ./...
+	cd secrets/env && $(call go_test_with_junit,-race -count=1 -coverprofile=coverage.out,./...)
 
 test-secrets-file:
-	cd secrets/file && go test -race -v -count=1 -coverprofile=coverage.out ./...
+	cd secrets/file && $(call go_test_with_junit,-race -count=1 -coverprofile=coverage.out,./...)
 
-test-all: test-core test-file test-syslog test-webhook test-loki test-outputconfig test-audit-gen test-audit-validate test-bdd-report test-secrets test-secrets-env test-secrets-file test-secrets-openbao test-secrets-vault
+test-all: test-core test-file test-syslog test-webhook test-loki test-outputconfig test-audit-gen test-audit-validate test-bdd-report test-junit-report test-secrets test-secrets-env test-secrets-file test-secrets-openbao test-secrets-vault
 test: test-all
 
 # --- Stress targets (#705 family) ---
@@ -362,6 +395,9 @@ lint-audit-validate:
 lint-bdd-report:
 	cd cmd/bdd-report && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
 
+lint-junit-report:
+	cd cmd/junit-report && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
+
 lint-secrets:
 	cd secrets && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
 
@@ -381,7 +417,7 @@ lint-examples:
 		(cd $$dir && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...) || exit 1; \
 	done
 
-lint-all: lint-core lint-file lint-syslog lint-webhook lint-loki lint-outputconfig lint-audit-gen lint-audit-validate lint-bdd-report lint-secrets lint-secrets-openbao lint-secrets-vault lint-examples
+lint-all: lint-core lint-file lint-syslog lint-webhook lint-loki lint-outputconfig lint-audit-gen lint-audit-validate lint-bdd-report lint-junit-report lint-secrets lint-secrets-openbao lint-secrets-vault lint-examples
 lint: lint-all
 
 # --- Vet ---
@@ -638,6 +674,14 @@ check-insecure-skip-verify:
 		exit 1; \
 	fi
 	@echo "No InsecureSkipVerify: true in production code."
+
+# Verify the shared report-rendering helpers (render.go, writer.go) are
+# byte-identical between cmd/bdd-report and cmd/junit-report. The two
+# tools render different input formats but share security-critical
+# escape and writer code; drift between them creates a Markdown- or
+# HTML-injection risk in one tool but not the other.
+check-report-parity:
+	@./scripts/check-report-parity.sh
 
 # Enforce TODO comments must reference a GitHub issue: TODO(#NNN)
 check-todos:
@@ -1059,7 +1103,7 @@ install-govulncheck:
 
 # --- Full local quality gate ---
 
-check: vet-all lint-all test-all build-all test-examples verify check-static release-check security
+check: vet-all lint-all test-all build-all test-examples verify check-static check-report-parity release-check security
 	@echo ""
 	@echo "All checks passed."
 

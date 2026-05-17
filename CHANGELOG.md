@@ -100,6 +100,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   reproduces the CI workflow locally for any published tag —
   same script, same flow, same exit code. Lets a maintainer
   smoke a release before tagging. (#438)
+- Project toolchain adds `gotestsum` v1.13.0 for JUnit XML test
+  reporting. Every per-module `make test-*` target now accepts a
+  `JUNIT_REPORT_FILE=foo.xml` env var that writes a JUnit XML report
+  alongside the existing coverage profile when set; with the env var
+  unset, behaviour is unchanged. New `cmd/junit-report` tool
+  (sibling to `cmd/bdd-report` from #439/#876) converts the JUnit
+  XML to standalone HTML or GitHub-flavoured Markdown using the
+  same visual style and the same context-aware GFM injection
+  defences. The shared rendering helpers (`render.go`, `writer.go`)
+  are byte-identical between the two tools, enforced by
+  `make check-report-parity`. Cross-platform CI legs now install
+  tools so the JUnit pipeline works on macOS and Windows runners
+  via a `BINEXT` Makefile suffix that resolves to `.exe` on
+  Windows. Local reproduction:
+  `JUNIT_REPORT_FILE=/tmp/r.xml make test-core && go run ./cmd/junit-report -input /tmp/r.xml -suite core -format html > r.html`.
+  CI workflow integration (artefact uploads + step summary) lands
+  in a follow-up PR. (#877)
 - BDD CI matrix now publishes per-suite HTML and Markdown report
   artefacts (`bdd-report-<suite>` HTML, `bdd-report-<suite>-md`
   Markdown) alongside the existing scenario-count artefact, and
