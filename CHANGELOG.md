@@ -84,6 +84,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Documentation
 
+- godoc polish + error-message audit pass on the core module (#467):
+  `Auditor.New` documents the MUST-call-`Close` lifecycle and the
+  canonical `defer` pattern; `Auditor.AuditEvent` enumerates its
+  error returns as a bullet list and calls out the silent-discard
+  contract for filtered or output-less events; `Auditor.Close` shows
+  the canonical placement; `Auditor.Logger` carries a prominent
+  warning that it is NOT the audit-event sink (footgun mitigation
+  for AI assistants and human reviewers); `Output` interface
+  documents `Close` and `Name` concurrency contracts; `Event`
+  interface adds a "How to obtain an Event" section explicitly
+  discouraging direct implementation; `Taxonomy` adds a
+  "Construction" section listing the three legal construction
+  paths; `ParseTaxonomyYAML` gains a `//go:embed` worked example
+  and a concrete unknown-key error message sample;
+  `WithTaxonomy` / `WithOutputs` / `WithNamedOutput` /
+  `WithSynchronousDelivery` / `WithStandardFieldDefaults` clarified.
+  Sentinel errors `ErrQueueFull`, `ErrDuplicateDestination`,
+  `ErrConfigInvalid`, `ErrHandleNotFound`, `ErrTaxonomyInvalid`,
+  `ErrInvalidInput`, `ErrUnknownEventType`, `ErrMissingRequiredField`,
+  `ErrUnknownField`, `ErrReservedFieldName`, `ErrEventTooLarge` gain
+  recovery hints. Ten previously bare error sites (`audit.go`,
+  `options.go`, `options_output.go`, `control.go`, `sensitivity.go`,
+  `stdout.go`, `hmac.go`) now wrap the appropriate sentinel so
+  `errors.Is` works for discrimination per CLAUDE.md's standard.
+  `cmd/audit-gen` gains a sibling `doc.go` so pkg.go.dev surfaces
+  the package description on the command's landing page.
 - `CONTRIBUTING.md` gains a "CI test reports" section under
   Running Tests covering the artefact naming convention, how to
   download the HTML / Markdown reports, how the inline Markdown

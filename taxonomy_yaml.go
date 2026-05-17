@@ -288,7 +288,24 @@ func sanitizeParserErrorMsg(err error) string {
 // [ErrTaxonomyInvalid]. On error, nil is returned.
 //
 // ParseTaxonomyYAML accepts []byte only — no file paths, no readers.
-// Use [embed.FS] or [os.ReadFile] in the caller to load from disk.
+// Use [embed] or [os.ReadFile] in the caller to load from disk.
+// The canonical embed pattern:
+//
+//	import _ "embed"
+//
+//	//go:embed taxonomy.yaml
+//	var taxonomyYAML []byte
+//
+//	tax, err := audit.ParseTaxonomyYAML(taxonomyYAML)
+//	if err != nil {
+//	    log.Fatalf("audit: load taxonomy: %v", err)
+//	}
+//
+// An unknown-key error in the YAML produces a message like:
+// `audit: invalid input: [line 3:1] unknown field "eventss" (valid: categories, events, sensitivity, version)`.
+// The line:column reference, the offending key, and the closed set
+// of valid keys all appear together so the failure is fixable from
+// the error text alone.
 //
 // # Trust model
 //

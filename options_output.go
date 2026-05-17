@@ -26,19 +26,24 @@ package audit
 import "fmt"
 
 // WithOutputs sets the output destinations for the auditor. Events are
-// fanned out to all provided outputs. Each output receives all
-// globally-enabled events (no per-output filtering). Use
-// [WithNamedOutput] to configure per-output event routes or formatters.
+// fanned out to all provided outputs. Each output receives every
+// globally-enabled event with no per-output filtering.
 //
-// WithOutputs MUST NOT be combined with [WithNamedOutput]; mixing the
-// two returns an error. Duplicate output destinations are also
-// detected: if two outputs implement [DestinationKeyer] and return
-// the same key, WithOutputs returns an error. If no outputs are
-// configured, events are validated and filtered but silently discarded.
+// Use this when every output should receive every enabled event —
+// the simplest case (a single uniform fan-out). Switch to
+// [WithNamedOutput] when you need per-output event routing,
+// per-output formatters, sensitivity-label stripping, or per-output
+// HMAC configuration. The two options MUST NOT be mixed in the same
+// [New] call; mixing returns an error wrapping [ErrConfigInvalid].
+//
+// Duplicate output destinations are detected: if two outputs
+// implement [DestinationKeyer] and return the same key, WithOutputs
+// returns [ErrDuplicateDestination]. If no outputs are configured,
+// events are validated and filtered but silently discarded.
 func WithOutputs(outputs ...Output) Option {
 	return func(a *Auditor) error {
 		if len(a.entries) > 0 {
-			return fmt.Errorf("audit: WithOutputs cannot be used with WithNamedOutput")
+			return fmt.Errorf("audit: WithOutputs cannot be used with WithNamedOutput: %w", ErrConfigInvalid)
 		}
 		byName := make(map[string]*outputEntry, len(outputs))
 		byDest := make(map[string]string) // destination key → output name
@@ -46,10 +51,10 @@ func WithOutputs(outputs ...Output) Option {
 		for i, o := range outputs {
 			name := o.Name()
 			if name == "" {
-				return fmt.Errorf("audit: output Name() must not return an empty string")
+				return fmt.Errorf("audit: output Name() must not return an empty string: %w", ErrConfigInvalid)
 			}
 			if _, dup := byName[name]; dup {
-				return fmt.Errorf("audit: duplicate output name %q", name)
+				return fmt.Errorf("audit: duplicate output name %q: %w", name, ErrConfigInvalid)
 			}
 			if err := checkDestinationDup(o, name, byDest); err != nil {
 				return err
@@ -127,8 +132,14 @@ func WithHMAC(cfg *HMACConfig) OutputOption {
 // configuration. Use [WithRoute], [WithOutputFormatter],
 // [WithExcludeLabels], and [WithHMAC] to customise behaviour.
 //
+// Use this for any production setup with multiple outputs, or when
+// even a single output needs routing, a per-output formatter,
+// sensitivity-label stripping, or HMAC. [WithOutputs] is a shortcut
+// for the simplest case (single uniform fan-out, no per-output config).
+//
 // WithNamedOutput MUST NOT be combined with [WithOutputs]; if
-// [WithOutputs] was already applied, WithNamedOutput returns an error.
+// [WithOutputs] was already applied, WithNamedOutput returns an
+// error wrapping [ErrConfigInvalid].
 //
 // Output names MUST be unique across all outputs; duplicate names
 // cause [New] to return an error. Duplicate destinations are
@@ -137,7 +148,7 @@ func WithHMAC(cfg *HMACConfig) OutputOption {
 func WithNamedOutput(output Output, opts ...OutputOption) Option {
 	return func(a *Auditor) error {
 		if a.usedWithOutputs {
-			return fmt.Errorf("audit: WithNamedOutput cannot be used with WithOutputs")
+			return fmt.Errorf("audit: WithNamedOutput cannot be used with WithOutputs: %w", ErrConfigInvalid)
 		}
 		var b outputEntryBuilder
 		for _, opt := range opts {
@@ -157,7 +168,7 @@ func WithNamedOutput(output Output, opts ...OutputOption) Option {
 func (a *Auditor) addNamedOutput(output Output, b *outputEntryBuilder) error {
 	name := output.Name()
 	if name == "" {
-		return fmt.Errorf("audit: output Name() must not return an empty string")
+		return fmt.Errorf("audit: output Name() must not return an empty string: %w", ErrConfigInvalid)
 	}
 	if a.outputsByName == nil {
 		a.outputsByName = make(map[string]*outputEntry)
@@ -166,7 +177,7 @@ func (a *Auditor) addNamedOutput(output Output, b *outputEntryBuilder) error {
 		a.destKeys = make(map[string]string)
 	}
 	if _, dup := a.outputsByName[name]; dup {
-		return fmt.Errorf("audit: duplicate output name %q", name)
+		return fmt.Errorf("audit: duplicate output name %q: %w", name, ErrConfigInvalid)
 	}
 	if err := checkDestinationDup(output, name, a.destKeys); err != nil {
 		return err

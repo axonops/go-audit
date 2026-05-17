@@ -56,9 +56,14 @@ type Option func(*Auditor) error
 
 // WithTaxonomy registers the event taxonomy for validation. This option
 // is required; [New] returns an error if no taxonomy is provided.
-// WithTaxonomy SHOULD be called exactly once per [New] call.
-// Calling it more than once replaces the taxonomy and resets all
-// runtime category and event overrides established by the previous call.
+//
+// WARNING: WithTaxonomy SHOULD be called exactly once per [New] call.
+// A second WithTaxonomy in the same option list silently replaces the
+// first AND resets every runtime override established by an earlier
+// [Auditor.EnableCategory] / [Auditor.DisableCategory] /
+// [Auditor.EnableEvent] / [Auditor.DisableEvent] call. Mixing
+// multiple WithTaxonomy options is almost always a configuration bug;
+// build the final taxonomy once before passing it.
 //
 // WithTaxonomy makes a deep copy of t; mutations to t after this call
 // have no effect on the auditor. When t was returned by
@@ -172,6 +177,11 @@ func WithTimezone(tz string) Option {
 // async complexity is unwanted. [Auditor.Close] is still safe to call
 // but is not required before reading output.
 //
+// In synchronous mode there is no async queue, so [WithQueueSize]
+// has no effect — the value is recorded on the config but never
+// consulted. [ErrQueueFull] is also never returned (synchronous
+// delivery has no buffer to overflow).
+//
 // # Caller-observable contract
 //
 //   - AuditEvent returns ONLY after every output has received the
@@ -224,10 +234,13 @@ func WithDiagnosticLogger(l *slog.Logger) Option {
 // misconfiguration surfaces at startup rather than at the first
 // AuditEvent. Numeric port fields (`source_port`, `dest_port`,
 // `file_size`) require int; timestamps (`start_time`, `end_time`)
-// require time.Time; the remaining 26 reserved fields require
-// string. Pre-#595 callers passing `map[string]string` migrate by
-// changing the literal map type; values that are already strings
-// for string-typed fields keep working unchanged.
+// require time.Time; all other reserved fields require string. The
+// authoritative type matrix lives in [ReservedStandardFieldNames] +
+// [ReservedStandardFieldType]; consult those for the live list rather
+// than counting the string-typed fields here. Pre-#595 callers
+// passing `map[string]string` migrate by changing the literal map
+// type; values that are already strings for string-typed fields keep
+// working unchanged.
 func WithStandardFieldDefaults(defaults map[string]any) Option {
 	return func(a *Auditor) error {
 		for k, v := range defaults {
@@ -261,7 +274,7 @@ func WithStandardFieldDefaults(defaults map[string]any) Option {
 func WithFormatter(f Formatter) Option {
 	return func(a *Auditor) error {
 		if f == nil {
-			return fmt.Errorf("audit: formatter must not be nil")
+			return fmt.Errorf("%w: formatter must not be nil", ErrConfigInvalid)
 		}
 		a.formatter = f
 		return nil

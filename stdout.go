@@ -37,7 +37,7 @@ import (
 func StdoutFactory() OutputFactory {
 	return func(name string, rawConfig []byte, _ FrameworkContext) (Output, error) {
 		if len(rawConfig) > 0 {
-			return nil, fmt.Errorf("audit: stdout output %q: stdout does not accept configuration", name)
+			return nil, fmt.Errorf("audit: stdout output %q: stdout does not accept configuration: %w", name, ErrConfigInvalid)
 		}
 		out, err := NewStdoutOutput(StdoutConfig{})
 		if err != nil {

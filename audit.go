@@ -146,10 +146,23 @@ type Auditor struct {
 	drainCount uint64      // events processed by drain loop; for sampling RecordQueueDepth
 }
 
-// New creates a new [Auditor] from the given options.
+// New creates a new [Auditor] from the given options. The returned
+// type is `*Auditor`, not `*Logger` — this library distinguishes
+// audit event delivery from general-purpose application logging.
+// See the [Auditor] godoc for the rationale.
+//
+// Lifecycle: callers MUST call [Auditor.Close] when the auditor is
+// no longer needed. Close blocks until the drain goroutine has
+// flushed every buffered event (or [WithShutdownTimeout] expires);
+// failing to call it leaks the goroutine and loses every buffered
+// event. The canonical pattern is:
+//
+//	auditor, err := audit.New(/* options */)
+//	if err != nil { return err }
+//	defer func() { _ = auditor.Close() }()
 //
 // Required options (unless [WithDisabled] is applied):
-//   - [WithTaxonomy] — the event taxonomy. Missing → error.
+//   - [WithTaxonomy] — the event taxonomy. Missing → [ErrTaxonomyRequired].
 //   - [WithAppName]  — the application name. Missing → [ErrAppNameRequired].
 //   - [WithHost]     — the host identifier. Missing → [ErrHostRequired].
 //
@@ -275,6 +288,14 @@ func (a *Auditor) applyConstructionDefaults() {
 // Useful for library wrappers that want to share the auditor's
 // logger across components.
 //
+// IMPORTANT: this is NOT the audit-event sink. It is the library's
+// internal diagnostic logger — used for buffer-drop warnings,
+// serialisation failures, and similar operational signals. Audit
+// events MUST flow through [Auditor.AuditEvent] or [EventHandle.Audit];
+// calling auditor.Logger().Info(...) writes to the diagnostic stream,
+// not to the configured outputs, and produces no audit-compliance
+// record.
+//
 // The logger is fixed at construction; runtime swap is not supported
 // (the prior SetLogger API was removed in #696 — direct-Go consumers
 // who want to redirect diagnostics should rebuild the auditor).
@@ -284,13 +305,26 @@ func (a *Auditor) Logger() *slog.Logger {
 
 // AuditEvent validates and enqueues a typed audit event. Use
 // generated event builders from audit-gen for compile-time field
-// safety, or [NewEvent] for dynamic event construction.
+// safety, or [NewEvent] / [NewEventKV] for dynamic event construction.
 //
-// AuditEvent returns [ErrQueueFull] if the async buffer is at
-// capacity (the event is dropped), [ErrClosed] if the auditor has
-// been closed, or a descriptive error for validation failures.
+// # Errors
+//
+//   - [ErrClosed]               — auditor has been closed
+//   - [ErrQueueFull]            — async buffer at capacity, event dropped
+//   - [ErrValidation] + one of:
+//     [ErrUnknownEventType]     — event type not in taxonomy
+//     [ErrMissingRequiredField] — required field absent
+//     [ErrUnknownField]         — strict mode, unknown field
+//     [ErrUnknownFieldType]     — strict mode, unsupported value type
+//     [ErrReservedFieldName]    — field uses reserved name (always rejected)
+//   - nil — event was silently filtered (category disabled or no outputs
+//     are configured); the discard is intentional, not an error.
+//
 // If the event's category is globally disabled (and no per-event
-// override enables it), the event is silently discarded without error.
+// override enables it), or if the auditor has no configured outputs,
+// the event is validated and then silently discarded. The nil return
+// in these cases is the contract — instrument with a [Metrics]
+// implementation if you need to observe filtered events.
 //
 // AuditEvent is a convenience wrapper around [Auditor.AuditEventContext]
 // with [context.Background]. Prefer [Auditor.AuditEventContext] when
@@ -336,7 +370,11 @@ func (a *Auditor) AuditEvent(evt Event) error {
 // [errors.Is].
 func (a *Auditor) AuditEventContext(ctx context.Context, evt Event) error {
 	if evt == nil {
-		return fmt.Errorf("audit: event must not be nil")
+		// Wrap ErrValidation so callers can discriminate via
+		// errors.Is rather than string matching. The message is
+		// preserved verbatim so existing diagnostic tooling that
+		// searches for "event must not be nil" keeps working.
+		return fmt.Errorf("%w: event must not be nil", ErrValidation)
 	}
 	// Fast-path detection: generated builders from cmd/audit-gen emit
 	// the unexported donateFields() sentinel to opt into the zero-extra-
@@ -599,8 +637,22 @@ func (a *Auditor) dropOnBufferFull(entry *auditEntry) error {
 // configured [WithShutdownTimeout] (default 5s) for pending events
 // to flush, then closes all outputs in parallel.
 //
-// Close is idempotent -- subsequent calls return nil (or the same
-// error if an output failed to close on the first call).
+// Close is idempotent — subsequent calls return the same result
+// as the first (nil on a clean shutdown, or the first call's error
+// if an output failed to close).
+//
+// Canonical placement:
+//
+//	auditor, err := audit.New(/* options */)
+//	if err != nil { return err }
+//	defer func() { _ = auditor.Close() }()
+//
+// For a signal-driven shutdown, wait on the signal channel then call
+// Close before exiting:
+//
+//	<-shutdownCtx.Done()
+//	_ = auditor.Close()
+//	os.Exit(0)
 func (a *Auditor) Close() error {
 	a.closeOnce.Do(func() {
 		a.closed.Store(true)

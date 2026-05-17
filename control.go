@@ -38,7 +38,7 @@ func (a *Auditor) EnableCategory(category string) error {
 	}
 	// taxonomy is immutable after construction; safe to read without lock.
 	if _, ok := a.taxonomy.Categories[category]; !ok {
-		return fmt.Errorf("audit: unknown category %q", category)
+		return fmt.Errorf("audit: unknown category %q: %w", category, ErrConfigInvalid)
 	}
 	a.filter.enabledCategories.Store(category, true)
 	a.logger.Load().Info("audit: category enabled", "category", category)
@@ -54,7 +54,7 @@ func (a *Auditor) DisableCategory(category string) error {
 	}
 	// taxonomy is immutable after construction; safe to read without lock.
 	if _, ok := a.taxonomy.Categories[category]; !ok {
-		return fmt.Errorf("audit: unknown category %q", category)
+		return fmt.Errorf("audit: unknown category %q: %w", category, ErrConfigInvalid)
 	}
 	a.filter.enabledCategories.Store(category, false)
 	a.logger.Load().Info("audit: category disabled", "category", category)
@@ -70,7 +70,7 @@ func (a *Auditor) EnableEvent(eventType string) error {
 	}
 	// taxonomy is immutable after construction; safe to read without lock.
 	if _, ok := a.taxonomy.Events[eventType]; !ok {
-		return fmt.Errorf("audit: unknown event type %q", eventType)
+		return fmt.Errorf("audit: unknown event type %q: %w", eventType, ErrHandleNotFound)
 	}
 	a.filter.eventOverrides.Store(eventType, true)
 	a.filter.hasEventOverrides.Store(true)
@@ -87,7 +87,7 @@ func (a *Auditor) DisableEvent(eventType string) error {
 	}
 	// taxonomy is immutable after construction; safe to read without lock.
 	if _, ok := a.taxonomy.Events[eventType]; !ok {
-		return fmt.Errorf("audit: unknown event type %q", eventType)
+		return fmt.Errorf("audit: unknown event type %q: %w", eventType, ErrHandleNotFound)
 	}
 	a.filter.eventOverrides.Store(eventType, false)
 	a.filter.hasEventOverrides.Store(true)
