@@ -44,7 +44,14 @@ MODULES           := . file iouring syslog webhook loki outputconfig outputs cmd
 # deterministic workspace generation.
 EXAMPLE_MODULES   := $(sort $(patsubst %/go.mod,%,$(wildcard examples/*/go.mod)))
 WORKSPACE_MODULES := $(MODULES) $(EXAMPLE_MODULES)
-GOBIN             := $(shell go env GOPATH)/bin
+# `go env GOPATH` returns Windows-style paths on Windows
+# (e.g. C:\Users\runneradmin\go); when interpolated into bash recipes
+# the backslashes are interpreted as escape characters and stripped,
+# producing an invalid path like `C:Usersrunneradmingo/bin`. Convert
+# to forward slashes so the same recipe works on Linux, macOS, and
+# Windows (Git Bash tolerates forward slashes in Windows absolute
+# paths). (#877)
+GOBIN             := $(subst \,/,$(shell go env GOPATH))/bin
 GO_TOOLCHAIN      := go1.26.3
 # Windows go install appends .exe to executables; everything else is
 # bare. Used when the recipe must invoke an installed tool by absolute
