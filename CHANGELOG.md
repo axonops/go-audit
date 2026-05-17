@@ -82,6 +82,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Now driven from the auto-discovered `EXAMPLE_MODULES` variable
   so future example additions need zero Makefile change. (#438)
 
+### Documentation
+
+- `CONTRIBUTING.md` gains a "CI test reports" section under
+  Running Tests covering the artefact naming convention, how to
+  download the HTML / Markdown reports, how the inline Markdown
+  shows up in the workflow run page's step-summary panel, and
+  how to render either format locally. `docs/performance-results.md`
+  gains a short cross-reference under "How We Measure". Closes
+  the documentation half of #877; the code and CI wiring landed
+  in #879 / #880. (#877)
+
 ### CI
 
 - New workflow `.github/workflows/release-examples-verify.yml`

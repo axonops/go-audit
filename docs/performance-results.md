@@ -275,6 +275,20 @@ changes the hot path. The last baseline regen is recorded in
 the `## Current Baseline` section of
 [`../BENCHMARKS.md`](../BENCHMARKS.md).
 
+### Test reports
+
+Every CI run now produces per-test-type HTML and Markdown test
+report artefacts (BDD, Unit, Integration, Cross-Platform)
+alongside the artefacts produced by the bench workflow (#877).
+Download via the same `gh` flow:
+
+```bash
+gh run download <RUN_ID> -n test-report-unit-core
+```
+
+The full naming convention and the local-rendering commands live
+in [`../CONTRIBUTING.md`](../CONTRIBUTING.md#ci-test-reports-877).
+
 ---
 
 ## Soak Tests
