@@ -1,0 +1,156 @@
+name: 'Upload test report'
+description: >-
+  Generate HTML + Markdown reports from cucumber JSON or JUnit XML,
+  upload both as artefacts, and inline the only-failures Markdown into
+  the GitHub Actions step summary panel. Centralises the wiring
+  introduced inline in the bdd job by #876 / #439 so the same pattern
+  applies to every test type (unit, integration, cross-platform, BDD)
+  without copy-paste.
+
+# SECURITY: every `${{ inputs.X }}` reference in this file flows through
+# a step-level `env:` block before reaching any shell `run:` script.
+# Direct interpolation of `${{ inputs.X }}` into a shell command is
+# forbidden (it would re-introduce the GHA shell-injection class that
+# the env-var indirection pattern from #876 closed). When adding new
+# steps, always set the input via `env:` and read it as `$VAR` in bash.
+
+inputs:
+  format:
+    description: 'Input format: "cucumber-json" (godog) or "junit-xml" (gotestsum).'
+    required: true
+  suite:
+    description: 'Suite or module name shown in the report header and appended to artifact names.'
+    required: true
+  input-path:
+    description: 'Path to the cucumber JSON or JUnit XML input file.'
+    required: true
+  artifact-prefix:
+    description: |
+      Prefix for uploaded artifact names. The action appends the suite
+      name and (for Markdown) "-md", producing:
+        <prefix>-<suite>      (HTML)
+        <prefix>-<suite>-md   (Markdown)
+      The suite suffix is mandatory — matrix jobs need it for
+      per-leg artifact discoverability.
+    required: true
+  retention-days:
+    description: 'Artifact retention in days.'
+    required: false
+    default: '14'
+
+outputs:
+  html-artifact-name:
+    description: 'Name of the uploaded HTML artifact.'
+    # Derived from inputs because actions/upload-artifact@v7.0.1
+    # doesn't expose the artifact name as a step output — only id,
+    # url and digest. We control the name composition (see the
+    # artifact-prefix docs above) so the input-derived form is the
+    # single source of truth.
+    value: ${{ inputs.artifact-prefix }}-${{ inputs.suite }}
+  md-artifact-name:
+    description: 'Name of the uploaded Markdown artifact.'
+    value: ${{ inputs.artifact-prefix }}-${{ inputs.suite }}-md
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve report tool
+      id: tool
+      shell: bash
+      env:
+        FORMAT: ${{ inputs.format }}
+      run: |
+        set -euo pipefail
+        case "$FORMAT" in
+          cucumber-json) echo "tool=bdd-report" >> "$GITHUB_OUTPUT" ;;
+          junit-xml)     echo "tool=junit-report" >> "$GITHUB_OUTPUT" ;;
+          *)
+            echo "::error::unknown format: $FORMAT (expected cucumber-json or junit-xml)"
+            exit 1
+            ;;
+        esac
+
+    - name: Generate HTML report
+      if: always()
+      shell: bash
+      env:
+        TOOL: ${{ steps.tool.outputs.tool }}
+        SUITE: ${{ inputs.suite }}
+        SRC: ${{ inputs.input-path }}
+        # OUT_HTML is computed here (rather than as an action output) so
+        # both Generate and Upload steps share the same path without an
+        # extra `id:` round-trip.
+        ARTIFACT_PREFIX: ${{ inputs.artifact-prefix }}
+      run: |
+        set -euo pipefail
+        # RUNNER_TEMP resolves to a writable temp dir on every runner
+        # OS (Linux: $HOME/work/_temp, macOS: similar, Windows: D:\a\_temp).
+        # /tmp is Linux-specific and Git Bash on Windows would map it
+        # into a path the native Windows go.exe / gotestsum.exe might
+        # not resolve consistently.
+        OUT_HTML="${RUNNER_TEMP}/${ARTIFACT_PREFIX}-${SUITE}.html"
+        echo "OUT_HTML=$OUT_HTML" >> "$GITHUB_ENV"
+        # Skip when the source file is missing or empty — the test
+        # runner failed before producing a report (infra container
+        # didn't start, test panicked in TestMain, etc.). The test
+        # failure itself is the signal in that case; pretending to
+        # generate an empty report would hide it.
+        if [[ -s "$SRC" ]]; then
+          go run ./cmd/"$TOOL" -suite "$SUITE" -input "$SRC" -format html > "$OUT_HTML"
+        else
+          echo "No input at $SRC — skipping HTML report"
+        fi
+
+    - name: Generate Markdown report + step summary
+      if: always()
+      shell: bash
+      env:
+        TOOL: ${{ steps.tool.outputs.tool }}
+        SUITE: ${{ inputs.suite }}
+        SRC: ${{ inputs.input-path }}
+        ARTIFACT_PREFIX: ${{ inputs.artifact-prefix }}
+      run: |
+        set -euo pipefail
+        OUT_MD="${RUNNER_TEMP}/${ARTIFACT_PREFIX}-${SUITE}.md"
+        STEP_MD="${RUNNER_TEMP}/${ARTIFACT_PREFIX}-${SUITE}.step.md"
+        echo "OUT_MD=$OUT_MD" >> "$GITHUB_ENV"
+        if [[ -s "$SRC" ]]; then
+          # Full Markdown → artifact (no GitHub-imposed size cap).
+          go run ./cmd/"$TOOL" -suite "$SUITE" -input "$SRC" -format markdown > "$OUT_MD"
+          # Only-failures Markdown → step summary (1 MiB hard cap;
+          # the tool enforces a truncation footer when exceeded).
+          go run ./cmd/"$TOOL" -suite "$SUITE" -input "$SRC" -format markdown -only-failures > "$STEP_MD"
+          {
+            echo ""
+            echo "---"
+            echo ""
+            cat "$STEP_MD"
+          } >> "$GITHUB_STEP_SUMMARY"
+        else
+          echo "No input at $SRC — skipping Markdown report"
+        fi
+
+    - name: Upload HTML artifact
+      if: always()
+      # SHA pinned to v7.0.1 — keep in sync with every other
+      # actions/upload-artifact reference in this repository so
+      # Dependabot rotates all callsites together.
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: ${{ inputs.artifact-prefix }}-${{ inputs.suite }}
+        path: ${{ env.OUT_HTML }}
+        retention-days: ${{ inputs.retention-days }}
+        # warn (not error) preserves the skip-on-empty-source behaviour
+        # above — when the test runner died before producing output,
+        # the original failure is the signal; failing the upload
+        # would double-fail and obscure it.
+        if-no-files-found: warn
+
+    - name: Upload Markdown artifact
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: ${{ inputs.artifact-prefix }}-${{ inputs.suite }}-md
+        path: ${{ env.OUT_MD }}
+        retention-days: ${{ inputs.retention-days }}
+        if-no-files-found: warn

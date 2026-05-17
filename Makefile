@@ -1,6 +1,7 @@
 .PHONY: test test-all test-core test-file test-syslog test-webhook test-loki test-outputconfig test-audit-gen test-audit-validate test-bdd-report test-junit-report \
        test-secrets test-secrets-env test-secrets-file test-secrets-openbao test-secrets-vault \
-       test-integration test-bdd test-bdd-core test-bdd-outputconfig test-bdd-file test-bdd-file-os test-bdd-syslog test-bdd-webhook test-bdd-loki test-bdd-fanout \
+       test-integration test-integration-file test-integration-syslog test-integration-webhook test-integration-loki test-integration-core test-integration-secrets-openbao test-integration-secrets-vault \
+       test-bdd test-bdd-core test-bdd-outputconfig test-bdd-file test-bdd-file-os test-bdd-syslog test-bdd-webhook test-bdd-loki test-bdd-fanout \
        test-bdd-verify \
        test-examples \
        lint lint-all lint-core lint-file lint-syslog lint-webhook lint-loki lint-outputconfig lint-audit-gen lint-audit-validate lint-bdd-report lint-junit-report lint-examples \
@@ -43,7 +44,14 @@ MODULES           := . file iouring syslog webhook loki outputconfig outputs cmd
 # deterministic workspace generation.
 EXAMPLE_MODULES   := $(sort $(patsubst %/go.mod,%,$(wildcard examples/*/go.mod)))
 WORKSPACE_MODULES := $(MODULES) $(EXAMPLE_MODULES)
-GOBIN             := $(shell go env GOPATH)/bin
+# `go env GOPATH` returns Windows-style paths on Windows
+# (e.g. C:\Users\runneradmin\go); when interpolated into bash recipes
+# the backslashes are interpreted as escape characters and stripped,
+# producing an invalid path like `C:Usersrunneradmingo/bin`. Convert
+# to forward slashes so the same recipe works on Linux, macOS, and
+# Windows (Git Bash tolerates forward slashes in Windows absolute
+# paths). (#877)
+GOBIN             := $(subst \,/,$(shell go env GOPATH))/bin
 GO_TOOLCHAIN      := go1.26.3
 # Windows go install appends .exe to executables; everything else is
 # bare. Used when the recipe must invoke an installed tool by absolute
@@ -249,15 +257,40 @@ fuzz-long: ## Run each fuzz target for ${FUZZ_TIME} (default 60s). Release gate.
 	cd outputconfig && go test -run='^$$' -fuzz='^FuzzExpandEnvString$$' -fuzztime=${FUZZ_TIME} .
 	cd secrets && go test -run='^$$' -fuzz='^FuzzParseRef$$' -fuzztime=${FUZZ_TIME} .
 
-# Integration tests (requires Docker: make test-infra-up first)
-test-integration:
-	cd file && go test -race -v -count=1 -tags=integration ./tests/integration/...
-	cd syslog && go test -race -v -count=1 -tags=integration ./tests/integration/...
-	cd webhook && go test -race -v -count=1 -tags=integration ./tests/integration/...
-	cd loki && go test -race -v -count=1 -tags=integration ./tests/integration/...
-	go test -race -v -count=1 -tags=integration ./tests/integration/...
-	cd secrets/openbao && go test -race -v -count=1 -tags=integration ./tests/integration/...
-	cd secrets/vault && go test -race -v -count=1 -tags=integration ./tests/integration/...
+# Integration tests (requires Docker: make test-infra-up first).
+#
+# Per-module integration targets honour JUNIT_REPORT_FILE via the
+# go_test_with_junit macro (#877 PR A). CI runs each per-module
+# target in its own matrix leg so the JUnit XML for each module is
+# written to a distinct path; the meta `test-integration` target
+# below preserves the local-dev one-command invocation. Do NOT
+# parallelise (make -j test-integration) — the per-module docker
+# stacks share infra ports.
+test-integration-file:
+	cd file && $(call go_test_with_junit,-race -count=1 -tags=integration,./tests/integration/...)
+
+test-integration-syslog:
+	cd syslog && $(call go_test_with_junit,-race -count=1 -tags=integration,./tests/integration/...)
+
+test-integration-webhook:
+	cd webhook && $(call go_test_with_junit,-race -count=1 -tags=integration,./tests/integration/...)
+
+test-integration-loki:
+	cd loki && $(call go_test_with_junit,-race -count=1 -tags=integration,./tests/integration/...)
+
+test-integration-core:
+	$(call go_test_with_junit,-race -count=1 -tags=integration,./tests/integration/...)
+
+test-integration-secrets-openbao:
+	cd secrets/openbao && $(call go_test_with_junit,-race -count=1 -tags=integration,./tests/integration/...)
+
+test-integration-secrets-vault:
+	cd secrets/vault && $(call go_test_with_junit,-race -count=1 -tags=integration,./tests/integration/...)
+
+test-integration: test-integration-file test-integration-syslog \
+                  test-integration-webhook test-integration-loki \
+                  test-integration-core test-integration-secrets-openbao \
+                  test-integration-secrets-vault
 
 # BDD tests — all scenarios (requires Docker for syslog/webhook/loki scenarios)
 test-bdd:
