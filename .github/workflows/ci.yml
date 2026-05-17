@@ -622,9 +622,14 @@ jobs:
 
       - name: Stop test infrastructure
         if: always() && matrix.infra-down != ''
-        env:
-          INFRA_DOWN: ${{ matrix.infra-down }}
-        run: make "$INFRA_DOWN"
+        # matrix.infra-down may name multiple targets separated by
+        # spaces (e.g. the secrets suite needs both openbao + vault
+        # teardown). Use direct interpolation — quoting through an
+        # env var collapses the two targets into a single literal
+        # `make` argument that has no matching rule. The matrix
+        # values are repo-controlled (closed set), so direct
+        # interpolation is safe.
+        run: make ${{ matrix.infra-down }}
 
   bdd-verify:
     name: Test - BDD Coverage Verification
