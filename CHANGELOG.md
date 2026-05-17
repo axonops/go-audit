@@ -100,6 +100,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   reproduces the CI workflow locally for any published tag —
   same script, same flow, same exit code. Lets a maintainer
   smoke a release before tagging. (#438)
+- CI now publishes per-test-type HTML and Markdown report artefacts
+  for every job in the matrix — Unit (13 modules), Integration
+  (7 modules — the previously-single integration job is now a 7-leg
+  matrix with per-leg infra so per-module JUnit XML emission works
+  without collision), Cross-Platform (4 legs: core + file × macOS +
+  Windows), in addition to the BDD reports landed by #876. Naming
+  pattern: `test-report-unit-<module>`, `test-report-integration-
+  <module>`, `test-report-crossplatform-<module>-<os>` (HTML) and
+  the same with `-md` suffix (Markdown). Failures inline into the
+  workflow run page's step-summary panel via the report tool's
+  `-only-failures` mode (1 MiB cap with truncation footer). Wiring
+  is centralised in a new `.github/actions/upload-test-report`
+  composite action used by every test job; the bdd job (#876)
+  refactored to use it, artefact names preserved. Mutation tests
+  remain text-only because gremlins v0.6.0 does not emit HTML;
+  the existing text artefact was renamed
+  `mutation-test-report-*` → `test-report-mutation-*` for naming
+  consistency with the other test types. (#877)
 - Project toolchain adds `gotestsum` v1.13.0 for JUnit XML test
   reporting. Every per-module `make test-*` target now accepts a
   `JUNIT_REPORT_FILE=foo.xml` env var that writes a JUnit XML report

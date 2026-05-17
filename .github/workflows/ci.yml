@@ -340,8 +340,14 @@ jobs:
 
       - name: Set up audit workspace
         uses: ./.github/actions/setup-audit
+        with:
+          # gotestsum is required when JUNIT_REPORT_FILE is set on
+          # the test step below (PR A foundation, #877).
+          install-tools: 'true'
 
       - name: Run unit tests with coverage
+        env:
+          JUNIT_REPORT_FILE: ${{ runner.temp }}/junit-${{ matrix.flag }}.xml
         run: make ${{ matrix.target }}
 
       - name: Upload coverage
@@ -350,6 +356,15 @@ jobs:
           files: ${{ matrix.module }}/coverage.out
           flags: ${{ matrix.flag }}
           fail_ci_if_error: false
+
+      - name: Generate + upload Unit test report
+        if: always()
+        uses: ./.github/actions/upload-test-report
+        with:
+          format: junit-xml
+          suite: ${{ matrix.flag }}
+          input-path: ${{ runner.temp }}/junit-${{ matrix.flag }}.xml
+          artifact-prefix: test-report-unit
 
   # Cross-platform test matrix for core + file. Runs only after the
   # Linux test and BDD jobs pass, so a Linux-side bug fails fast
@@ -401,6 +416,8 @@ jobs:
 
       - name: Run unit tests with coverage
         shell: bash
+        env:
+          JUNIT_REPORT_FILE: ${{ runner.temp }}/junit-${{ matrix.flag }}-${{ matrix.os }}.xml
         run: make ${{ matrix.target }}
 
       - name: Upload coverage
@@ -410,30 +427,102 @@ jobs:
           flags: ${{ matrix.flag }}-${{ matrix.os }}
           fail_ci_if_error: false
 
+      - name: Generate + upload Cross-Platform test report
+        if: always()
+        uses: ./.github/actions/upload-test-report
+        with:
+          format: junit-xml
+          # `<flag>-<os>` so the macOS and Windows artifacts for the
+          # same module don't collide.
+          suite: ${{ matrix.flag }}-${{ matrix.os }}
+          input-path: ${{ runner.temp }}/junit-${{ matrix.flag }}-${{ matrix.os }}.xml
+          artifact-prefix: test-report-crossplatform
+
   integration:
-    name: Test - Integration
+    name: Test - Integration (${{ matrix.flag }})
     runs-on: ubuntu-latest
     permissions:
       contents: read
     timeout-minutes: 10
     needs: [hygiene, changes]
     if: needs.changes.outputs.code == 'true'
+    strategy:
+      # One per-module leg can fail without masking the others — the
+      # previous single-recipe shape aborted on the first failure and
+      # hid subsequent module results.
+      fail-fast: false
+      matrix:
+        include:
+          - module: "."
+            target: test-integration-core
+            flag: integration-core
+            infra-up: ""
+            infra-down: ""
+          - module: file
+            target: test-integration-file
+            flag: integration-file
+            infra-up: ""
+            infra-down: ""
+          - module: syslog
+            target: test-integration-syslog
+            flag: integration-syslog
+            infra-up: test-infra-syslog-up
+            infra-down: test-infra-syslog-down
+          - module: webhook
+            target: test-integration-webhook
+            flag: integration-webhook
+            infra-up: test-infra-webhook-up
+            infra-down: test-infra-webhook-down
+          - module: loki
+            target: test-integration-loki
+            flag: integration-loki
+            infra-up: test-infra-loki-up
+            infra-down: test-infra-loki-down
+          - module: secrets/openbao
+            target: test-integration-secrets-openbao
+            flag: integration-openbao
+            infra-up: test-infra-openbao-up
+            infra-down: test-infra-openbao-down
+          - module: secrets/vault
+            target: test-integration-secrets-vault
+            flag: integration-vault
+            infra-up: test-infra-vault-up
+            infra-down: test-infra-vault-down
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Set up audit workspace
         uses: ./.github/actions/setup-audit
+        with:
+          # gotestsum is required when JUNIT_REPORT_FILE is set
+          # (PR A foundation, #877).
+          install-tools: 'true'
 
       - name: Start test infrastructure
-        run: make test-infra-up
+        if: matrix.infra-up != ''
+        # matrix.infra-up may name multiple targets separated by spaces.
+        # Direct interpolation word-splits naturally; the matrix values
+        # are a repo-controlled closed set so no injection surface.
+        run: make ${{ matrix.infra-up }}
 
       - name: Run integration tests
-        run: make test-integration
+        env:
+          JUNIT_REPORT_FILE: ${{ runner.temp }}/junit-${{ matrix.flag }}.xml
+        run: make ${{ matrix.target }}
+
+      - name: Generate + upload Integration test report
+        if: always()
+        uses: ./.github/actions/upload-test-report
+        with:
+          format: junit-xml
+          suite: ${{ matrix.flag }}
+          input-path: ${{ runner.temp }}/junit-${{ matrix.flag }}.xml
+          artifact-prefix: test-report-integration
 
       - name: Stop test infrastructure
-        if: always()
-        run: make test-infra-down
+        if: always() && matrix.infra-down != ''
+        run: make ${{ matrix.infra-down }}
 
   bdd:
     name: Test - BDD (${{ matrix.suite }})
@@ -520,7 +609,7 @@ jobs:
           # godog writes a cucumber JSON report at this path when set.
           # cmd/bdd-report (next steps) converts it to per-suite HTML
           # and Markdown artefacts published below. See #439.
-          BDD_REPORT_FILE: /tmp/bdd-report-${{ matrix.suite }}.json
+          BDD_REPORT_FILE: ${{ runner.temp }}/bdd-report-${{ matrix.suite }}.json
         run: |
           set -eo pipefail
           make "$TARGET" 2>&1 | tee /tmp/bdd-output.txt
@@ -551,78 +640,16 @@ jobs:
           path: /tmp/bdd-count.txt
           retention-days: 1
 
-      - name: Generate HTML report
+      - name: Generate + upload BDD report
         if: always()
-        shell: bash
-        env:
-          SUITE: ${{ matrix.suite }}
-          REPORT_JSON: /tmp/bdd-report-${{ matrix.suite }}.json
-          REPORT_HTML: /tmp/bdd-report-${{ matrix.suite }}.html
-        run: |
-          set -eo pipefail
-          # When the JSON report is non-empty, convert it to HTML.
-          # An empty file means BDD failed before godog wrote anything
-          # (e.g. infra container did not start) — skip silently and
-          # let the original test failure surface in the workflow log.
-          if [[ -s "$REPORT_JSON" ]]; then
-            go run ./cmd/bdd-report -suite "$SUITE" -input "$REPORT_JSON" -format html > "$REPORT_HTML"
-            echo "Generated $REPORT_HTML ($(wc -c < "$REPORT_HTML") bytes)"
-          else
-            echo "No cucumber JSON at $REPORT_JSON — skipping HTML report"
-          fi
-
-      - name: Generate Markdown report + step summary
-        if: always()
-        shell: bash
-        env:
-          SUITE: ${{ matrix.suite }}
-          REPORT_JSON: /tmp/bdd-report-${{ matrix.suite }}.json
-          REPORT_MD: /tmp/bdd-report-${{ matrix.suite }}.md
-        run: |
-          set -eo pipefail
-          # Same skip rule as the HTML report — a missing/empty JSON
-          # file means godog never started, in which case the test
-          # failure itself is the signal.
-          if [[ -s "$REPORT_JSON" ]]; then
-            # Full report → artefact (no size cap).
-            go run ./cmd/bdd-report -suite "$SUITE" -input "$REPORT_JSON" -format markdown > "$REPORT_MD"
-            echo "Generated $REPORT_MD ($(wc -c < "$REPORT_MD") bytes)"
-
-            # Step summary → only-failures variant. The GitHub Actions
-            # step summary has a 1 MiB hard cap (silently truncated
-            # past that); -only-failures emits just the failing
-            # scenarios + a count header so reviewers see what broke
-            # without downloading anything. Build a separate file so
-            # the artefact retains the full report.
-            STEP_MD=/tmp/bdd-step-${SUITE}.md
-            go run ./cmd/bdd-report -suite "$SUITE" -input "$REPORT_JSON" -format markdown -only-failures > "$STEP_MD"
-            {
-              echo ""
-              echo "---"
-              echo ""
-              cat "$STEP_MD"
-            } >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "No cucumber JSON at $REPORT_JSON — skipping Markdown report"
-          fi
-
-      - name: Upload HTML report
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: ./.github/actions/upload-test-report
         with:
-          name: bdd-report-${{ matrix.suite }}
-          path: /tmp/bdd-report-${{ matrix.suite }}.html
-          retention-days: 14
-          if-no-files-found: warn
-
-      - name: Upload Markdown report
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: bdd-report-${{ matrix.suite }}-md
-          path: /tmp/bdd-report-${{ matrix.suite }}.md
-          retention-days: 14
-          if-no-files-found: warn
+          format: cucumber-json
+          suite: ${{ matrix.suite }}
+          input-path: ${{ runner.temp }}/bdd-report-${{ matrix.suite }}.json
+          # Artifact names preserved as bdd-report-<suite> and
+          # bdd-report-<suite>-md (back-compat with #876's published names).
+          artifact-prefix: bdd-report
 
       - name: Stop test infrastructure
         if: always() && matrix.infra-down != ''
@@ -814,7 +841,10 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: mutation-test-report-${{ matrix.target }}-${{ github.sha }}
+          # Renamed mutation-test-report-* → test-report-mutation-* for
+          # naming consistency with the per-test-type test-report-*
+          # artefact pattern introduced by #877.
+          name: test-report-mutation-${{ matrix.target }}-${{ github.sha }}
           path: mutation-test-report-${{ matrix.target }}.txt
           retention-days: 7
 
