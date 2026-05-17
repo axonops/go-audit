@@ -100,6 +100,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   reproduces the CI workflow locally for any published tag —
   same script, same flow, same exit code. Lets a maintainer
   smoke a release before tagging. (#438)
+- BDD CI matrix now publishes a per-suite HTML report artefact
+  (`bdd-report-<suite>`) alongside the existing scenario-count
+  artefact. Each report is a self-contained HTML file: features
+  grouped, scenarios collapsible via native `<details>`/`<summary>`,
+  failed scenarios highlighted, step-level status + duration,
+  error messages with `<pre>` formatting and HTML escaping.
+  Generated from godog's cucumber JSON output by a new
+  `cmd/bdd-report-html` tool — pure stdlib (`encoding/json` +
+  `html/template`), no external dependencies. The cucumber JSON
+  is opt-in via the new `BDD_REPORT_FILE` env var; the existing
+  pretty-printed CI log output is preserved. Local reproduction:
+  `BDD_REPORT_FILE=/tmp/r.json make test-bdd-core && go run ./cmd/bdd-report-html -input /tmp/r.json -suite core > r.html`.
+  (#439)
 
 ### Changed
 

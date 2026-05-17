@@ -265,6 +265,15 @@ test-bdd-secrets:
 test-bdd-verify:
 	./scripts/verify-bdd-coverage.sh
 
+# bdd-report-html builds the cucumber JSON → HTML converter (#439).
+# CI uses `go run ./cmd/bdd-report-html` directly; this target is for
+# local builds. Pair with `BDD_REPORT_FILE=/tmp/r.json make test-bdd-core`
+# to capture a report, then:
+#   go run ./cmd/bdd-report-html -input /tmp/r.json -suite core > r.html
+.PHONY: bdd-report-html
+bdd-report-html:
+	go build -o ./bin/bdd-report-html ./cmd/bdd-report-html
+
 # Example compilation tests (no runtime — examples are documentation).
 # Driven from EXAMPLE_MODULES (line 43) so new examples are picked up
 # without touching the Makefile. The previous hard-coded list drifted

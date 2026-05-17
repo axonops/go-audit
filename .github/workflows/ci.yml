@@ -511,13 +511,21 @@ jobs:
 
       - name: Run BDD tests
         shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          # godog writes a cucumber JSON report at this path when set.
+          # cmd/bdd-report-html (next step) converts it to a per-suite
+          # HTML artefact published below. See #439.
+          BDD_REPORT_FILE: /tmp/bdd-report-${{ matrix.suite }}.json
         run: |
           set -eo pipefail
-          make ${{ matrix.target }} 2>&1 | tee /tmp/bdd-output.txt
+          make "$TARGET" 2>&1 | tee /tmp/bdd-output.txt
 
       - name: Extract scenario count
         if: always()
         shell: bash
+        env:
+          SUITE: ${{ matrix.suite }}
         run: |
           set -eo pipefail
           # Count executed scenarios from go test -v subtest output.
@@ -529,7 +537,7 @@ jobs:
             count=0
           fi
           echo "$count" > /tmp/bdd-count.txt
-          echo "BDD suite '${{ matrix.suite }}' executed $count scenarios"
+          echo "BDD suite '$SUITE' executed $count scenarios"
 
       - name: Upload scenario count
         if: always()
@@ -539,9 +547,40 @@ jobs:
           path: /tmp/bdd-count.txt
           retention-days: 1
 
+      - name: Generate HTML report
+        if: always()
+        shell: bash
+        env:
+          SUITE: ${{ matrix.suite }}
+          REPORT_JSON: /tmp/bdd-report-${{ matrix.suite }}.json
+          REPORT_HTML: /tmp/bdd-report-${{ matrix.suite }}.html
+        run: |
+          set -eo pipefail
+          # When the JSON report is non-empty, convert it to HTML.
+          # An empty file means BDD failed before godog wrote anything
+          # (e.g. infra container did not start) — skip silently and
+          # let the original test failure surface in the workflow log.
+          if [[ -s "$REPORT_JSON" ]]; then
+            go run ./cmd/bdd-report-html -suite "$SUITE" -input "$REPORT_JSON" > "$REPORT_HTML"
+            echo "Generated $REPORT_HTML ($(wc -c < "$REPORT_HTML") bytes)"
+          else
+            echo "No cucumber JSON at $REPORT_JSON — skipping HTML report"
+          fi
+
+      - name: Upload HTML report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bdd-report-${{ matrix.suite }}
+          path: /tmp/bdd-report-${{ matrix.suite }}.html
+          retention-days: 14
+          if-no-files-found: warn
+
       - name: Stop test infrastructure
         if: always() && matrix.infra-down != ''
-        run: make ${{ matrix.infra-down }}
+        env:
+          INFRA_DOWN: ${{ matrix.infra-down }}
+        run: make "$INFRA_DOWN"
 
   bdd-verify:
     name: Test - BDD Coverage Verification
