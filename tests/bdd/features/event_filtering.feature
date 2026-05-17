@@ -71,30 +71,48 @@ Feature: Event Filtering
 
   # --- Error handling ---
 
+  # Each Enable/Disable error wraps a sentinel (#467) so consumers can
+  # discriminate via errors.Is: ErrConfigInvalid for unknown categories,
+  # ErrHandleNotFound for unknown event types. The rendered string
+  # preserves the original "audit: unknown X %q" prefix for diagnostic
+  # tooling and appends the wrapped sentinel's message.
+
   Scenario: Enabling unknown category returns exact error
     When I try to enable category "nonexistent"
     Then the operation should return an error matching:
       """
-      audit: unknown category "nonexistent"
+      audit: unknown category "nonexistent": audit: config validation failed
       """
 
   Scenario: Disabling unknown category returns exact error
     When I try to disable category "nonexistent"
     Then the operation should return an error matching:
       """
-      audit: unknown category "nonexistent"
+      audit: unknown category "nonexistent": audit: config validation failed
       """
 
   Scenario: Enabling unknown event type returns exact error
     When I try to enable event "nonexistent_event"
     Then the operation should return an error matching:
       """
-      audit: unknown event type "nonexistent_event"
+      audit: unknown event type "nonexistent_event": audit: event type not found
       """
 
   Scenario: Disabling unknown event type returns exact error
     When I try to disable event "nonexistent_event"
     Then the operation should return an error matching:
       """
-      audit: unknown event type "nonexistent_event"
+      audit: unknown event type "nonexistent_event": audit: event type not found
       """
+
+  # Sentinel wrapping (#467): proves consumers can discriminate
+  # operation errors via errors.Is without string matching, per the
+  # CLAUDE.md error-discrimination convention.
+
+  Scenario: Enabling unknown category wraps ErrConfigInvalid
+    When I try to enable category "nonexistent"
+    Then the operation should return an error wrapping "ErrConfigInvalid"
+
+  Scenario: Enabling unknown event type wraps ErrHandleNotFound
+    When I try to enable event "nonexistent_event"
+    Then the operation should return an error wrapping "ErrHandleNotFound"

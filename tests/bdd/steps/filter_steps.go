@@ -140,4 +140,9 @@ func registerFilterThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		}
 		return nil
 	})
+
+	// Sentinel wrapping check (#467). Proves the operation error is
+	// discriminable via errors.Is, not just by string match.
+	ctx.Step(`^the operation should return an error wrapping "([^"]*)"$`,
+		func(sentinel string) error { return assertSentinelError(tc, sentinel) })
 }
