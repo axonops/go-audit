@@ -36,7 +36,7 @@
 SHELL      := bash
 .SHELLFLAGS := -e -o pipefail -c
 
-MODULES           := . file iouring syslog webhook loki outputconfig outputs cmd/audit-gen cmd/audit-validate secrets secrets/env secrets/file secrets/openbao secrets/vault
+MODULES           := . file iouring syslog webhook loki outputconfig outputs cmd/audit-gen cmd/audit-validate cmd/bdd-report-html secrets secrets/env secrets/file secrets/openbao secrets/vault
 # EXAMPLE_MODULES is auto-discovered from any examples/*/go.mod so new
 # examples are picked up without touching the Makefile. Sorted for
 # deterministic workspace generation.
