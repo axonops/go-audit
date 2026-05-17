@@ -265,21 +265,60 @@ test-bdd-secrets:
 test-bdd-verify:
 	./scripts/verify-bdd-coverage.sh
 
-# Example compilation tests (no runtime — examples are documentation)
+# Example compilation tests (no runtime — examples are documentation).
+# Driven from EXAMPLE_MODULES (line 43) so new examples are picked up
+# without touching the Makefile. The previous hard-coded list drifted
+# behind reality — issue #438 cited "17 examples" when there were 20.
 test-examples:
-	@for dir in examples/01-basic examples/02-code-generation \
-	            examples/03-file-output examples/04-formatters \
-	            examples/05-standard-fields examples/06-syslog-output \
-	            examples/07-webhook-output examples/08-loki-output \
-	            examples/09-multi-output examples/10-event-routing \
-	            examples/11-sensitivity-labels examples/12-hmac-integrity \
-	            examples/13-tls-policy examples/14-buffering \
-	            examples/15-middleware examples/16-health-endpoint \
-	            examples/17-testing examples/18-migration \
-	            examples/19-prometheus-reference examples/20-capstone; do \
+	@for dir in $(EXAMPLE_MODULES); do \
 		echo "=== build $$dir ==="; \
 		(cd $$dir && go build -o /dev/null .) || exit 1; \
 	done
+
+# print-example-modules emits EXAMPLE_MODULES one entry per line for
+# shell-script consumption (.github/workflows/release-examples-verify.yml).
+# Mirrors print-publish-modules.
+.PHONY: print-example-modules
+print-example-modules:
+	@$(foreach e,$(EXAMPLE_MODULES),printf '%s\n' '$(e)';)
+
+# verify-examples-published — local equivalent of
+# .github/workflows/release-examples-verify.yml. Iterates every example,
+# copies to a tmpdir, bumps every github.com/axonops/audit* require to
+# VERSION via scripts/release/bump-example-deps.sh, runs go mod tidy +
+# go build + (if tests exist) go test. Lets a maintainer reproduce the
+# post-release CI gate against any published tag locally.
+#
+# Usage:
+#   VERSION=v0.1.13 make verify-examples-published
+.PHONY: verify-examples-published
+verify-examples-published:
+	@if [ -z "$(VERSION)" ]; then \
+		echo "verify-examples-published: VERSION must be set (e.g. VERSION=v0.1.13)"; \
+		exit 2; \
+	fi
+	@scripts_dir="$(CURDIR)/scripts/release"; \
+	base=$$(mktemp -d -t verify-examples-XXXXXX); \
+	trap 'rm -rf "$$base"' EXIT INT TERM; \
+	failed=""; \
+	for src in $(EXAMPLE_MODULES); do \
+		echo "=== verify-published $$src @ $(VERSION) ==="; \
+		dst="$$base/$$(basename $$src)"; \
+		mkdir -p "$$dst"; \
+		cp -r "$$src"/. "$$dst"/; \
+		( \
+			cd "$$dst" && \
+			"$$scripts_dir/bump-example-deps.sh" "$$dst" "$(VERSION)" && \
+			GOWORK=off go mod tidy && \
+			GOWORK=off go build ./... && \
+			GOWORK=off go test ./... \
+		) || failed="$$failed $$src"; \
+	done; \
+	if [ -n "$$failed" ]; then \
+		echo "verify-examples-published: FAILED for:$$failed"; \
+		exit 1; \
+	fi; \
+	echo "verify-examples-published: all examples passed"
 
 # --- Linting ---
 

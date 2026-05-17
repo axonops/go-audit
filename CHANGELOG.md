@@ -75,6 +75,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   reflects the formatter's declared type (`text/plain` for CEF).
   Operators who need a different MIME type can still override via
   the output's `headers` configuration. (#463)
+- Makefile `test-examples` target was a hard-coded list of 20
+  example directories that drifted out of sync with `examples/`
+  every time a new example was added (the issue body for #438
+  cited "17 examples" when there were 20 — same drift bug).
+  Now driven from the auto-discovered `EXAMPLE_MODULES` variable
+  so future example additions need zero Makefile change. (#438)
+
+### CI
+
+- New workflow `.github/workflows/release-examples-verify.yml`
+  fires on `release: published` (and `workflow_dispatch` for
+  manual backfill). For each example under `examples/*`,
+  copies it outside the workspace, bumps every
+  `github.com/axonops/audit*` require to the published tag via
+  `scripts/release/bump-example-deps.sh`, runs `go mod tidy +
+  go build` and `go test` if any `*_test.go` files exist.
+  Failures aggregated into one dedup'd GitHub issue per release
+  tag — so a broken example surfaces immediately as a tracked
+  bug rather than as a silent first-impression failure for the
+  next consumer doing `go get`. Does NOT block the release;
+  runs after publication. (#438)
+- New `make verify-examples-published VERSION=v0.1.13` target
+  reproduces the CI workflow locally for any published tag —
+  same script, same flow, same exit code. Lets a maintainer
+  smoke a release before tagging. (#438)
 
 ### Changed
 
