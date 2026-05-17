@@ -339,6 +339,98 @@ still in flight waits for the scheduled run to finish before starting
 (`cancel-in-progress: false`); expect up to ~3 hours before results
 are available.
 
+### CI test reports (#877)
+
+Every CI run produces HTML and GitHub-flavoured Markdown test reports
+as downloadable artefacts for every test job in the matrix — BDD,
+Unit, Integration, and Cross-Platform. Each report lists every test
+case in the suite with status, duration, and — for failures — the
+captured error message and stack trace. No per-PR opt-in is required;
+uploads run automatically (`if: always()`) so artefacts appear on
+both successful and failed runs. Retention is 14 days (90 days for
+the mutation text report).
+
+Two formats are produced because they serve different consumers:
+HTML for browser viewing of the full report, Markdown for embedding
+in PR comments and for the inline step-summary panel
+(failures-only). For failed jobs, open the workflow run page and
+scroll to the leg's "Summary" panel — the failure Markdown renders
+inline (1 MiB GitHub cap; a truncation footer points at the full
+artefact when exceeded), so no download is required for triage.
+
+**Artefact naming convention:**
+
+| Test type             | HTML artefact name                                | Markdown variant       |
+|-----------------------|---------------------------------------------------|------------------------|
+| BDD (9 suites)        | `bdd-report-<suite>`                              | `…-md`                 |
+| Unit (13 modules)     | `test-report-unit-<flag>`                         | `…-md`                 |
+| Integration (7 legs)  | `test-report-integration-<flag>`                  | `…-md`                 |
+| Cross-Platform (4)    | `test-report-crossplatform-<flag>-<os>`           | `…-md`                 |
+| Mutation              | `test-report-mutation-<target>-<sha>` (text only) | — (gremlins v0.6.0 does not emit HTML) |
+
+Concrete examples (the `<flag>` values are the matrix entries):
+
+```
+bdd-report-syslog                      bdd-report-syslog-md
+test-report-unit-core                  test-report-unit-core-md
+test-report-unit-webhook               test-report-unit-webhook-md
+test-report-integration-integration-syslog       (and ...-md)
+test-report-integration-integration-loki         (and ...-md)
+test-report-crossplatform-core-macos-latest      (and ...-md)
+test-report-crossplatform-file-windows-latest    (and ...-md)
+test-report-mutation-hmac-abc123…
+```
+
+> The integration `flag` values include their own `integration-`
+> prefix (matrix structure inherited from PR B), which is why the
+> full artefact name doubles the word. Search literally for the
+> artefact name the PR run shows you and you'll find it.
+
+**Downloading from a PR run:**
+
+```bash
+# List all artefact names for a run.
+gh api repos/axonops/audit/actions/runs/<RUN_ID>/artifacts \
+  --jq '.artifacts[].name'
+
+# Download a specific report (creates a directory of the same name).
+gh run download <RUN_ID> -n test-report-unit-core
+
+# Open the HTML file in your browser. Use the command for your OS:
+#   Linux:   xdg-open test-report-unit-core/test-report-unit-core.html
+#   macOS:   open     test-report-unit-core/test-report-unit-core.html
+#   Windows: start    test-report-unit-core/test-report-unit-core.html
+```
+
+The GitHub UI also lists every artefact at the bottom of the
+workflow run page (below the job list) under "Artifacts" — click
+the name to download a zip.
+
+**Rendering locally:**
+
+```bash
+# One-time prerequisites
+make install-tools     # installs gotestsum (required for JUnit XML)
+make test-infra-up     # Docker stack for BDD scenarios; safe to skip
+                       # if you only want the Unit / JUnit example below
+
+# BDD report from cucumber JSON
+BDD_REPORT_FILE=/tmp/r.json make test-bdd-core
+go run ./cmd/bdd-report -input /tmp/r.json -suite core -format html > r.html
+
+# Unit / integration / cross-platform from JUnit XML
+JUNIT_REPORT_FILE=/tmp/r.xml make test-core
+go run ./cmd/junit-report -input /tmp/r.xml -suite core -format html > r.html
+# Same invocation with -format markdown produces the GFM variant.
+```
+
+Both tools share the same CLI: `-suite <name>`, `-input <path>`,
+`-format html|markdown`, and `-only-failures` (Markdown only;
+emits the trimmed step-summary variant). See
+[`.github/actions/upload-test-report/README.md`](.github/actions/upload-test-report/README.md)
+for the composite-action mechanics CI uses to wire the reports
+across every test job.
+
 ## Code Standards
 
 The [Google Go Style Guide](https://google.github.io/styleguide/go/)
