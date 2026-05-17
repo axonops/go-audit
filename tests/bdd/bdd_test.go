@@ -83,8 +83,8 @@ func TestFeatures(t *testing.T) {
 
 	// Format is "pretty" by default for the local-dev pretty-printer.
 	// When BDD_REPORT_FILE is set, godog ALSO writes a cucumber JSON
-	// report at that path — used by CI to publish per-suite HTML
-	// artefacts via cmd/bdd-report-html. The comma-separated format
+	// report at that path — used by CI to publish per-suite HTML and
+	// Markdown artefacts via cmd/bdd-report. The comma-separated format
 	// string is supported by godog v0.15.1 (see run.go:176).
 	format := "pretty"
 	if reportFile := os.Getenv("BDD_REPORT_FILE"); reportFile != "" {

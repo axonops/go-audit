@@ -27,8 +27,8 @@ import (
 func TestOutputConfigFeatures(t *testing.T) {
 	// Format is "pretty" by default for local-dev readability.
 	// When BDD_REPORT_FILE is set, godog additionally writes a
-	// cucumber JSON report at that path — consumed by
-	// cmd/bdd-report-html to publish per-suite HTML artefacts in CI.
+	// cucumber JSON report at that path — consumed by cmd/bdd-report
+	// to publish per-suite HTML and Markdown artefacts in CI.
 	format := "pretty"
 	if reportFile := os.Getenv("BDD_REPORT_FILE"); reportFile != "" {
 		format = "pretty,cucumber:" + reportFile

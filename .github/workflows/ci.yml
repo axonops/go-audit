@@ -514,8 +514,8 @@ jobs:
         env:
           TARGET: ${{ matrix.target }}
           # godog writes a cucumber JSON report at this path when set.
-          # cmd/bdd-report-html (next step) converts it to a per-suite
-          # HTML artefact published below. See #439.
+          # cmd/bdd-report (next steps) converts it to per-suite HTML
+          # and Markdown artefacts published below. See #439.
           BDD_REPORT_FILE: /tmp/bdd-report-${{ matrix.suite }}.json
         run: |
           set -eo pipefail
@@ -561,10 +561,45 @@ jobs:
           # (e.g. infra container did not start) — skip silently and
           # let the original test failure surface in the workflow log.
           if [[ -s "$REPORT_JSON" ]]; then
-            go run ./cmd/bdd-report-html -suite "$SUITE" -input "$REPORT_JSON" > "$REPORT_HTML"
+            go run ./cmd/bdd-report -suite "$SUITE" -input "$REPORT_JSON" -format html > "$REPORT_HTML"
             echo "Generated $REPORT_HTML ($(wc -c < "$REPORT_HTML") bytes)"
           else
             echo "No cucumber JSON at $REPORT_JSON — skipping HTML report"
+          fi
+
+      - name: Generate Markdown report + step summary
+        if: always()
+        shell: bash
+        env:
+          SUITE: ${{ matrix.suite }}
+          REPORT_JSON: /tmp/bdd-report-${{ matrix.suite }}.json
+          REPORT_MD: /tmp/bdd-report-${{ matrix.suite }}.md
+        run: |
+          set -eo pipefail
+          # Same skip rule as the HTML report — a missing/empty JSON
+          # file means godog never started, in which case the test
+          # failure itself is the signal.
+          if [[ -s "$REPORT_JSON" ]]; then
+            # Full report → artefact (no size cap).
+            go run ./cmd/bdd-report -suite "$SUITE" -input "$REPORT_JSON" -format markdown > "$REPORT_MD"
+            echo "Generated $REPORT_MD ($(wc -c < "$REPORT_MD") bytes)"
+
+            # Step summary → only-failures variant. The GitHub Actions
+            # step summary has a 1 MiB hard cap (silently truncated
+            # past that); -only-failures emits just the failing
+            # scenarios + a count header so reviewers see what broke
+            # without downloading anything. Build a separate file so
+            # the artefact retains the full report.
+            STEP_MD=/tmp/bdd-step-${SUITE}.md
+            go run ./cmd/bdd-report -suite "$SUITE" -input "$REPORT_JSON" -format markdown -only-failures > "$STEP_MD"
+            {
+              echo ""
+              echo "---"
+              echo ""
+              cat "$STEP_MD"
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No cucumber JSON at $REPORT_JSON — skipping Markdown report"
           fi
 
       - name: Upload HTML report
@@ -573,6 +608,15 @@ jobs:
         with:
           name: bdd-report-${{ matrix.suite }}
           path: /tmp/bdd-report-${{ matrix.suite }}.html
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Upload Markdown report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bdd-report-${{ matrix.suite }}-md
+          path: /tmp/bdd-report-${{ matrix.suite }}.md
           retention-days: 14
           if-no-files-found: warn
 
@@ -635,6 +679,7 @@ jobs:
           - outputs
           - cmd/audit-gen
           - cmd/audit-validate
+          - cmd/bdd-report
           - secrets
           - secrets/env
           - secrets/file
