@@ -34,9 +34,17 @@ import (
 //	make test-infra-openbao-up
 //	make test-infra-vault-up
 func TestOutputConfigDockerFeatures(t *testing.T) {
+	// Same env-toggled format pattern as TestOutputConfigFeatures —
+	// "pretty" by default, additional "cucumber:<file>" when
+	// BDD_REPORT_FILE is set so CI can publish HTML artefacts.
+	format := "pretty"
+	if reportFile := os.Getenv("BDD_REPORT_FILE"); reportFile != "" {
+		format = "pretty,cucumber:" + reportFile
+	}
+
 	opts := godog.Options{
 		Output:      colors.Colored(os.Stdout),
-		Format:      "pretty",
+		Format:      format,
 		Paths:       []string{"features"},
 		Tags:        "@docker",
 		Randomize:   0,

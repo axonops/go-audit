@@ -100,6 +100,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   reproduces the CI workflow locally for any published tag —
   same script, same flow, same exit code. Lets a maintainer
   smoke a release before tagging. (#438)
+- BDD CI matrix now publishes per-suite HTML and Markdown report
+  artefacts (`bdd-report-<suite>` HTML, `bdd-report-<suite>-md`
+  Markdown) alongside the existing scenario-count artefact, and
+  inlines a Markdown failure summary into the GitHub Actions step
+  summary panel so reviewers see what broke without downloading
+  anything. Each HTML report is a self-contained file: features
+  grouped, scenarios collapsible via native `<details>`/`<summary>`,
+  failed scenarios highlighted, step-level status + duration,
+  error messages with `<pre>` formatting and HTML escaping. The
+  Markdown variant targets GitHub-flavoured Markdown — inline
+  HTML `<details>`/`<summary>` render natively on github.com and
+  in step summaries. Generated from godog's cucumber JSON output
+  by a new `cmd/bdd-report` tool — pure stdlib (`encoding/json`,
+  `html/template`, hand-written Markdown renderer with separate
+  GFM-aware escape for body context and HTML escape for `<summary>`
+  context). The cucumber JSON is opt-in via the new `BDD_REPORT_FILE`
+  env var; the existing pretty-printed CI log output is preserved.
+  Local reproduction:
+  `BDD_REPORT_FILE=/tmp/r.json make test-bdd-core && go run ./cmd/bdd-report -input /tmp/r.json -suite core -format markdown > r.md`.
+  The step-summary path uses a separate `-only-failures` invocation
+  that pre-truncates and emits a `> Download the bdd-report-<suite>-md
+  artefact` footer when the GitHub Actions 1 MiB step-summary cap is
+  hit (the full report is always available via the artefact download).
+  (#439)
 
 ### Changed
 

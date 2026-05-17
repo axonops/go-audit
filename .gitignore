@@ -115,6 +115,8 @@ mem.prof
 /audit-validate.exe
 /cmd/audit-validate/audit-validate
 /cmd/audit-validate/audit-validate.exe
+/cmd/bdd-report/bdd-report
+/cmd/bdd-report/bdd-report.exe
 
 # Root-level binaries from go build ./examples/...
 /01-basic
