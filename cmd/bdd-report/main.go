@@ -30,11 +30,9 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"html"
 	"html/template"
 	"io"
 	"os"
@@ -311,96 +309,12 @@ func renderHTML(out io.Writer, sum *summary) error {
 // Built by hand (no text/template) because Markdown has no auto-escape
 // equivalent of html/template. Every write of user-controlled text
 // passes through either sanitiseLine + escapeMarkdown (body context)
-// or sanitiseLine + escapeHTML (inside <summary>...</summary>).
+// or sanitiseLine + escapeHTMLAttr (inside <summary>...</summary>).
 //
-// Two distinct escapers because the two contexts have different
-// metacharacter sets and mixing them produces user-visible literal
-// backslashes in the rendered output.
-
-// stepSummaryByteBudget approximates the GitHub Actions step summary
-// hard cap. Anything beyond 1 MiB is silently truncated by GitHub.
-// We reserve a small margin so the truncation footer always fits.
-const stepSummaryByteBudget = 1024*1024 - 4096
-
-// mdSpecial lists the GFM metacharacters escaped by escapeMarkdown.
-// `~` is included for strikethrough; `=` for setext underline at line
-// start (escaped unconditionally for simplicity).
-const mdSpecial = "\\`*_{}[]()#+-.!|<>~="
-
-// sanitiseLine replaces CR/LF and C0 control characters in s with a
-// single space, collapsing consecutive control characters into one
-// space. Intra-name runs of real spaces are preserved. Applied before
-// either escaper so newline-based injection (mid-summary header
-// insertion, premature </details>, list-item smuggling) is impossible.
-func sanitiseLine(s string) string {
-	if s == "" {
-		return ""
-	}
-	var b strings.Builder
-	b.Grow(len(s))
-	prevSpace := false
-	for _, r := range s {
-		switch {
-		case r == '\t', r == '\n', r == '\r', r < 0x20, r == 0x7F:
-			if !prevSpace {
-				b.WriteByte(' ')
-				prevSpace = true
-			}
-		default:
-			b.WriteRune(r)
-			prevSpace = false
-		}
-	}
-	return strings.TrimSpace(b.String())
-}
-
-// escapeMarkdown escapes every GFM metacharacter in s with a leading
-// backslash. Assumes s has already passed through sanitiseLine (no
-// CR/LF, no C0 controls).
-func escapeMarkdown(s string) string {
-	if s == "" {
-		return ""
-	}
-	var b strings.Builder
-	b.Grow(len(s) + len(s)/4)
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if c < 0x80 && strings.IndexByte(mdSpecial, c) >= 0 {
-			b.WriteByte('\\')
-		}
-		b.WriteByte(c)
-	}
-	return b.String()
-}
-
-// escapeHTMLAttr escapes the five HTML metacharacters. Used for content
-// inside <summary>...</summary> where GFM treats the body as HTML.
-func escapeHTMLAttr(s string) string {
-	return html.EscapeString(s)
-}
-
-// fenceForError returns a backtick fence longer than any run of
-// backticks in s. Minimum length is 3 — CommonMark's shortest fence.
-// Required so a fenced code block whose body itself contains backticks
-// closes at the right place.
-func fenceForError(s string) string {
-	longest, cur := 0, 0
-	for i := 0; i < len(s); i++ {
-		if s[i] == '`' {
-			cur++
-			if cur > longest {
-				longest = cur
-			}
-		} else {
-			cur = 0
-		}
-	}
-	n := longest + 1
-	if n < 3 {
-		n = 3
-	}
-	return strings.Repeat("`", n)
-}
+// The helpers themselves (sanitiseLine, escapeMarkdown, escapeHTMLAttr,
+// fenceForError) live in render.go and writer.go which are
+// byte-identical with the sibling cmd/junit-report files. Parity is
+// enforced by `make check-report-parity`.
 
 // mdFeatureCounts mirrors the html-template featureCounts helper.
 func mdFeatureCounts(f *feature) counts {
@@ -459,42 +373,8 @@ func stepDuration(ns int64) string {
 	return fmt.Sprintf("%d ms", d.Milliseconds())
 }
 
-// mdWriter wraps a bufio.Writer with a sticky error so renderer
-// helpers don't have to handle io errors at every call site. The
-// first failed write captures the error; subsequent writes are
-// no-ops. Surfaced via the err() method (or Flush()).
-type mdWriter struct {
-	bw  *bufio.Writer
-	err error
-}
-
-func newMDWriter(out io.Writer) *mdWriter {
-	return &mdWriter{bw: bufio.NewWriter(out)}
-}
-
-func (w *mdWriter) printf(format string, args ...any) {
-	if w.err != nil {
-		return
-	}
-	_, w.err = fmt.Fprintf(w.bw, format, args...)
-}
-
-func (w *mdWriter) writeString(s string) {
-	if w.err != nil {
-		return
-	}
-	_, w.err = w.bw.WriteString(s)
-}
-
-func (w *mdWriter) flush() error {
-	if w.err != nil {
-		return w.err
-	}
-	if err := w.bw.Flush(); err != nil {
-		return fmt.Errorf("flush markdown buffer: %w", err)
-	}
-	return nil
-}
+// mdWriter and countingWriter live in writer.go (byte-identical with
+// cmd/junit-report/writer.go).
 
 // renderMarkdown writes a GitHub-flavoured Markdown report. When
 // onlyFailures is true the output is gated by stepSummaryByteBudget:
@@ -673,22 +553,6 @@ func writeTruncationFooter(w *mdWriter, sum *summary, emitted int) {
 			"Download the <code>bdd-report-%s-md</code> artefact for the full report "+
 			"(%d scenarios total).\n",
 		emitted, escapeHTMLAttr(sanitiseLine(sum.Suite)), sum.Total)
-}
-
-// countingWriter wraps an io.Writer to track total bytes written. Used
-// by renderMarkdown's step-summary budget check.
-type countingWriter struct {
-	w io.Writer
-	n int
-}
-
-func (cw *countingWriter) Write(p []byte) (int, error) {
-	n, err := cw.w.Write(p)
-	cw.n += n
-	if err != nil {
-		return n, fmt.Errorf("write underlying: %w", err)
-	}
-	return n, nil
 }
 
 // htmlTemplate is the single-file HTML report. Embedded CSS only;
