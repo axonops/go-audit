@@ -145,6 +145,26 @@
 //   - [SensitivityConfig] — sensitivity label definitions for field classification
 //   - [SensitivityLabel] — a single label with global field mappings and regex patterns
 //
+// # Generated Typed Event Builders
+//
+// The `cmd/audit-gen` code generator reads a taxonomy YAML and
+// emits a Go source file containing type-safe constants (event
+// types, categories, field names), per-event builder types with
+// required-field constructor parameters and optional-field setter
+// methods, and an [Event]-implementing struct that opts into the
+// zero-extra-allocation [FieldsDonor] fast path. Generated builders
+// are the recommended consumer pattern — see
+// `examples/02-code-generation/` in the source tree for a full
+// worked example (taxonomy YAML → generated Go → consumer wiring).
+//
+//	//go:generate go run github.com/axonops/audit/cmd/audit-gen \
+//	    -input taxonomy.yaml -output audit_generated.go -package myapp
+//
+// For dynamic event construction without code generation (tests,
+// table-driven cases, runtime-shaped events) use [NewEvent] or
+// [NewEventKV] — see those godoc and the package-level Example
+// functions for the patterns.
+//
 // # Event Routing
 //
 //   - [EventRoute] — per-output event filter (include/exclude categories, severity range)

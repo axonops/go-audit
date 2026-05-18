@@ -84,6 +84,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Documentation
 
+- Five new testable Example functions in `example_paths_test.go`
+  covering the highest-leverage integration paths a new consumer
+  (or AI coding assistant) needs from pkg.go.dev:
+  `ExampleAuditor_withYAMLConfig`,
+  `ExampleAuditor_testing` (audittest.NewQuick),
+  `ExampleNewEventKV` (showing the two-error-split contract —
+  programmer error vs runtime error),
+  `ExampleAuditor_gracefulShutdown` (signal-driven Close with
+  idempotency demo), and `ExampleAuditor_errorHandling`
+  (production-grade errors.Is dispatch over the catalogue from
+  the PR-A error-sentinel docs). Every Example carries an inline
+  "WithSynchronousDelivery makes this example deterministic. In
+  production, omit this — async is the default and the right
+  choice." note so AI assistants don't paste synchronous mode
+  into production configs. `doc.go` gains a "Generated Typed
+  Event Builders" section pointing at `cmd/audit-gen` and
+  `examples/02-code-generation/`. AC #9 from #467 — generated
+  code includes doc comments on all generated types and builder
+  methods — is already satisfied by the existing `audit-gen`
+  template (events, sensitivity labels, generated struct types,
+  builder functions, setter methods, and metadata methods all
+  carry doc comments); further enrichment to category and field
+  constants requires taxonomy schema extension (CategoryDef.Description
+  and a new FieldDef), out of scope for this PR. (#467)
 - godoc polish + error-message audit pass on the core module (#467):
   `Auditor.New` documents the MUST-call-`Close` lifecycle and the
   canonical `defer` pattern; `Auditor.AuditEvent` enumerates its
