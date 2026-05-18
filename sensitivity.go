@@ -186,7 +186,11 @@ func precomputeSensitivity(t *Taxonomy) error {
 	// validity, so compilation errors here indicate a programming
 	// error (e.g., precomputeTaxonomy called without validation).
 	if err := compileSensitivityPatterns(t.Sensitivity); err != nil {
-		return fmt.Errorf("audit: sensitivity pattern compilation: %w", err)
+		// Wrap ErrTaxonomyInvalid so callers can discriminate via
+		// errors.Is. compile failures here are downstream of a
+		// validation gap — the underlying regexp error is preserved
+		// in the chain via the inner %w from compileSensitivityPatterns.
+		return fmt.Errorf("audit: sensitivity pattern compilation: %w (%w)", ErrTaxonomyInvalid, err)
 	}
 
 	globalFieldLabels := buildGlobalFieldLabels(t.Sensitivity)

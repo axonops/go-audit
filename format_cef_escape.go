@@ -102,8 +102,11 @@ func cefEscapeExtValue(s string) string {
 // CEFFormatter from [fieldMapping]'s resolveOnce — never on the
 // per-event hot path (#477).
 func validateExtKey(key string) error {
+	// Caller (fieldMapping.resolveOnce) prepends "audit: cef field
+	// mapping key %q: " so the user sees the offending key in
+	// context. Don't double-prefix here.
 	if key == "" {
-		return fmt.Errorf("must match [a-zA-Z0-9_]+")
+		return fmt.Errorf("must be non-empty and match [a-zA-Z0-9_]+")
 	}
 	for _, c := range key {
 		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && c != '_' {

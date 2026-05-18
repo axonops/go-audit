@@ -12,42 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// audit-gen reads a YAML taxonomy file and emits one of three
-// artifact types:
-//
-//   - Go source — type-safe Go constants for event types,
-//     categories, fields, and typed event builders. The default
-//     and the most common use; consume from a `go generate` step
-//     or a Makefile rule.
-//
-//   - JSON Schema (Draft 2020-12) — a language-neutral validator
-//     for the audit event JSON shape. Use it from non-Go consumers
-//     (Python, Java, SIEM rule authors) to validate events
-//     produced by [audit.JSONFormatter] (#548).
-//
-//   - CEF template — a documentation artifact describing the
-//     CEF mapping the library applies. SIEM rule authors read it
-//     to align field-extraction rules with the library's CEF
-//     output (#548).
-//
-// Usage (Go source — default):
-//
-//	audit-gen -input taxonomy.yaml -output audit_generated.go -package mypackage
-//
-// Usage (JSON Schema):
-//
-//	audit-gen -format json-schema -input taxonomy.yaml -output audit-event.schema.json
-//
-// Usage (CEF template):
-//
-//	audit-gen -format cef-template -input taxonomy.yaml -output audit-event.cef.template
-//
-// Exit codes:
-//
-//	0  success
-//	1  invalid arguments or missing required flags
-//	2  YAML parse error or taxonomy validation failure
-//	3  output file write error
+// Package comment lives in doc.go so pkg.go.dev surfaces it on the
+// command's landing page.
+
 package main
 
 import (

@@ -48,11 +48,20 @@ type Output interface {
 
 	// Close flushes any buffered data and releases resources. The
 	// library guarantees Write will not be called after Close. Close
-	// is called exactly once by [Auditor.Close].
+	// is called exactly once by [Auditor.Close], from a goroutine that
+	// has finished all Write calls — implementations do NOT need to
+	// synchronise Close against in-flight Writes (there are none by
+	// contract).
 	Close() error
 
 	// Name returns a human-readable identifier for the output,
 	// used in log messages and metrics labels.
+	//
+	// Name MUST be safe for concurrent calls — the library reads it
+	// from multiple goroutines (metrics emission, diagnostic logs,
+	// close fan-out). Implementations typically return a fixed string
+	// established at construction; nothing in the library mutates the
+	// returned value.
 	//
 	// Name MUST NOT return an empty string. Empty names corrupt
 	// metrics labels, hide outputs in error messages, and break

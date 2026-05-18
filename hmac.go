@@ -229,14 +229,14 @@ func (s *hmacState) computeHMACFast(payload []byte) []byte {
 // [VerifyHMAC] accepts on the receiving side.
 func ComputeHMAC(payload, salt []byte, algorithm string) (string, error) {
 	if len(payload) == 0 {
-		return "", errors.New("audit: hmac payload must not be empty")
+		return "", fmt.Errorf("%w: hmac payload must not be empty", ErrValidation)
 	}
 	if len(salt) == 0 {
-		return "", errors.New("audit: hmac salt must not be empty")
+		return "", fmt.Errorf("%w: hmac salt must not be empty", ErrValidation)
 	}
 	hashFunc := hmacHashFunc(algorithm)
 	if hashFunc == nil {
-		return "", fmt.Errorf("audit: unknown hmac algorithm %q", algorithm)
+		return "", fmt.Errorf("audit: unknown hmac algorithm %q: %w", algorithm, ErrValidation)
 	}
 	mac := hmac.New(hashFunc, salt)
 	mac.Write(payload)

@@ -584,6 +584,8 @@ func assertEventMatching(tc *AuditTestContext, table *godog.Table) error {
 // sentinelsByName maps BDD sentinel names to their Go error values.
 var sentinelsByName = map[string]error{
 	"ErrClosed":               audit.ErrClosed,
+	"ErrConfigInvalid":        audit.ErrConfigInvalid,
+	"ErrHandleNotFound":       audit.ErrHandleNotFound,
 	"ErrQueueFull":            audit.ErrQueueFull,
 	"ErrValidation":           audit.ErrValidation,
 	"ErrUnknownEventType":     audit.ErrUnknownEventType,

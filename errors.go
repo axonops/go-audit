@@ -33,23 +33,46 @@ var (
 	// SHOULD treat this as a drop notification rather than a fatal error.
 	// Increasing [WithQueueSize] or reducing event emission rate
 	// reduces the frequency of this error.
+	//
+	// To diagnose: inspect [Auditor.QueueLen] / [Auditor.QueueCap] for
+	// the live ratio, or wire a [Metrics] implementation that observes
+	// [Metrics.RecordBufferDrop] for the drop rate over time.
 	ErrQueueFull = errors.New("audit: queue full")
 
 	// ErrDuplicateDestination is returned by [WithOutputs] and
 	// [WithNamedOutput] when two outputs implement [DestinationKeyer]
 	// and return the same key. This prevents accidental double-delivery
 	// to the same file, syslog address, or webhook URL.
+	//
+	// To recover: deduplicate the output list, or give each output a
+	// distinct destination key (e.g. write to different files / different
+	// syslog addresses / different webhook URLs).
 	ErrDuplicateDestination = errors.New("audit: duplicate destination")
 
 	// ErrConfigInvalid is the sentinel error wrapped by all configuration
 	// validation failures. Use [errors.Is] to test for it:
 	//
 	//	if errors.Is(err, audit.ErrConfigInvalid) { ... }
+	//
+	// The full err.Error() string identifies the specific field and
+	// constraint that failed; callers SHOULD surface or log the full
+	// message at startup to identify the misconfiguration. Common
+	// causes: app_name/host length exceeded (255 bytes), queue_size
+	// out of range, invalid validation_mode value, malformed reserved-
+	// field default type, two outputs sharing a name, mixing
+	// [WithOutputs] with [WithNamedOutput].
 	ErrConfigInvalid = errors.New("audit: config validation failed")
 
 	// ErrHandleNotFound is returned by [Auditor.Handle], and wrapped in
 	// the panic value of [Auditor.MustHandle], when the requested event
 	// type is not registered in the taxonomy.
+	//
+	// This indicates a programming error: the event type name was not
+	// declared in the [Taxonomy] passed to [WithTaxonomy]. To recover,
+	// add the event type to your taxonomy YAML (or in-code [Taxonomy]
+	// literal) and re-run code generation if you're using audit-gen.
+	// Call [Auditor.Handle] at startup to surface this error before
+	// any audit-emission code path runs.
 	ErrHandleNotFound = errors.New("audit: event type not found")
 
 	// ErrOutputClosed is returned by [Output.Write] when the output has
@@ -70,6 +93,12 @@ var (
 	// pin ~100 GiB before backpressure triggers. Default cap is
 	// 1 MiB per output; configurable via each output's MaxEventBytes
 	// Config field.
+	//
+	// To recover: raise the cap via the per-output `max_event_bytes`
+	// YAML config key (or the equivalent Go option on the output
+	// constructor), or trim the offending event's payload. A
+	// [Metrics] implementation observing [Metrics.RecordError] sees
+	// these in aggregate for diagnostic dashboards.
 	ErrEventTooLarge = errors.New("audit: event exceeds max_event_bytes")
 
 	// ErrDisabled is returned by methods that require a taxonomy
@@ -104,6 +133,12 @@ var (
 	// validation failures. Use [errors.Is] to test for it:
 	//
 	//	if errors.Is(err, audit.ErrTaxonomyInvalid) { ... }
+	//
+	// The full err.Error() string lists every validation problem the
+	// taxonomy contains, one per line, in deterministic alphabetical
+	// order — callers SHOULD log or surface the full message so the
+	// taxonomy author can fix every problem in one pass rather than
+	// iterating one error at a time.
 	ErrTaxonomyInvalid = errors.New("audit: taxonomy validation failed")
 
 	// ErrInvalidTaxonomyName is returned by [ValidateTaxonomy] when a
@@ -125,6 +160,10 @@ var (
 	// is structurally unsuitable — empty, a multi-document YAML stream,
 	// or syntactically invalid. Taxonomy content validation errors wrap
 	// [ErrTaxonomyInvalid] instead.
+	//
+	// To recover: check that the input is a single non-empty YAML
+	// document. Multi-document streams are not supported; split into
+	// separate files and call [ParseTaxonomyYAML] once per file.
 	ErrInvalidInput = errors.New("audit: invalid input")
 
 	// ErrValidation is the parent sentinel for all [Auditor.AuditEvent]
@@ -140,17 +179,33 @@ var (
 	// ErrUnknownEventType is returned by [Auditor.AuditEvent] when the
 	// event type is not registered in the taxonomy. Always wrapped
 	// alongside [ErrValidation] via [ValidationError].
+	//
+	// To recover: pass an event type that's declared in your taxonomy.
+	// Call [Auditor.Handle] at startup with the event-type names your
+	// service emits to pre-validate them and catch this error before
+	// any audit-emission code path runs.
 	ErrUnknownEventType = errors.New("audit: unknown event type")
 
 	// ErrMissingRequiredField is returned by [Auditor.AuditEvent] when
 	// one or more required fields are absent. Always wrapped alongside
 	// [ErrValidation] via [ValidationError].
+	//
+	// The full err.Error() string lists every missing required field
+	// for the event, not just the first — callers SHOULD log the full
+	// message rather than iterate one fix at a time. Use generated
+	// builders from audit-gen (which make required fields constructor
+	// parameters) for compile-time safety against this error.
 	ErrMissingRequiredField = errors.New("audit: missing required field")
 
 	// ErrUnknownField is returned by [Auditor.AuditEvent] in strict
 	// validation mode when one or more fields are not declared in the
 	// taxonomy. Always wrapped alongside [ErrValidation] via
 	// [ValidationError].
+	//
+	// To recover: add the field to the event's Optional list in the
+	// taxonomy, or switch to [ValidationWarn] (logs a diagnostic but
+	// accepts the event) or [ValidationPermissive] (silent accept).
+	// Strict mode is the default — see [WithValidationMode].
 	ErrUnknownField = errors.New("audit: unknown field")
 
 	// ErrUnknownFieldType is returned by [Auditor.AuditEvent] in
@@ -200,6 +255,14 @@ var (
 	// ambiguity attacks on HMAC verifiers (issue #473). This check runs
 	// regardless of [ValidationMode]; permissive mode cannot opt out.
 	// Always wrapped alongside [ErrValidation] via [ValidationError].
+	//
+	// To recover: rename the offending field. Reserved names include
+	// every entry in [ReservedStandardFieldNames] (the 28-or-so
+	// standardised fields like `username`, `source_ip`, `event_id`)
+	// plus the underscore-prefix family used by the library for its
+	// own framework fields (`_hmac`, `_hmac_version`,
+	// `_sanitizer_failed`, etc.). As a rule: do not start field names
+	// with an underscore.
 	ErrReservedFieldName = errors.New("audit: reserved field name")
 )
 

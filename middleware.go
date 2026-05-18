@@ -247,6 +247,17 @@ func HintsFromContext(ctx context.Context) *Hints {
 //
 // See docs/http-middleware.md for the detailed rationale and
 // framework-specific wiring examples (#491).
+//
+// # Buffer-full behaviour
+//
+// If the auditor's async queue is at capacity when the middleware
+// tries to enqueue the request's audit event, the emission returns
+// [ErrQueueFull] and the middleware DROPS the event silently — the
+// request handler runs normally and the response is unaffected. To
+// observe queue-full drops, configure a [Metrics] implementation
+// via [WithMetrics] and watch [Metrics.RecordBufferDrop]; if drop
+// rates are non-zero in steady state, raise [WithQueueSize] or
+// reduce per-request emission frequency.
 func Middleware(auditor *Auditor, builder EventBuilder) func(http.Handler) http.Handler {
 	if auditor == nil {
 		return func(next http.Handler) http.Handler { return next }

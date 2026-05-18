@@ -226,6 +226,25 @@ func (d *EventDef) ResolvedSeverity() int {
 // categories. The only events the framework injects are "startup" and
 // "shutdown" lifecycle events, which are added automatically if not
 // already present.
+//
+// # Construction
+//
+// Three ways to obtain a [Taxonomy]:
+//
+//   - [ParseTaxonomyYAML] — load a single YAML document from a
+//     `[]byte` (typically `//go:embed`-ed). The returned Taxonomy
+//     is already migrated, validated, and precomputed; pass it to
+//     [WithTaxonomy] without further work. **Recommended for
+//     production.**
+//   - [DevTaxonomy] — returns a permissive in-code Taxonomy with
+//     a single "all" category. Useful for prototyping and tests;
+//     not appropriate for production (see the [DevTaxonomy] godoc
+//     for the migration path).
+//   - Struct literal — construct a `Taxonomy` value directly in
+//     Go. Supported but skips the migration step that
+//     [ParseTaxonomyYAML] runs. Pass the result through
+//     [ValidateTaxonomy] before [WithTaxonomy] to catch errors at
+//     startup rather than at first emission.
 type Taxonomy struct {
 	// Categories maps category names to their definitions. An event
 	// type may appear in multiple categories or in none (uncategorised
