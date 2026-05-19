@@ -1,0 +1,13 @@
+# Normalise line endings across platforms so regen-*-check targets
+# do not drift on contributors with core.autocrlf=true on Windows.
+* text=auto eol=lf
+
+# Be explicit for file types we run `diff` against in CI / regen
+# scripts — any drift here fails check-static.
+llms-full.txt text eol=lf
+llms.txt      text eol=lf
+*.md          text eol=lf
+*.sh          text eol=lf
+*.go          text eol=lf
+*.yaml        text eol=lf
+*.yml         text eol=lf

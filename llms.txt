@@ -1,0 +1,287 @@
+# audit
+
+> Standalone Go audit logging library — multi-output, async,
+> taxonomy-driven event validation. Built for regulatory
+> compliance (SOX, HIPAA, GDPR, PCI-DSS) where audit logs are
+> evidence, not developer convenience. Distinct from application
+> logging (slog/zap): every event is validated against a
+> consumer-defined taxonomy and delivered asynchronously to one or
+> more configurable outputs (file, syslog, webhook, Loki).
+> Delivery is at-most-once on the hot path — the queue drops with
+> a metric rather than blocking the caller.
+
+## Install
+
+```
+go get github.com/axonops/audit@latest
+go get github.com/axonops/audit/file@latest      # optional output backends — import only the
+go get github.com/axonops/audit/syslog@latest    # ones the application actually uses
+go get github.com/axonops/audit/outputconfig@latest
+```
+
+Requires Go 1.26 or later.
+
+## Minimal example
+
+`taxonomy.yaml` — declares the event types the application emits:
+
+```yaml
+version: 1
+categories:
+  identity:
+    - user_login
+events:
+  user_login:
+    fields:
+      actor_id: {required: true}
+      outcome:  {required: true}
+```
+
+`outputs.yaml` — declares where events go. The `outputs` block is
+a map keyed by the operator's chosen output name; each entry
+declares its `type` and any type-specific configuration:
+
+```yaml
+version: 1
+outputs:
+  console:
+    type: stdout
+```
+
+`main.go`:
+
+```go
+package main
+
+import (
+    "context"
+    _ "embed"
+    "log"
+
+    "github.com/axonops/audit"
+    "github.com/axonops/audit/outputconfig"
+    _ "github.com/axonops/audit/outputs" // registers file/syslog/webhook/loki/stdout factories
+)
+
+//go:embed taxonomy.yaml
+var taxonomyYAML []byte
+
+func main() {
+    auditor, err := outputconfig.New(context.Background(),
+        taxonomyYAML, "outputs.yaml",
+        audit.WithAppName("inventory-api"),
+        audit.WithHost("inventory-01"),
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer auditor.Close() // MUST be called or buffered events are lost
+
+    err = auditor.AuditEvent(audit.NewEvent("user_login", audit.Fields{
+        "actor_id": "alice",
+        "outcome":  "success",
+    }))
+    if err != nil {
+        log.Printf("audit emit: %v", err) // see error catalogue
+    }
+}
+```
+
+The full YAML schemas are in `docs/taxonomy-validation.md` and
+`docs/output-configuration.md`. For manual (non-YAML) wiring see
+`audit.New` with `audit.WithTaxonomy(...)` and
+`audit.WithOutputs(...)`; the YAML path is recommended because the
+output configuration is decoupled from the binary.
+
+## Standard integration flow
+
+1. Author `taxonomy.yaml` listing every event type and its fields
+2. `//go:embed` the taxonomy into the binary so the schema is
+   versioned with the code
+3. (Optional) Install `audit-gen` with
+   `go install github.com/axonops/audit/cmd/audit-gen@latest` and
+   run it to generate typed event builders from the taxonomy —
+   turns `NewEvent("user_login", Fields{...})` into
+   `events.UserLogin(actorID, outcome)` with compile-time field
+   checking
+4. Author `outputs.yaml` declaring where events go (stdout for
+   dev, syslog/webhook/Loki/file for prod)
+5. Construct the auditor via `outputconfig.New(ctx, taxonomyYAML,
+   "outputs.yaml", opts...)`
+6. Emit events via `auditor.AuditEvent(...)`; check the returned
+   error and route via `errors.Is` against the sentinels
+7. `defer auditor.Close()` immediately after construction — Close
+   blocks until the drain goroutine flushes the queue (capped by
+   `WithShutdownTimeout`, default 5s)
+
+## Core concepts
+
+- **Taxonomy vs outputs.** The taxonomy declares *what events
+  exist and what fields they have*; outputs declare *where events
+  go*. The taxonomy is usually embedded into the binary and
+  fixed at build time; outputs are configured at runtime via
+  YAML so operators can change destinations without recompiling.
+- **Auditor lifecycle.** `audit.New` (or `outputconfig.New`)
+  constructs an `*Auditor`; `AuditEvent` enqueues an event for
+  async delivery; `Close` flushes the queue. `Close` MUST be
+  called — otherwise the drain goroutine leaks and queued events
+  are lost.
+- **At-most-once delivery.** When the queue is full, `AuditEvent`
+  returns `ErrQueueFull` and increments a drop metric; it does
+  not block. The caller MUST decide whether to retry, drop, or
+  apply backpressure. See `WithMetrics` to expose the drop rate.
+- **Sensitivity labels.** Fields can be tagged in the taxonomy
+  (e.g. `pii`, `secret`); each output can declare which labels
+  it accepts, so a syslog output can carry PII while a webhook to
+  a third-party SIEM strips it.
+- **Discrimination by sentinel.** Audit errors wrap typed
+  sentinels (`ErrQueueFull`, `ErrClosed`, `ErrValidation`,
+  `ErrUnknownEventType`, ...). Callers MUST use `errors.Is` to
+  discriminate — string matching against `err.Error()` is
+  unsupported and breaks across patch releases.
+
+## API entry points
+
+Construction:
+
+- `audit.New(opts ...Option) (*Auditor, error)` — manual wiring
+- `outputconfig.New(ctx context.Context, taxonomyYAML []byte,
+  outputsConfigPath string, opts ...audit.Option) (*Auditor,
+  error)` — YAML-driven wiring (recommended)
+- `audittest.NewQuick(tb testing.TB, eventTypes ...string)
+  (*audit.Auditor, *Recorder, *MetricsRecorder)` — test ergonomics
+
+Core options:
+
+- `audit.WithTaxonomy(*Taxonomy)`
+- `audit.WithOutputs(...Output)` /
+  `audit.WithNamedOutput(name string, out Output)`
+- `audit.WithAppName(string)` / `audit.WithHost(string)`
+- `audit.WithMetrics(Metrics)`
+- `audit.WithShutdownTimeout(time.Duration)`
+- `audit.WithDisabled()` — zero-overhead no-op auditor
+- `audit.WithSynchronousDelivery()` — tests/examples ONLY; MUST
+  NOT be used in production (serialises every emit through a
+  mutex and defeats async delivery)
+
+Event construction:
+
+- `audit.NewEvent(eventType string, fields audit.Fields) Event`
+  where `audit.Fields = map[string]any`
+- `audit.NewEventKV(eventType string, kv ...any) (Event, error)`
+  — `log/slog`-style key/value pairs
+- Typed builders generated by `audit-gen` — preferred for
+  production because field names and types are checked at compile
+  time
+
+Emission:
+
+- `auditor.AuditEvent(evt Event) error`
+- `auditor.AuditEventContext(ctx context.Context, evt Event) error`
+- `auditor.Handle(eventType string) (*EventHandle, error)` —
+  returns a cached handle for one event type. Call once at
+  startup and reuse on every emit to skip the per-emit taxonomy
+  lookup; the panicking variant `MustHandle` exists for code
+  generated by `audit-gen`
+
+Shutdown:
+
+- `auditor.Close() error` — MUST be called; subsequent calls
+  are idempotent and return the same error as the first
+
+Taxonomy and middleware helpers:
+
+- `audit.ParseTaxonomyYAML(data []byte) (*Taxonomy, error)` —
+  for use with `//go:embed` of the taxonomy YAML
+- `audit.Middleware(auditor *Auditor, builder EventBuilder)
+  func(http.Handler) http.Handler` — HTTP request audit;
+  `EventBuilder` is a `func(*http.Request, http.ResponseWriter)
+  audit.Event` callback that turns a request/response pair into
+  an event
+
+## Module structure
+
+Consumers MUST import only the output backends they use. The core
+module has no hard dependency on any specific backend; outputs
+register themselves via `init()` when blank-imported.
+
+- `github.com/axonops/audit` — core library
+- `github.com/axonops/audit/file` — file output (size/time
+  rotation, atomic writes)
+- `github.com/axonops/audit/syslog` — syslog output
+  (TCP/UDP/TLS/mTLS, RFC 5424)
+- `github.com/axonops/audit/webhook` — webhook output
+  (HTTP/HTTPS, bearer/basic/mTLS auth)
+- `github.com/axonops/audit/loki` — Grafana Loki output
+- `github.com/axonops/audit/outputs` — convenience package
+  that blank-imports four output backends (`file`, `loki`,
+  `syslog`, `webhook`) and registers `stdout` via its own
+  `init`, giving all five output types in one import
+- `github.com/axonops/audit/outputconfig` — YAML-driven output
+  configuration loader (recommended entry point)
+- `github.com/axonops/audit/audittest` — test helpers (in-memory
+  recorder, ad-hoc taxonomies)
+- `github.com/axonops/audit/secrets`,
+  `.../secrets/openbao`, `.../secrets/vault` — credential
+  resolution for output config (Vault/OpenBao references in
+  `outputs.yaml`)
+- `cmd/audit-gen` — code generator for typed event builders
+
+## Common mistakes
+
+- **Forgetting `defer auditor.Close()`.** Pair `audit.New` /
+  `outputconfig.New` with a deferred Close at the same scope.
+  Without it, the drain goroutine leaks AND every event buffered
+  at process exit is silently lost.
+- **Using `DevTaxonomy` in production.** It is permissive
+  (accepts any field on listed event types) and exists for
+  prototyping only. Migrate to a YAML taxonomy before shipping;
+  see the `DevTaxonomy` godoc for a migration recipe.
+- **Skipping the outputs blank-import.** When using
+  `outputconfig.New`, the YAML names output types by string
+  (`type: file`, `type: syslog`). Each backend registers its
+  factory in `init()` and is therefore only available if the
+  package is imported. Either blank-import individual backends
+  (`_ "github.com/axonops/audit/file"`) or use the
+  `audit/outputs` convenience package.
+- **Not handling `ErrClosed`.** After `Close` returns, subsequent
+  `AuditEvent` calls return `ErrClosed`. A signal-handler
+  goroutine that keeps emitting during shutdown MUST short-circuit
+  on this sentinel.
+- **Discriminating errors by `err.Error()` string match.** Use
+  `errors.Is(err, audit.ErrQueueFull)` etc. The error catalogue
+  on the `AuditEvent` godoc enumerates the sentinels a caller
+  may see.
+- **Using `WithSynchronousDelivery()` outside tests.** It
+  serialises every emit through a mutex — useful for
+  deterministic `// Output:` Examples, fatal for production
+  throughput.
+
+## Detailed documentation
+
+Tutorial / getting started:
+- [README](README.md) — narrative getting-started
+
+How-to (task-oriented):
+- [Outputs](docs/outputs.md) — every output type with examples
+- [Output configuration](docs/output-configuration.md) — YAML
+  reference for `outputs.yaml`
+- [Code generation](docs/code-generation.md) — `audit-gen` usage
+- [Testing](docs/testing.md) — `audittest` helpers and patterns
+- [Event routing](docs/event-routing.md) — per-output route
+  filters (category include/exclude, severity windows)
+- [Sensitivity labels](docs/sensitivity-labels.md) — field
+  classification and per-output stripping
+
+Reference:
+- [Taxonomy validation](docs/taxonomy-validation.md) — YAML
+  schema for the taxonomy
+- [Error reference](docs/error-reference.md) — every sentinel
+  error explained, with recovery hints
+
+Explanation:
+- [ARCHITECTURE](ARCHITECTURE.md) — data flow, thread safety,
+  module boundaries, hot-path design
+
+For everything in one file (for indexing into Cursor / Claude
+Code / Continue / RAG tools), see [llms-full.txt](llms-full.txt).
