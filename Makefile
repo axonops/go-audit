@@ -1068,6 +1068,21 @@ regen-schema-artifacts-check:
 	fi; \
 	rm -rf "$$TMP"
 
+# regen-llms rewrites llms-full.txt at the repo root by
+# concatenating the source docs listed in scripts/regen-llms.sh.
+# Pairs with the hand-authored llms.txt to expose the library
+# documentation to AI coding assistants (per llmstxt.org).
+.PHONY: regen-llms
+regen-llms:
+	@bash scripts/regen-llms.sh
+
+# regen-llms-check verifies llms-full.txt is in sync with its
+# source docs. Wired into check-static so a stale concatenation
+# fails CI alongside the other regen-*-check targets.
+.PHONY: regen-llms-check
+regen-llms-check:
+	@bash scripts/regen-llms.sh --check
+
 # Aggregate every static-analysis guard the CI hygiene job runs,
 # in a single shell loop with `||`-guarded error collection so
 # operators see every static failure on a single push (rather
@@ -1080,7 +1095,8 @@ check-static:
 	              check-bdd-strict check-sync-comments bench-baseline-check \
 	              check-license-headers check-release-scripts \
 	              check-skip-tidy-check-scope \
-	              regen-release-docs-check regen-schema-artifacts-check; do \
+	              regen-release-docs-check regen-schema-artifacts-check \
+	              regen-llms-check; do \
 	  echo "==> make $$target"; \
 	  $(MAKE) "$$target" || FAILED="$$FAILED $$target"; \
 	done; \

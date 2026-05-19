@@ -84,6 +84,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Documentation
 
+- Add `llms.txt` and `llms-full.txt` at the repo root following
+  the llmstxt.org specification, exposing the library
+  documentation to AI coding assistants and IDE-integrated RAG
+  tools (#467). `llms.txt` is a curated ~10 kB Markdown index
+  covering installation, a minimal compilable example, the
+  standard integration flow, core concepts, the recommended API
+  entry points, the module structure, common mistakes, and a
+  Diátaxis-ordered cross-reference to every consumer-facing doc
+  in `docs/`. `llms-full.txt` is a script-generated concatenation
+  of `README.md`, `ARCHITECTURE.md`, `doc.go`, and the 30
+  consumer-facing `docs/*.md` files in reading order, with
+  per-file section markers. Regenerate via `make regen-llms`;
+  drift is detected by `make regen-llms-check`, wired into
+  `check-static` so a stale concatenation fails CI alongside the
+  other regen-target checks. A token-budget guard
+  (4-bytes-per-token heuristic, 200,000-token ceiling) blocks
+  accidental bloat. An unexplained-extras guard fails the script
+  whenever a new `docs/*.md` is added without an explicit
+  decision to include or allowlist it, so the consumer-doc set
+  cannot silently drift out of the file.
 - Five new testable Example functions in `example_paths_test.go`
   covering the highest-leverage integration paths a new consumer
   (or AI coding assistant) needs from pkg.go.dev:
