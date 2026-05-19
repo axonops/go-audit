@@ -386,6 +386,20 @@ go run github.com/axonops/audit/cmd/audit-gen \
   -input taxonomy.yaml -output audit_generated.go -package main
 ```
 
+`audit-gen` writes `audit_generated.go` next to your `main.go`.
+Each event in the taxonomy becomes a typed constructor —
+`NewUserCreateEvent(actorID, outcome)` here, with required fields
+as parameters — plus `.SetXxx()` setters for optional fields.
+Setters for [reserved standard fields](#reserved-standard-fields)
+like `target_id`, `source_ip`, and `reason` are also generated, no
+taxonomy declaration needed. See
+[docs/code-generation.md](docs/code-generation.md) for the full
+generated surface.
+
+The same command appears as a `//go:generate` directive in
+`main.go` below, so after taxonomy edits you can re-run it with
+`go generate ./...`.
+
 ### 4️⃣ Wire it up and emit events (`main.go`)
 
 ```go
@@ -397,13 +411,15 @@ import (
     "log"
 
     "github.com/axonops/audit/outputconfig"
-    _ "github.com/axonops/audit/outputs"
+    _ "github.com/axonops/audit/outputs" // registers stdout/file/syslog/webhook/loki factories
 )
 
+//go:generate go run github.com/axonops/audit/cmd/audit-gen -input taxonomy.yaml -output audit_generated.go -package main
 //go:embed taxonomy.yaml
 var taxonomyYAML []byte
 
 func main() {
+    // outputconfig.New: ctx, embedded taxonomy bytes, runtime outputs.yaml path.
     auditor, err := outputconfig.New(context.Background(), taxonomyYAML, "outputs.yaml")
     if err != nil {
         log.Fatal(err)
@@ -411,6 +427,8 @@ func main() {
     defer func() { _ = auditor.Close() }()
 
     if err := auditor.AuditEvent(
+        // target_id is a reserved standard field — generator emits
+        // a setter even though it isn't declared in taxonomy.yaml.
         NewUserCreateEvent("alice", "success").SetTargetID("user-42"),
     ); err != nil {
         log.Printf("audit: %v", err)
@@ -432,6 +450,8 @@ import (
 )
 
 func TestCreateUser_EmitsAudit(t *testing.T) {
+    // NewQuick returns (*Auditor, *Recorder, *MetricsRecorder); the
+    // metrics recorder is unused here.
     auditor, events, _ := audittest.NewQuick(t, "user_create")
     _ = auditor.AuditEvent(NewUserCreateEvent("alice", "success"))
     events.RequireEvent(t, "user_create")
@@ -445,7 +465,7 @@ func TestCreateUser_EmitsAudit(t *testing.T) {
 `go run .` prints one JSON event to stdout (default formatter):
 
 ```json
-{"timestamp":"...","event_type":"user_create","severity":3,"app_name":"my-service","host":"<your-host>","timezone":"UTC","pid":12345,"actor_id":"alice","outcome":"success","target_id":"user-42","event_category":"write"}
+{"timestamp":"2026-01-15T09:00:00.000Z","event_type":"user_create","severity":3,"app_name":"my-service","host":"inventory-01","timezone":"UTC","pid":12345,"actor_id":"alice","outcome":"success","target_id":"user-42","event_category":"write"}
 ```
 
 > 📐 **Field order is deterministic** — framework fields first, then required and optional fields (alphabetical), then extra fields, then `event_category`. See [JSON format → Field Order](docs/json-format.md#field-order).
