@@ -84,6 +84,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Documentation
 
+- Polish the README quickstart so every step is followable
+  without scrolling to other sections (#467). The Step 3 → Step 4
+  transition now explains what `audit-gen` emits (`NewXxxEvent`
+  constructors plus `.SetXxx` setters, including the 31 reserved
+  standard fields). The main.go snippet now carries a
+  `//go:generate` directive so `go generate ./...` regenerates
+  after taxonomy changes, matching `examples/02-code-generation`.
+  Inline comments at the `outputconfig.New` call, the
+  `NewUserCreateEvent` / `SetTargetID` call, the `_ "outputs"`
+  blank import, and the discarded `audittest.NewQuick` return
+  signpost where each name comes from and what each line is for.
+  The sample JSON output is now internally consistent (all
+  literal example values instead of mixing placeholders and
+  literals). No API changes; documentation only.
 - Add `llms.txt` and `llms-full.txt` at the repo root following
   the llmstxt.org specification, exposing the library
   documentation to AI coding assistants and IDE-integrated RAG
