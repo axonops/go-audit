@@ -21,6 +21,9 @@ import (
 	_ "github.com/axonops/audit/loki"    // register "loki" output type
 	_ "github.com/axonops/audit/syslog"  // register "syslog" output type
 	_ "github.com/axonops/audit/webhook" // register "webhook" output type
+	// "splunk" is registered explicitly by consumers via
+	// `import _ "github.com/axonops/audit/splunk"` until the splunk
+	// module is published (#55).
 )
 
 // init registers the "stdout" output factory. The core audit package

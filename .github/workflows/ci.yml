@@ -310,6 +310,9 @@ jobs:
           - module: loki
             target: test-loki
             flag: loki
+          - module: splunk
+            target: test-splunk
+            flag: splunk
           - module: outputconfig
             target: test-outputconfig
             flag: outputconfig
@@ -482,6 +485,11 @@ jobs:
             flag: integration-loki
             infra-up: test-infra-loki-up
             infra-down: test-infra-loki-down
+          - module: splunk
+            target: test-integration-splunk
+            flag: integration-splunk
+            infra-up: test-infra-splunk-up
+            infra-down: test-infra-splunk-down
           - module: secrets/openbao
             target: test-integration-secrets-openbao
             flag: integration-openbao
@@ -582,6 +590,14 @@ jobs:
             target: test-bdd-loki
             infra-up: test-infra-loki-up
             infra-down: test-infra-loki-down
+          - suite: splunk
+            target: test-bdd-splunk
+            # Splunk BDD scenarios drive the output against an
+            # in-process httptest stub, not a real container, so no
+            # infra is required. Real-Splunk round-trip behaviour is
+            # covered by the integration matrix entry above.
+            infra-up: ""
+            infra-down: ""
             timeout: 10
           # Fan-out: needs all containers (syslog + webhook + loki)
           - suite: fanout
@@ -715,6 +731,7 @@ jobs:
           - syslog
           - webhook
           - loki
+          - splunk
           - outputconfig
           - outputs
           - cmd/audit-gen

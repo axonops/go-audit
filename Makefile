@@ -1,6 +1,6 @@
-.PHONY: test test-all test-core test-file test-syslog test-webhook test-loki test-outputconfig test-audit-gen test-audit-validate test-bdd-report test-junit-report \
+.PHONY: test test-all test-core test-file test-syslog test-webhook test-loki test-splunk test-outputconfig test-audit-gen test-audit-validate test-bdd-report test-junit-report lint-splunk \
        test-secrets test-secrets-env test-secrets-file test-secrets-openbao test-secrets-vault \
-       test-integration test-integration-file test-integration-syslog test-integration-webhook test-integration-loki test-integration-core test-integration-secrets-openbao test-integration-secrets-vault \
+       test-integration test-integration-file test-integration-syslog test-integration-webhook test-integration-loki test-integration-splunk test-integration-core test-integration-secrets-openbao test-integration-secrets-vault \
        test-bdd test-bdd-core test-bdd-outputconfig test-bdd-file test-bdd-file-os test-bdd-syslog test-bdd-webhook test-bdd-loki test-bdd-fanout \
        test-bdd-verify \
        test-examples \
@@ -23,6 +23,7 @@
        test-infra-file-os-up test-infra-file-os-down \
        test-infra-webhook-up test-infra-webhook-down \
        test-infra-loki-up test-infra-loki-down \
+       test-infra-splunk-up test-infra-splunk-down test-bdd-splunk \
        test-infra-openbao-up test-infra-openbao-down \
        test-infra-vault-up test-infra-vault-down \
        test-bdd-secrets \
@@ -38,7 +39,7 @@
 SHELL      := bash
 .SHELLFLAGS := -e -o pipefail -c
 
-MODULES           := . file iouring syslog webhook loki outputconfig outputs cmd/audit-gen cmd/audit-validate cmd/bdd-report cmd/junit-report secrets secrets/env secrets/file secrets/openbao secrets/vault
+MODULES           := . file iouring syslog webhook loki splunk outputconfig outputs cmd/audit-gen cmd/audit-validate cmd/bdd-report cmd/junit-report secrets secrets/env secrets/file secrets/openbao secrets/vault
 # EXAMPLE_MODULES is auto-discovered from any examples/*/go.mod so new
 # examples are picked up without touching the Makefile. Sorted for
 # deterministic workspace generation.
@@ -136,6 +137,9 @@ test-webhook:
 test-loki:
 	cd loki && $(call go_test_with_junit,-race -count=1 -coverprofile=coverage.out,./...)
 
+test-splunk:
+	cd splunk && $(call go_test_with_junit,-race -count=1 -coverprofile=coverage.out,./...)
+
 test-outputconfig:
 	cd outputconfig && $(call go_test_with_junit,-race -count=1 -coverprofile=coverage.out,$$(go list ./... | grep -v /tests/))
 
@@ -166,7 +170,7 @@ test-secrets-env:
 test-secrets-file:
 	cd secrets/file && $(call go_test_with_junit,-race -count=1 -coverprofile=coverage.out,./...)
 
-test-all: test-core test-file test-syslog test-webhook test-loki test-outputconfig test-audit-gen test-audit-validate test-bdd-report test-junit-report test-secrets test-secrets-env test-secrets-file test-secrets-openbao test-secrets-vault
+test-all: test-core test-file test-syslog test-webhook test-loki test-splunk test-outputconfig test-audit-gen test-audit-validate test-bdd-report test-junit-report test-secrets test-secrets-env test-secrets-file test-secrets-openbao test-secrets-vault
 test: test-all
 
 # --- Stress targets (#705 family) ---
@@ -278,6 +282,9 @@ test-integration-webhook:
 test-integration-loki:
 	cd loki && $(call go_test_with_junit,-race -count=1 -tags=integration,./tests/integration/...)
 
+test-integration-splunk:
+	cd splunk && $(call go_test_with_junit,-race -count=1 -tags=integration,./tests/integration/...)
+
 test-integration-core:
 	$(call go_test_with_junit,-race -count=1 -tags=integration,./tests/integration/...)
 
@@ -289,6 +296,7 @@ test-integration-secrets-vault:
 
 test-integration: test-integration-file test-integration-syslog \
                   test-integration-webhook test-integration-loki \
+                  test-integration-splunk \
                   test-integration-core test-integration-secrets-openbao \
                   test-integration-secrets-vault
 
@@ -321,6 +329,9 @@ test-bdd-webhook:
 
 test-bdd-loki:
 	BDD_TAGS="@loki && ~@fanout" go test -race -v -count=1 -tags=integration ./tests/bdd/...
+
+test-bdd-splunk:
+	BDD_TAGS="@splunk && ~@fanout" go test -race -v -count=1 -tags=integration ./tests/bdd/...
 
 test-bdd-fanout:
 	BDD_TAGS=@fanout go test -race -v -count=1 -tags=integration ./tests/bdd/...
@@ -416,6 +427,9 @@ lint-webhook:
 lint-loki:
 	cd loki && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
 
+lint-splunk:
+	cd splunk && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
+
 lint-outputconfig:
 	cd outputconfig && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
 
@@ -450,7 +464,7 @@ lint-examples:
 		(cd $$dir && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...) || exit 1; \
 	done
 
-lint-all: lint-core lint-file lint-syslog lint-webhook lint-loki lint-outputconfig lint-audit-gen lint-audit-validate lint-bdd-report lint-junit-report lint-secrets lint-secrets-openbao lint-secrets-vault lint-examples
+lint-all: lint-core lint-file lint-syslog lint-webhook lint-loki lint-splunk lint-outputconfig lint-audit-gen lint-audit-validate lint-bdd-report lint-junit-report lint-secrets lint-secrets-openbao lint-secrets-vault lint-examples
 lint: lint-all
 
 # --- Vet ---
@@ -1241,8 +1255,17 @@ test-infra-loki-up:
 	docker compose -f $(COMPOSE_DIR)/docker-compose.loki.yml up -d --build --wait
 	@echo "Loki infrastructure is ready."
 
+test-infra-splunk-up:
+	docker network create audit-test 2>/dev/null || true
+	docker compose -f $(COMPOSE_DIR)/docker-compose.splunk.yml up -d --build --wait
+	@echo "Splunk infrastructure is ready (HEC token: bdd-test-hec-token)."
+
 test-infra-loki-down:
 	docker compose -f $(COMPOSE_DIR)/docker-compose.loki.yml down -v
+	docker network rm audit-test 2>/dev/null || true
+
+test-infra-splunk-down:
+	docker compose -f $(COMPOSE_DIR)/docker-compose.splunk.yml down -v
 	docker network rm audit-test 2>/dev/null || true
 
 test-infra-openbao-up:
