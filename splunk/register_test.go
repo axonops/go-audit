@@ -298,22 +298,51 @@ verify_on_startup: false
 		"explicit zero batch_size must be rejected as out-of-range, not silently defaulted")
 }
 
-// TestFactory_AckModeNotOffRejectedInPR1 — ack_mode != off is the
-// PR-2 feature; PR 1 rejects with ErrPR1NotImplemented at config
-// validation. This is the codepath that demonstrates the
-// PR-staging contract via YAML.
-func TestFactory_AckModeNotOffRejectedInPR1(t *testing.T) {
+// TestFactory_AckModeAcceptsRequired — ack_mode: required is now
+// supported in PR 2. Construction succeeds when the stub HEC
+// responds with an ackID on the feature-detection probe.
+func TestFactory_AckModeAcceptsRequired(t *testing.T) {
 	t.Parallel()
+	stub := newRegisterStubWithAck(t)
 	rawYAML := []byte(`
-url: https://splunk.example.com:8088
+url: ` + stub.URL + `
 token: tkn
+allow_insecure_http: true
+allow_private_ranges: true
 ack_mode: required
+ack_poll_interval: 100ms
+ack_resend_window: 10s
 verify_on_startup: false
 `)
 	factory := audit.LookupOutputFactory("splunk")
-	_, err := factory("ack_required", rawYAML, audit.FrameworkContext{})
-	require.Error(t, err)
-	assert.ErrorIs(t, err, splunk.ErrPR1NotImplemented)
+	out, err := factory("ack_required", rawYAML, audit.FrameworkContext{})
+	require.NoError(t, err)
+	require.NoError(t, out.Close())
+}
+
+// newRegisterStubWithAck returns a stub that responds to /event with
+// an ackId field (so the feature-detection probe succeeds for
+// AckMode != Off tests).
+func newRegisterStubWithAck(t *testing.T) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/services/collector/health":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"text":"HEC is healthy","code":17}`))
+		case "/services/collector/event":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"text":"Success","code":0,"ackId":42}`))
+		case "/services/collector/ack":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"acks":{"42":true}}`))
+		default:
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"text":"Success","code":0}`))
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
 }
 
 // newRegisterStub returns a minimal HEC stub (HTTPS via

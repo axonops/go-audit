@@ -155,3 +155,34 @@ Feature: Splunk HEC Output
   Scenario: splunkcloud:// with mTLS is rejected
     When I construct a splunk output with URL "splunkcloud://acme-prod" and TLSCert "/p.crt"
     Then construction should fail with ErrConfigInvalid
+
+  # --- HEC Indexer Acknowledgement (#55 PR 2) ---
+
+  Scenario: AckMode=off does not send X-Splunk-Request-Channel
+    Given an auditor with splunk output and AckMode "off"
+    When I audit a uniquely marked splunk "user_create" event
+    Then the splunk receiver should have received exactly 1 envelope within 10 seconds
+    And no request header "X-Splunk-Request-Channel" should be present
+
+  Scenario: AckMode=best_effort sends X-Splunk-Request-Channel and polls /ack
+    Given an auditor with splunk output and AckMode "best_effort"
+    When I audit a uniquely marked splunk "user_create" event
+    Then the splunk receiver should have received exactly 1 envelope within 10 seconds
+    And the request header "X-Splunk-Request-Channel" should match a UUID v4
+    And the /ack endpoint should be polled at least once within 5 seconds
+
+  Scenario: AckMode=required blocks buffer progress until ack positive
+    Given an auditor with splunk output and AckMode "required"
+    When I audit a uniquely marked splunk "user_create" event
+    And the splunk receiver confirms all outstanding ackIDs
+    Then the in-flight count should drain to 0 within 5 seconds
+
+  Scenario: AckMode=required resends events when AckResendWindow elapses
+    Given an auditor with splunk output and AckMode "required" and short resend window
+    When I audit a uniquely marked splunk "user_create" event
+    Then the splunk receiver should record at least 1 timeout within 10 seconds
+
+  Scenario: AckMode=required with full buffer drops new events with metric
+    Given an auditor with splunk output and AckMode "required" and 100 unconfirmed batches
+    When I audit 500 more events
+    Then the buffer-full drop metric should be at least 1 within 10 seconds

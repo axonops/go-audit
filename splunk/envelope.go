@@ -235,3 +235,19 @@ func joinHealthURL(base string) (string, error) {
 	u.RawQuery = ""
 	return u.String(), nil
 }
+
+// joinAckURL returns the configured base URL with the /services/
+// collector/ack path appended and `channel=<GUID>` set as the query.
+// The channel GUID must be a valid UUID v4 textual form (validated
+// by the caller via newChannelGUID).
+func joinAckURL(base, channel string) (string, error) {
+	u, err := url.Parse(base)
+	if err != nil {
+		return "", err
+	}
+	u.Path = strings.TrimRight(u.Path, "/") + "/services/collector/ack"
+	q := u.Query()
+	q.Set("channel", channel)
+	u.RawQuery = q.Encode()
+	return u.String(), nil
+}

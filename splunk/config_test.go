@@ -194,13 +194,6 @@ func TestValidate_BoundsTable(t *testing.T) { //nolint:funlen // table-driven by
 			wantErr: splunk.ErrConfigInvalid,
 		},
 		{
-			name: "AckModeBestEffort rejected in PR 1",
-			mutate: func(c *splunk.Config) {
-				c.AckMode = splunk.AckModeBestEffort
-			},
-			wantErr: splunk.ErrPR1NotImplemented,
-		},
-		{
 			name: "AckMode out of range",
 			mutate: func(c *splunk.Config) {
 				c.AckMode = splunk.AckMode(99)

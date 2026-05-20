@@ -15,8 +15,6 @@
 package splunk
 
 import (
-	"bytes"
-	"compress/gzip"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -103,12 +101,13 @@ type Output struct { //nolint:govet // fieldalignment: readability preferred
 	closed        atomic.Bool
 	stopped       atomic.Bool // permanent STOP state (token disabled etc.)
 
-	// Flush-path state — owned exclusively by the batch goroutine.
-	envelopeBuf bytes.Buffer
-	rawBuf      bytes.Buffer
-	compressBuf bytes.Buffer
-	gzWriter    *gzip.Writer
-	retryHint   time.Duration
+	// Flush-path state owned exclusively by the batch goroutine.
+	// Bundled in batchBufs so the resend path (ackTracker poller)
+	// can call flushBatchAux with its own per-goroutine flushBufs.
+	batchBufs *flushBufs
+
+	// ackTracker is non-nil iff AckMode != AckModeOff.
+	tracker *ackTracker
 
 	// Drop limiters and metrics.
 	dropsOversized     *dropLimiter
@@ -129,7 +128,7 @@ type Output struct { //nolint:govet // fieldalignment: readability preferred
 // `metrics` may be nil — the output records via a no-op
 // [audit.NoOpOutputMetrics] when omitted. Use [WithOutputMetrics] to
 // pass a real [audit.OutputMetrics] sink.
-func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) {
+func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) { //nolint:gocognit // construction orchestrator; ACK + probe + tracker each is its own block
 	if cfg == nil {
 		return nil, fmt.Errorf("%w: nil config", ErrConfigInvalid)
 	}
@@ -211,7 +210,7 @@ func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) {
 		fallbackTimestamps: newDropLimiter(dropWarnInterval),
 		maxEventBytes:      cfg.MaxEventBytes,
 	}
-	out.gzWriter = gzip.NewWriter(&out.compressBuf)
+	out.batchBufs = newFlushBufs()
 
 	// Startup verification: probe /health before launching the batch
 	// goroutine. Errors abort construction (no goroutine leak — the
@@ -224,6 +223,37 @@ func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) {
 			cancel()
 			return nil, err
 		}
+	}
+
+	// ACK feature detection + tracker construction. When AckMode !=
+	// AckModeOff: generate a channel GUID via crypto/rand (fatal on
+	// failure), send a synthetic feature-probe event with the
+	// channel header (fatal if HEC reports code 14 / ack disabled),
+	// then construct and start the tracker.
+	if cfg.AckMode != AckModeOff {
+		channel, err := newChannelGUID(randReader)
+		if err != nil {
+			cancel()
+			return nil, err
+		}
+		tr, err := newAckTracker(ctx, out, channel)
+		if err != nil {
+			cancel()
+			return nil, err
+		}
+		// Wire the tracker BEFORE the probe so applyRequestHeaders
+		// adds the X-Splunk-Request-Channel on the probe request.
+		out.tracker = tr
+		if !cfg.DisableStartupVerification {
+			probeCtx, probeCancel := context.WithTimeout(ctx, cfg.StartupVerificationTimeout)
+			err := out.ackFeatureProbe(probeCtx)
+			probeCancel()
+			if err != nil {
+				cancel()
+				return nil, err
+			}
+		}
+		go tr.pollLoop(ctx)
 	}
 
 	go out.batchLoop(ctx)
@@ -277,8 +307,23 @@ func (o *Output) Close() error {
 		o.cancel()
 		<-o.done
 	}
+	// After the batch goroutine has drained, give the ack tracker a
+	// budget to confirm any remaining in-flight batches. Best-effort:
+	// after the budget elapses, any remaining in-flight batches are
+	// abandoned (the resend goroutine is then cancelled). The ack
+	// poller goroutine MUST exit before we return.
+	if o.tracker != nil {
+		o.tracker.flushOnClose(context.Background())
+		o.tracker.stop()
+	}
 	o.cancel()
 	return nil
+}
+
+// AckMetricsSnapshot returns the current ACK counters. Zero value
+// if ACK is disabled. Lock-free; safe to call from any goroutine.
+func (o *Output) AckMetricsSnapshot() AckSnapshot {
+	return o.tracker.snapshot()
 }
 
 // LastDeliveryAge implements [audit.DeliveryReporter].
@@ -403,13 +448,38 @@ func (o *Output) batchLoop(ctx context.Context) { //nolint:gocognit,gocyclo,cycl
 	}
 }
 
-// flushBatch serialises and sends a batch of events. Drives the
-// retry loop with backoff and Retry-After. The function is called
-// only by [batchLoop]; the flush-path buffers are not concurrent-
-// safe.
-func (o *Output) flushBatch(ctx context.Context, batch []splunkEntry) { //nolint:gocyclo,cyclop,gocognit // long-but-flat; control flow follows the action returned by classify()
+// flushBatch is the batchLoop's entry point — uses the Output's
+// owned [Output.batchBufs] for serialisation/compression and the
+// retry-state buffer. Thin wrapper around flushBatchAux.
+func (o *Output) flushBatch(ctx context.Context, batch []splunkEntry) {
+	o.flushBatchAux(ctx, batch, o.batchBufs)
+}
+
+// flushBatchAux serialises and sends a batch of events. Drives the
+// retry loop with backoff and Retry-After. May be called from the
+// batchLoop goroutine (with o.batchBufs) or from the ackTracker
+// poller goroutine for resends (with tracker.resendBufs); the
+// flushBufs argument decouples the two flush paths so they don't
+// share mutable state.
+func (o *Output) flushBatchAux(ctx context.Context, batch []splunkEntry, bufs *flushBufs) { //nolint:gocyclo,cyclop,gocognit,funlen // long-but-flat; control flow follows the action returned by classify()
 	if len(batch) == 0 {
 		return
+	}
+
+	// AC 59 — when AckModeRequired, enforce the in-flight buffer cap
+	// here (NOT on Write, so the producer remains non-blocking). A
+	// batch that would push in-flight past BufferSize is dropped.
+	if o.tracker != nil && o.cfg.AckMode == AckModeRequired {
+		if o.tracker.inFlightCount()+len(batch) > o.cfg.BufferSize {
+			o.logger.Warn("audit/splunk: ack-required in-flight buffer full — dropping batch",
+				"output", o.name, "batch_size", len(batch),
+				"in_flight", o.tracker.inFlightCount(),
+				"buffer_size", o.cfg.BufferSize,
+				"reason", "ack_buffer_full")
+			o.tracker.recordBufferFullDrop(len(batch))
+			o.recordDrop(len(batch))
+			return
+		}
 	}
 
 	// Build the payload.
@@ -418,17 +488,17 @@ func (o *Output) flushBatch(ctx context.Context, batch []splunkEntry) { //nolint
 		compressed bool
 	)
 	if o.cfg.Endpoint == EndpointRaw {
-		o.rawBuf.Reset()
+		bufs.raw.Reset()
 		for _, e := range batch {
-			rawEventLine(&o.rawBuf, e.data)
+			rawEventLine(&bufs.raw, e.data)
 		}
-		payload = o.rawBuf.Bytes()
+		payload = bufs.raw.Bytes()
 	} else {
-		o.envelopeBuf.Reset()
+		bufs.envelope.Reset()
 		now := time.Now()
 		var nFallback int
 		for _, e := range batch {
-			fellBack, err := wrapEvent(&o.envelopeBuf, o.cfg, e.data, now)
+			fellBack, err := wrapEvent(&bufs.envelope, o.cfg, e.data, now)
 			if err != nil {
 				o.logger.Warn("audit/splunk: envelope wrap failed — dropping event",
 					"output", o.name, "error", err)
@@ -439,15 +509,11 @@ func (o *Output) flushBatch(ctx context.Context, batch []splunkEntry) { //nolint
 				nFallback++
 			}
 		}
-		// AC 23 — surface extractTime fallbacks via a rate-limited warn
-		// so a sustained stream of mis-typed timestamps is visible to
-		// operators without spamming the log. The marker omits the event
-		// payload (PII risk); count + batch_size is the actionable signal.
 		if nFallback > 0 && o.fallbackTimestamps.allow() {
 			o.logger.Warn("audit/splunk: timestamp extraction failed — using ingest time",
 				"output", o.name, "count_in_batch", nFallback, "batch_size", len(batch))
 		}
-		payload = o.envelopeBuf.Bytes()
+		payload = bufs.envelope.Bytes()
 	}
 	if len(payload) == 0 {
 		return
@@ -467,60 +533,67 @@ func (o *Output) flushBatch(ctx context.Context, batch []splunkEntry) { //nolint
 	}
 
 	if o.cfg.Gzip != nil && *o.cfg.Gzip {
-		o.compressBuf.Reset()
-		o.gzWriter.Reset(&o.compressBuf)
-		if _, err := o.gzWriter.Write(payload); err != nil {
+		bufs.compress.Reset()
+		bufs.gz.Reset(&bufs.compress)
+		if _, err := bufs.gz.Write(payload); err != nil {
 			o.logger.Warn("audit/splunk: gzip write failed — dropping batch",
 				"output", o.name, "error", err)
 			o.outputMetrics.RecordDrop()
 			return
 		}
-		if err := o.gzWriter.Close(); err != nil {
+		if err := bufs.gz.Close(); err != nil {
 			o.logger.Warn("audit/splunk: gzip close failed — dropping batch",
 				"output", o.name, "error", err)
 			o.outputMetrics.RecordDrop()
 			return
 		}
-		payload = o.compressBuf.Bytes()
+		payload = bufs.compress.Bytes()
 		compressed = true
 	}
 
-	// Retry loop. Every exit path must zero `retryHint` so a previous
-	// batch's Retry-After does not leak across batches (code-reviewer B2).
+	// Retry loop. Every exit path must zero retryHint so a previous
+	// batch's Retry-After does not leak across batches.
 	start := time.Now()
 	maxRetries := o.cfg.MaxRetries
 	for attempt := 0; attempt <= maxRetries; attempt++ {
-		action, _, hecCode, err := o.doPost(ctx, payload, compressed)
+		action, _, hecCode, ackID, err := o.doPost(ctx, payload, compressed, bufs)
 
 		switch action {
 		case actionSuccess, actionCapacityWarn:
-			o.retryHint = 0
+			bufs.retryHint = 0
 			o.recordSuccess(len(batch), time.Since(start))
 			if action == actionCapacityWarn {
 				o.logger.Warn("audit/splunk: HEC at capacity (code 24/25)",
 					"output", o.name, "hec_code", hecCode)
+			}
+			// Register the batch with the tracker if ACK is enabled.
+			// For AckModeBestEffort we pass nil entries (resends never
+			// fire); for AckModeRequired we retain the entries for
+			// resend.
+			if o.tracker != nil && ackID != nil {
+				var retain []splunkEntry
+				if o.cfg.AckMode == AckModeRequired {
+					retain = batch
+				}
+				o.tracker.register(*ackID, retain)
 			}
 			return
 		case actionRetry:
 			if attempt == maxRetries {
 				o.logger.Warn("audit/splunk: retries exhausted — dropping batch",
 					"output", o.name, "batch_size", len(batch), "error", o.redact(err))
-				o.retryHint = 0
+				bufs.retryHint = 0
 				o.recordDrop(len(batch))
 				return
 			}
-			delay := o.retryHint
+			delay := bufs.retryHint
 			if delay <= 0 {
 				delay = splunkBackoff(attempt)
 			}
-			// Cap server-supplied Retry-After at the configured
-			// RetryMaxDelay (AC 53) — even if HEC says "wait 5
-			// minutes", we never wait more than the operator-
-			// configured maximum between attempts.
 			if delay > o.cfg.RetryMaxDelay {
 				delay = o.cfg.RetryMaxDelay
 			}
-			o.retryHint = 0
+			bufs.retryHint = 0
 			select {
 			case <-ctx.Done():
 				return
@@ -530,21 +603,21 @@ func (o *Output) flushBatch(ctx context.Context, batch []splunkEntry) { //nolint
 		case actionStop:
 			o.logger.Error("audit/splunk: HEC permanent failure — stopping output",
 				"output", o.name, "hec_code", hecCode, "error", o.redact(err))
-			o.retryHint = 0
+			bufs.retryHint = 0
 			o.stopped.Store(true)
 			o.recordDrop(len(batch))
 			return
 		case actionAckDisabled:
-			// PR 1 never sets AckMode != Off, so this path is unreachable.
-			o.logger.Error("audit/splunk: HEC reports ack disabled but client sent channel header (ack support ships in PR 2)",
+			o.logger.Error("audit/splunk: HEC reports ack disabled but client sent channel header",
 				"output", o.name)
-			o.retryHint = 0
+			bufs.retryHint = 0
 			o.recordDrop(len(batch))
+			o.stopped.Store(true)
 			return
 		default: // actionDrop
 			o.logger.Warn("audit/splunk: HEC rejected batch — dropping",
 				"output", o.name, "hec_code", hecCode, "error", o.redact(err))
-			o.retryHint = 0
+			bufs.retryHint = 0
 			o.recordDrop(len(batch))
 			return
 		}

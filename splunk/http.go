@@ -127,77 +127,60 @@ func drainAndClose(resp *http.Response, drainCap int64) {
 var errRedirectBlocked = errors.New("audit/splunk: redirects are not followed")
 
 // doPost sends a single HTTP POST to the configured HEC URL. Returns
-// (action, statusCode, hecCode, error). On success the action is
-// [actionSuccess]; the response body has already been drained and
-// closed before return.
-func (o *Output) doPost(ctx context.Context, body []byte, compressed bool) (hecAction, int, int, error) {
+// (action, statusCode, hecCode, ackID, error). On success the action
+// is [actionSuccess]; the response body has already been drained and
+// closed before return. ackID is non-nil iff the response contained
+// an `ackId` field (only when AckMode != AckModeOff and HEC has ACK
+// enabled on the channel).
+//
+// The `bufs` argument is the caller's flushBufs — `bufs.retryHint`
+// is populated on actionRetry so the caller's retry loop can honour
+// the server's Retry-After.
+func (o *Output) doPost(ctx context.Context, body []byte, compressed bool, bufs *flushBufs) (hecAction, int, int, *int64, error) { //nolint:gocyclo,cyclop // long-but-flat HTTP wrapper; control flow follows classify() and resp.Header
 	u := o.endpointURL
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(body))
 	if err != nil {
-		return actionDrop, 0, 0, fmt.Errorf("audit/splunk: request: %w", err)
+		return actionDrop, 0, 0, nil, fmt.Errorf("audit/splunk: request: %w", err)
 	}
 	o.applyRequestHeaders(req, compressed)
 
 	resp, err := o.client.Do(req)
 	if err != nil {
 		if errors.Is(err, errRedirectBlocked) {
-			return actionDrop, 0, 0, fmt.Errorf("audit/splunk: redirect blocked: %w", err)
+			return actionDrop, 0, 0, nil, fmt.Errorf("audit/splunk: redirect blocked: %w", err)
 		}
 		if ctx.Err() != nil {
-			return actionRetry, 0, 0, fmt.Errorf("audit/splunk: cancelled: %w", ctx.Err())
+			return actionRetry, 0, 0, nil, fmt.Errorf("audit/splunk: cancelled: %w", ctx.Err())
 		}
-		// TLS handshake errors and cert validation failures are NOT
-		// retryable — retrying against a misconfigured cert chain
-		// will just exhaust the retry budget without progress (AC
-		// 54). The errors.As probe finds a wrapped *tls.RecordHeaderError
-		// or x509 verification failure.
 		if isTLSError(err) {
-			return actionDrop, 0, 0, fmt.Errorf("audit/splunk: TLS error (non-retryable): %w", err)
+			return actionDrop, 0, 0, nil, fmt.Errorf("audit/splunk: TLS error (non-retryable): %w", err)
 		}
-		return actionRetry, 0, 0, fmt.Errorf("audit/splunk: request failed: %w", err)
+		return actionRetry, 0, 0, nil, fmt.Errorf("audit/splunk: request failed: %w", err)
 	}
 
-	// AC 70 — Content-Length fast-fail. Reject before allocating any
-	// buffer when the server advertises a body larger than the cap.
-	// Force `resp.Close = true` so the underlying TCP connection is
-	// NOT returned to the idle pool — we don't trust this peer for
-	// keep-alive after they lied about Content-Length
-	// (security-reviewer HIGH-2).
 	if !checkResponseSize(resp, maxResponseDrainEventOrRaw) {
-		// resp.Close documents intent on the Response object; the
-		// load-bearing mechanism that prevents pool reuse is closing
-		// Body without draining — net/http's persistConn detects the
-		// unread bytes and refuses to return the connection to the
-		// idle pool (security-reviewer HIGH-2 / M1).
 		resp.Close = true
 		_ = resp.Body.Close()
-		return actionDrop, resp.StatusCode, 0, fmt.Errorf(
+		return actionDrop, resp.StatusCode, 0, nil, fmt.Errorf(
 			"audit/splunk: response Content-Length %d exceeds cap %d (non-retryable)",
 			resp.ContentLength, int64(maxResponseDrainEventOrRaw))
 	}
 
-	// resp.Trailer (populated only after the body is fully consumed)
-	// is deliberately not inspected — the drainAndClose path below
-	// uses io.LimitReader + io.Discard which never populates trailers
-	// into anywhere observable, so there's nothing to strip
-	// (security-reviewer MEDIUM-2).
 	defer drainAndClose(resp, maxResponseDrainEventOrRaw)
 
-	// Read the response into a bounded buffer so we can parse the
-	// HEC code envelope. Caps at 64 KiB.
 	bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseDrainEventOrRaw))
-	hecCode, _ := parseHECCode(bodyBytes)
+	hecCode, ackID := parseHECResponse(bodyBytes)
 
 	act := classify(resp.StatusCode, hecCode)
 	if act == actionSuccess {
-		return act, resp.StatusCode, hecCode, nil
+		return act, resp.StatusCode, hecCode, ackID, nil
 	}
 	if act == actionCapacityWarn {
-		return act, resp.StatusCode, hecCode, nil
+		return act, resp.StatusCode, hecCode, ackID, nil
 	}
 	if act == actionRetry {
-		o.retryHint = parseRetryAfter(resp.Header.Get("Retry-After"))
-		return act, resp.StatusCode, hecCode, &hecError{
+		bufs.retryHint = parseRetryAfter(resp.Header.Get("Retry-After"))
+		return act, resp.StatusCode, hecCode, nil, &hecError{
 			HTTPStatus: resp.StatusCode,
 			Code:       hecCode,
 			Action:     act,
@@ -205,12 +188,26 @@ func (o *Output) doPost(ctx context.Context, body []byte, compressed bool) (hecA
 		}
 	}
 	// actionStop / actionDrop / actionAckDisabled — non-retryable.
-	return act, resp.StatusCode, hecCode, &hecError{
+	return act, resp.StatusCode, hecCode, nil, &hecError{
 		HTTPStatus: resp.StatusCode,
 		Code:       hecCode,
 		Action:     act,
 		Text:       sanitizeText(string(bodyBytes)),
 	}
+}
+
+// parseHECResponse decodes a HEC response body and returns its
+// (code, ackID) fields. Both default to zero/nil on parse failure.
+// Bounded by the caller's io.LimitReader.
+func parseHECResponse(body []byte) (int, *int64) {
+	if len(body) == 0 {
+		return 0, nil
+	}
+	var resp hecResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return 0, nil
+	}
+	return resp.Code, resp.AckID
 }
 
 // applyRequestHeaders sets all HTTP headers on the request. Consumer
@@ -228,6 +225,11 @@ func (o *Output) applyRequestHeaders(req *http.Request, compressed bool) {
 	}
 	// Auth — must never be overridable by consumer headers.
 	req.Header.Set("Authorization", "Splunk "+o.cfg.Token)
+	// X-Splunk-Request-Channel — required when ACK is enabled on
+	// the token. Tracker is nil when AckMode == AckModeOff.
+	if o.tracker != nil {
+		req.Header.Set("X-Splunk-Request-Channel", string(o.tracker.channel))
+	}
 }
 
 // parseHECCode decodes a HEC response body and returns its `code`

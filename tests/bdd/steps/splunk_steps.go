@@ -19,6 +19,8 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"regexp"
+	"strconv"
 	"errors"
 	"fmt"
 	"io"
@@ -45,6 +47,7 @@ type splunkStubRequest struct {
 	contentEnc  string
 	userAgent   string
 	contentType string
+	channel     string // X-Splunk-Request-Channel (ACK)
 	body        []byte
 	receivedAt  time.Time
 }
@@ -61,6 +64,13 @@ type splunkStub struct {
 	respBody   []byte
 	failFirstN int32
 	failCount  atomic.Int32
+
+	// ACK support (#55 PR 2).
+	ackEnabled         atomic.Bool
+	ackIDCounter       atomic.Int64
+	ackPollHits        atomic.Int64
+	ackConfirmAll      atomic.Bool // when true, /ack returns true for every queried ID
+	ackResponsesByID   map[int64]bool
 }
 
 // newSplunkStub returns a stub server that responds with HTTP 200 +
@@ -69,8 +79,9 @@ type splunkStub struct {
 // HEC error codes.
 func newSplunkStub() *splunkStub {
 	s := &splunkStub{
-		respStatus: http.StatusOK,
-		respBody:   []byte(`{"text":"Success","code":0}`),
+		respStatus:       http.StatusOK,
+		respBody:         []byte(`{"text":"Success","code":0}`),
+		ackResponsesByID: make(map[int64]bool),
 	}
 	s.server = httptest.NewServer(http.HandlerFunc(s.handle))
 	return s
@@ -96,6 +107,7 @@ func (s *splunkStub) handle(w http.ResponseWriter, r *http.Request) {
 		contentEnc:  r.Header.Get("Content-Encoding"),
 		userAgent:   r.Header.Get("User-Agent"),
 		contentType: r.Header.Get("Content-Type"),
+		channel:     r.Header.Get("X-Splunk-Request-Channel"),
 		body:        finalBody,
 		receivedAt:  time.Now(),
 	})
@@ -109,6 +121,33 @@ func (s *splunkStub) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// /ack endpoint — only relevant when ACK is enabled. Returns
+	// `{"acks":{"<id>":true|false}}` per the IDs in the request.
+	if r.URL.Path == "/services/collector/ack" {
+		s.ackPollHits.Add(1)
+		var req struct {
+			Acks []int64 `json:"acks"`
+		}
+		_ = json.Unmarshal(finalBody, &req)
+		s.mu.Lock()
+		ackMap := make(map[string]bool, len(req.Acks))
+		all := s.ackConfirmAll.Load()
+		for _, id := range req.Acks {
+			if all {
+				ackMap[strconv.FormatInt(id, 10)] = true
+			} else {
+				ackMap[strconv.FormatInt(id, 10)] = s.ackResponsesByID[id]
+			}
+		}
+		s.mu.Unlock()
+		out, _ := json.Marshal(struct {
+			Acks map[string]bool `json:"acks"`
+		}{Acks: ackMap})
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(out)
+		return
+	}
+
 	// Inject `failFirstN` failures before serving the configured
 	// response (retry scenarios).
 	if n := atomic.LoadInt32(&s.failFirstN); n > 0 {
@@ -117,6 +156,14 @@ func (s *splunkStub) handle(w http.ResponseWriter, r *http.Request) {
 			_, _ = w.Write([]byte(`{"text":"Server is busy","code":9}`))
 			return
 		}
+	}
+
+	// ACK-aware /event response: emit `ackId` when ACK is enabled.
+	if s.ackEnabled.Load() && r.URL.Path == "/services/collector/event" {
+		id := s.ackIDCounter.Add(1)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"text":"Success","code":0,"ackId":` + strconv.FormatInt(id, 10) + `}`))
+		return
 	}
 
 	s.mu.Lock()
@@ -598,6 +645,151 @@ func registerSplunkSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		}
 		return nil
 	})
+
+	// --- HEC Indexer Acknowledgement scenarios (#55 PR 2) ---
+
+	ctx.Step(`^an auditor with splunk output and AckMode "([^"]*)"$`, func(mode string) error {
+		state.stub.ackEnabled.Store(mode != "off")
+		return splunkConstruct(state, func(c *splunk.Config) {
+			c.AckMode = parseAckMode(mode)
+			c.AckPollInterval = 50 * time.Millisecond
+			c.AckResendWindow = 30 * time.Second
+		})
+	})
+
+	ctx.Step(`^an auditor with splunk output and AckMode "([^"]*)" and short resend window$`, func(mode string) error {
+		state.stub.ackEnabled.Store(true)
+		return splunkConstruct(state, func(c *splunk.Config) {
+			c.AckMode = parseAckMode(mode)
+			c.AckPollInterval = 50 * time.Millisecond
+			c.AckResendWindow = 200 * time.Millisecond
+		})
+	})
+
+	ctx.Step(`^an auditor with splunk output and AckMode "([^"]*)" and 100 unconfirmed batches$`, func(mode string) error {
+		state.stub.ackEnabled.Store(true)
+		// /ack returns false for everything — buffer fills up.
+		return splunkConstruct(state, func(c *splunk.Config) {
+			c.AckMode = parseAckMode(mode)
+			c.AckPollInterval = 50 * time.Millisecond
+			c.AckResendWindow = 30 * time.Second
+			c.BufferSize = splunk.MinBufferSize
+			c.BatchSize = 1
+		})
+	})
+
+	ctx.Step(`^no request header "([^"]*)" should be present$`, func(name string) error {
+		req, ok := state.stub.lastEventRequest()
+		if !ok {
+			return fmt.Errorf("no event request recorded")
+		}
+		if v := requestHeader(req, name); v != "" {
+			return fmt.Errorf("request header %q unexpectedly present: %q", name, v)
+		}
+		return nil
+	})
+
+	ctx.Step(`^the request header "([^"]*)" should match a UUID v4$`, func(name string) error {
+		req, ok := state.stub.lastEventRequest()
+		if !ok {
+			return fmt.Errorf("no event request recorded")
+		}
+		v := requestHeader(req, name)
+		uuidV4 := regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
+		if !uuidV4.MatchString(v) {
+			return fmt.Errorf("request header %q = %q; not a UUID v4", name, v)
+		}
+		return nil
+	})
+
+	ctx.Step(`^the /ack endpoint should be polled at least once within (\d+) seconds$`, func(secs int) error {
+		deadline := time.Now().Add(time.Duration(secs) * time.Second)
+		for time.Now().Before(deadline) {
+			if state.stub.ackPollHits.Load() >= 1 {
+				return nil
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		return fmt.Errorf("/ack was not polled within %ds", secs)
+	})
+
+	ctx.Step(`^the splunk receiver confirms all outstanding ackIDs$`, func() error {
+		state.stub.ackConfirmAll.Store(true)
+		return nil
+	})
+
+	ctx.Step(`^the in-flight count should drain to 0 within (\d+) seconds$`, func(secs int) error {
+		deadline := time.Now().Add(time.Duration(secs) * time.Second)
+		for time.Now().Before(deadline) {
+			if state.output.AckMetricsSnapshot().Pending == 0 {
+				return nil
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		return fmt.Errorf("in-flight did not drain within %ds (pending=%d)",
+			secs, state.output.AckMetricsSnapshot().Pending)
+	})
+
+	ctx.Step(`^the splunk receiver should record at least 1 timeout within (\d+) seconds$`, func(secs int) error {
+		deadline := time.Now().Add(time.Duration(secs) * time.Second)
+		for time.Now().Before(deadline) {
+			if state.output.AckMetricsSnapshot().TimedOut >= 1 {
+				return nil
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		return fmt.Errorf("no timeouts recorded within %ds", secs)
+	})
+
+	ctx.Step(`^the buffer-full drop metric should be at least 1 within (\d+) seconds$`, func(secs int) error {
+		deadline := time.Now().Add(time.Duration(secs) * time.Second)
+		for time.Now().Before(deadline) {
+			if state.output.AckMetricsSnapshot().BufferFullDrops >= 1 {
+				return nil
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		return fmt.Errorf("no buffer-full drops recorded within %ds", secs)
+	})
+
+	ctx.Step(`^I audit (\d+) more events$`, func(n int) error {
+		for i := 0; i < n; i++ {
+			_ = state.output.Write([]byte(`{"event_type":"x"}`))
+		}
+		return nil
+	})
+}
+
+// parseAckMode maps the BDD string form to the typed enum.
+func parseAckMode(s string) splunk.AckMode {
+	switch s {
+	case "off":
+		return splunk.AckModeOff
+	case "best_effort":
+		return splunk.AckModeBestEffort
+	case "required":
+		return splunk.AckModeRequired
+	default:
+		return splunk.AckModeOff
+	}
+}
+
+// requestHeader returns the value of the named header from a
+// recorded request, matching the existing splunkStubRequest fields.
+func requestHeader(req splunkStubRequest, name string) string {
+	switch name {
+	case "X-Splunk-Request-Channel":
+		return req.channel
+	case "Authorization":
+		return req.auth
+	case "Content-Encoding":
+		return req.contentEnc
+	case "Content-Type":
+		return req.contentType
+	case "User-Agent":
+		return req.userAgent
+	}
+	return ""
 }
 
 // splunkConstruct builds a splunk output pointed at the scenario's

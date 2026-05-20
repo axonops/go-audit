@@ -225,4 +225,18 @@ var (
 	// scheme; `AckMode != AckModeOff`). Carries a remediation hint
 	// in the wrapped message.
 	ErrPR1NotImplemented = errors.New("audit/splunk: feature not implemented in PR 1 (ships in PR 2)")
+
+	// ErrAckDisabled is returned from [New] when the configured
+	// [AckMode] is not [AckModeOff] but the HEC token / channel has
+	// indexer acknowledgement disabled. The library refuses to
+	// proceed because the operator's chosen durability guarantee
+	// (best-effort or required) cannot be honoured.
+	ErrAckDisabled = errors.New("audit/splunk: HEC indexer acknowledgement is disabled on this token/channel")
+
+	// ErrCryptoRandFailed is returned from [New] when `crypto/rand`
+	// fails to produce the 128-bit channel GUID. The library NEVER
+	// falls back to a zero or pseudo-random GUID — a unique channel
+	// is load-bearing for ACK correctness, and a deterministic value
+	// would let an attacker observe / replay ack states.
+	ErrCryptoRandFailed = errors.New("audit/splunk: crypto/rand failed during channel GUID generation")
 )

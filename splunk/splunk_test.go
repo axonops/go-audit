@@ -267,14 +267,6 @@ func TestNew_SplunkCloudScheme_ExpandsAndConstructs(t *testing.T) {
 		"Name() must reflect the expanded splunkcloud URL host")
 }
 
-func TestNew_AckModeRequired_RejectedInPR1(t *testing.T) {
-	cfg := validCfg("https://x.test")
-	cfg.AckMode = splunk.AckModeRequired
-	cfg.DisableStartupVerification = true
-	_, err := splunk.New(cfg, nil)
-	require.Error(t, err)
-	assert.ErrorIs(t, err, splunk.ErrPR1NotImplemented)
-}
 
 func TestNew_HealthCheckFails(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

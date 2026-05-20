@@ -457,9 +457,6 @@ func (c *Config) Validate() error { //nolint:cyclop,gocyclo,funlen,gocognit // l
 	if c.AckMode < AckModeOff || c.AckMode > AckModeRequired {
 		return fmt.Errorf("%w: AckMode value %d out of range (must be AckModeOff, AckModeBestEffort, or AckModeRequired)", ErrConfigInvalid, c.AckMode)
 	}
-	if c.AckMode != AckModeOff {
-		return fmt.Errorf("%w: AckMode=%s ships in PR 2; use AckModeOff in PR 1", ErrPR1NotImplemented, c.AckMode)
-	}
 
 	// --- Numeric bounds ---
 	if c.BatchSize < MinBatchSize || c.BatchSize > MaxBatchSize {
