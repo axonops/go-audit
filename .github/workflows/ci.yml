@@ -590,6 +590,14 @@ jobs:
             target: test-bdd-loki
             infra-up: test-infra-loki-up
             infra-down: test-infra-loki-down
+          - suite: splunk
+            target: test-bdd-splunk
+            # Splunk BDD scenarios drive the output against an
+            # in-process httptest stub, not a real container, so no
+            # infra is required. Real-Splunk round-trip behaviour is
+            # covered by the integration matrix entry above.
+            infra-up: ""
+            infra-down: ""
             timeout: 10
           # Fan-out: needs all containers (syslog + webhook + loki)
           - suite: fanout
