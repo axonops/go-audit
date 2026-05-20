@@ -23,6 +23,7 @@
        test-infra-file-os-up test-infra-file-os-down \
        test-infra-webhook-up test-infra-webhook-down \
        test-infra-loki-up test-infra-loki-down \
+       test-infra-splunk-up test-infra-splunk-down test-bdd-splunk \
        test-infra-openbao-up test-infra-openbao-down \
        test-infra-vault-up test-infra-vault-down \
        test-bdd-secrets \
@@ -324,6 +325,9 @@ test-bdd-webhook:
 
 test-bdd-loki:
 	BDD_TAGS="@loki && ~@fanout" go test -race -v -count=1 -tags=integration ./tests/bdd/...
+
+test-bdd-splunk:
+	BDD_TAGS="@splunk && ~@fanout" go test -race -v -count=1 -tags=integration ./tests/bdd/...
 
 test-bdd-fanout:
 	BDD_TAGS=@fanout go test -race -v -count=1 -tags=integration ./tests/bdd/...
@@ -1247,8 +1251,17 @@ test-infra-loki-up:
 	docker compose -f $(COMPOSE_DIR)/docker-compose.loki.yml up -d --build --wait
 	@echo "Loki infrastructure is ready."
 
+test-infra-splunk-up:
+	docker network create audit-test 2>/dev/null || true
+	docker compose -f $(COMPOSE_DIR)/docker-compose.splunk.yml up -d --build --wait
+	@echo "Splunk infrastructure is ready (HEC token: bdd-test-hec-token)."
+
 test-infra-loki-down:
 	docker compose -f $(COMPOSE_DIR)/docker-compose.loki.yml down -v
+	docker network rm audit-test 2>/dev/null || true
+
+test-infra-splunk-down:
+	docker compose -f $(COMPOSE_DIR)/docker-compose.splunk.yml down -v
 	docker network rm audit-test 2>/dev/null || true
 
 test-infra-openbao-up:

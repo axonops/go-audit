@@ -1,0 +1,47 @@
+## Splunk Enterprise container for BDD + integration tests.
+##
+## The image is ~1.7 GB and takes 2-3 minutes to cold-start on x86
+## Linux/Intel macOS. Apple Silicon must run under emulation (5-10 min).
+## arm64-native images are NOT published by Splunk; the BDD runner
+## skips on `runtime.GOARCH == "arm64"`.
+##
+## CI uses testcontainers-go reuse mode keyed on container name
+## `audit-splunk-bdd` so the same container backs the BDD suite + the
+## integration tests in `splunk/tests/integration/`. Per-test
+## isolation is via unique `index=` query (`audit_test_<uuid>`), not
+## per-container.
+##
+## Token: SPLUNK_HEC_TOKEN is pre-created at startup via the
+## --hec-token flag. Tests use it via the `bdd-test` token name in
+## the docker-splunk Ansible bootstrap.
+
+services:
+  splunk:
+    image: splunk/splunk:10.4-rhel9
+    container_name: audit-splunk-bdd
+    ports:
+      - "127.0.0.1:8000:8000" # Web UI
+      - "127.0.0.1:8088:8088" # HEC
+    environment:
+      - SPLUNK_START_ARGS=--accept-license
+      - SPLUNK_GENERAL_TERMS=--accept-sgt-current-at-splunk-com
+      - SPLUNK_PASSWORD=ChangeMeForRealUse123!
+      - SPLUNK_HEC_TOKEN=bdd-test-hec-token
+    networks:
+      - audit-test
+    healthcheck:
+      # Health endpoint is unauthenticated; -k tolerates the
+      # self-signed default cert. The container reports healthy
+      # once Splunk has finished its Ansible bootstrap and HEC is
+      # listening.
+      test:
+        - "CMD-SHELL"
+        - "curl -sk https://localhost:8088/services/collector/health | grep -q 'HEC is healthy'"
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 180s
+
+networks:
+  audit-test:
+    external: true
