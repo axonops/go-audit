@@ -322,6 +322,60 @@ Feature: YAML Output Configuration
     Then the config load should succeed
     And the loki output formatter should be JSON
 
+  # --- CIM Change formatter (#55 PR 2) ---
+
+  Scenario: outputs may select the cim_change formatter
+    Given a test taxonomy
+    And the following output configuration YAML:
+      """
+      version: 1
+      app_name: AxonOps:Audit
+      host: test
+      outputs:
+        stdout_cim:
+          type: stdout
+          formatter:
+            type: cim_change
+            vendor_product: "AxonOps:Audit"
+      """
+    When I try to create an auditor from the YAML config
+    Then the config load should succeed
+
+  Scenario: cim_change rejects timestamp option
+    Given a test taxonomy
+    And the following output configuration YAML:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        stdout_cim:
+          type: stdout
+          formatter:
+            type: cim_change
+            timestamp: rfc3339nano
+      """
+    When I try to create an auditor from the YAML config
+    Then the config load should fail with an error containing "cim_change does not support timestamp"
+
+  Scenario: cim_change rejects CEF-style vendor/product/version
+    Given a test taxonomy
+    And the following output configuration YAML:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        stdout_cim:
+          type: stdout
+          formatter:
+            type: cim_change
+            vendor: foo
+            product: bar
+      """
+    When I try to create an auditor from the YAML config
+    Then the config load should fail with an error containing "cim_change does not support vendor/product/version"
+
   Scenario: default_formatter key rejected with error
     Given a test taxonomy
     And the following output configuration YAML:

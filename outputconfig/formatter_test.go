@@ -162,6 +162,93 @@ func TestBuildFormatter_UnknownType_Error(t *testing.T) {
 	// text-only: buildFormatter helper, see TestBuildFormatter_JSON_InvalidTimestamp_Error.
 	assert.Contains(t, err.Error(), "unknown type")
 	assert.Contains(t, err.Error(), "protobuf")
+	// Error message must enumerate every valid type so operators
+	// reading the error can self-correct without grepping docs.
+	for _, valid := range []string{"json", "cef", "cim_change"} {
+		assert.Contains(t, err.Error(), valid,
+			"unknown-type error should enumerate %q as a valid alternative", valid)
+	}
+}
+
+// TestCIM_RegisteredInOutputconfigFormatter verifies that
+// `type: cim_change` constructs a [audit.CIMChangeFormatter] via the
+// public buildFormatter path.
+func TestCIM_RegisteredInOutputconfigFormatter(t *testing.T) {
+	v := parseFormatterValue(t, "type: cim_change\nvendor_product: AxonOps:Audit\n")
+	f, err := outputconfig.BuildFormatterForTest(v)
+	require.NoError(t, err)
+	cim, ok := f.(*audit.CIMChangeFormatter)
+	require.True(t, ok, "expected *audit.CIMChangeFormatter, got %T", f)
+	assert.Equal(t, "AxonOps:Audit", cim.VendorProduct)
+}
+
+// TestBuildFormatter_CIMChange_VendorProduct — vendor_product is the
+// only formatter-specific option honoured by the YAML factory.
+func TestBuildFormatter_CIMChange_VendorProduct(t *testing.T) {
+	v := parseFormatterValue(t, "type: cim_change\nvendor_product: \"My:App\"\n")
+	f, err := outputconfig.BuildFormatterForTest(v)
+	require.NoError(t, err)
+	cim, ok := f.(*audit.CIMChangeFormatter)
+	require.True(t, ok)
+	assert.Equal(t, "My:App", cim.VendorProduct)
+}
+
+// TestBuildFormatter_CIMChange_NoOptions — the default vendor_product
+// (empty) means the formatter will fall back to the FrameworkContext
+// appName at runtime. Empty config is valid.
+func TestBuildFormatter_CIMChange_NoOptions(t *testing.T) {
+	v := parseFormatterValue(t, "type: cim_change\n")
+	f, err := outputconfig.BuildFormatterForTest(v)
+	require.NoError(t, err)
+	cim, ok := f.(*audit.CIMChangeFormatter)
+	require.True(t, ok)
+	assert.Empty(t, cim.VendorProduct)
+}
+
+// TestBuildFormatter_CIMChange_TimestampRejected — CIM canonicalises
+// _time to epoch milliseconds; accepting an alternate timestamp
+// option would silently mis-index events at Splunk.
+func TestBuildFormatter_CIMChange_TimestampRejected(t *testing.T) {
+	v := parseFormatterValue(t, "type: cim_change\ntimestamp: rfc3339nano\n")
+	_, err := outputconfig.BuildFormatterForTest(v)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cim_change does not support timestamp")
+}
+
+// TestBuildFormatter_CIMChange_CEFFieldsRejected — vendor/product/
+// version are CEF-only; CIM uses the combined `vendor_product`.
+func TestBuildFormatter_CIMChange_CEFFieldsRejected(t *testing.T) {
+	v := parseFormatterValue(t, "type: cim_change\nvendor: foo\n")
+	_, err := outputconfig.BuildFormatterForTest(v)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cim_change does not support vendor/product/version")
+}
+
+// TestBuildFormatter_CIMChange_OmitEmptyRejected — CIM mapping is
+// explicit; omit_empty is meaningless because the formatter only
+// emits fields it has values for.
+func TestBuildFormatter_CIMChange_OmitEmptyRejected(t *testing.T) {
+	v := parseFormatterValue(t, "type: cim_change\nomit_empty: true\n")
+	_, err := outputconfig.BuildFormatterForTest(v)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cim_change does not support omit_empty")
+}
+
+// TestBuildFormatter_JSON_VendorProductRejected — vendor_product is
+// CIM-only; setting it on JSON is a misconfiguration.
+func TestBuildFormatter_JSON_VendorProductRejected(t *testing.T) {
+	v := parseFormatterValue(t, "type: json\nvendor_product: foo\n")
+	_, err := outputconfig.BuildFormatterForTest(v)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "json does not support vendor_product")
+}
+
+// TestBuildFormatter_CEF_VendorProductRejected — same on CEF.
+func TestBuildFormatter_CEF_VendorProductRejected(t *testing.T) {
+	v := parseFormatterValue(t, "type: cef\nvendor_product: foo\n")
+	_, err := outputconfig.BuildFormatterForTest(v)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cef does not support vendor_product")
 }
 
 func TestBuildFormatter_InvalidStructure_Error(t *testing.T) {
@@ -184,6 +271,7 @@ func TestExtractFormatterType(t *testing.T) {
 		{"scalar json", "json", "json"},
 		{"mapping with type", "type: cef", "cef"},
 		{"mapping with type json", "type: json\ntimestamp: unix_ms", "json"},
+		{"mapping with type cim_change", "type: cim_change\nvendor_product: x", "cim_change"},
 		{"mapping without type", "timestamp: unix_ms", ""},
 		{"empty scalar", `""`, ""},
 	}
