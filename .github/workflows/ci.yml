@@ -485,6 +485,11 @@ jobs:
             flag: integration-loki
             infra-up: test-infra-loki-up
             infra-down: test-infra-loki-down
+          - module: splunk
+            target: test-integration-splunk
+            flag: integration-splunk
+            infra-up: test-infra-splunk-up
+            infra-down: test-infra-splunk-down
           - module: secrets/openbao
             target: test-integration-secrets-openbao
             flag: integration-openbao

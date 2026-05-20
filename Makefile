@@ -1,6 +1,6 @@
 .PHONY: test test-all test-core test-file test-syslog test-webhook test-loki test-splunk test-outputconfig test-audit-gen test-audit-validate test-bdd-report test-junit-report lint-splunk \
        test-secrets test-secrets-env test-secrets-file test-secrets-openbao test-secrets-vault \
-       test-integration test-integration-file test-integration-syslog test-integration-webhook test-integration-loki test-integration-core test-integration-secrets-openbao test-integration-secrets-vault \
+       test-integration test-integration-file test-integration-syslog test-integration-webhook test-integration-loki test-integration-splunk test-integration-core test-integration-secrets-openbao test-integration-secrets-vault \
        test-bdd test-bdd-core test-bdd-outputconfig test-bdd-file test-bdd-file-os test-bdd-syslog test-bdd-webhook test-bdd-loki test-bdd-fanout \
        test-bdd-verify \
        test-examples \
@@ -282,6 +282,9 @@ test-integration-webhook:
 test-integration-loki:
 	cd loki && $(call go_test_with_junit,-race -count=1 -tags=integration,./tests/integration/...)
 
+test-integration-splunk:
+	cd splunk && $(call go_test_with_junit,-race -count=1 -tags=integration,./tests/integration/...)
+
 test-integration-core:
 	$(call go_test_with_junit,-race -count=1 -tags=integration,./tests/integration/...)
 
@@ -293,6 +296,7 @@ test-integration-secrets-vault:
 
 test-integration: test-integration-file test-integration-syslog \
                   test-integration-webhook test-integration-loki \
+                  test-integration-splunk \
                   test-integration-core test-integration-secrets-openbao \
                   test-integration-secrets-vault
 
