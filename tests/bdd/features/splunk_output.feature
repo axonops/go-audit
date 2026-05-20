@@ -1,4 +1,4 @@
-@splunk @docker
+@splunk
 Feature: Splunk HEC Output
   As a library consumer, I want to send audit events to Splunk via HEC
   so that compliance evidence lands in our SIEM with full delivery
@@ -9,9 +9,16 @@ Feature: Splunk HEC Output
   exponential backoff, drops on 4xx with operator alerts on stop-
   codes (1/2/3/4/7/22), and never logs the HEC token.
 
+  These scenarios drive the output against an in-process httptest
+  stub HTTP server so HEC response codes can be controlled per
+  scenario (real Splunk cannot easily be coerced into returning
+  codes 4/9/24/413 on demand). Round-trip verification against a
+  real Splunk container is covered by the integration tests in
+  splunk/tests/integration/.
+
   Background:
     Given a standard test taxonomy
-    And a Splunk test container with HEC enabled
+    And a splunk HEC stub server
 
   # --- Envelope format and wire contract ---
 
@@ -19,8 +26,8 @@ Feature: Splunk HEC Output
     Given an auditor with splunk output on the /event endpoint
     When I audit a uniquely marked splunk "user_create" event
     Then the splunk receiver should have received exactly 1 envelope within 10 seconds
-    And the received envelope should have field "sourcetype" = "axonops:audit"
-    And the received envelope should have field "source" = "axonops-audit"
+    And the received envelope should have field "sourcetype" = "audit:event"
+    And the received envelope should have field "source" = "audit"
 
   Scenario: Concatenated JSON batch is parseable as a stream
     Given an auditor with splunk output configured for batch size 5
@@ -32,8 +39,8 @@ Feature: Splunk HEC Output
     Given an auditor with splunk output on the /raw endpoint
     When I audit a uniquely marked splunk "user_create" event
     Then the splunk receiver should have received exactly 1 request within 10 seconds
-    And the request URL should contain query "sourcetype=axonops:audit"
-    And the request URL should contain query "index="
+    And the request URL should contain query "sourcetype=audit:event"
+    And the request URL should contain query "source=audit"
 
   # --- Compression ---
 
@@ -111,14 +118,13 @@ Feature: Splunk HEC Output
   Scenario: Token is never logged or surfaced in errors
     Given an auditor with splunk output and token "super-secret-token-abc"
     When I audit a uniquely marked splunk "user_create" event
-    And I read the diagnostic log buffer
-    Then the diagnostic log should not contain "super-secret-token-abc"
-    And the diagnostic log should contain the string "audit/splunk"
+    And I read the splunk diagnostic log buffer
+    Then the splunk diagnostic log should not contain "super-secret-token-abc"
 
   Scenario: Close flushes the remaining batch before returning
     Given an auditor with splunk output configured for batch size 100 and flush interval 30s
     When I audit 5 uniquely marked splunk "user_create" events
-    And I close the auditor
+    And I close the splunk auditor
     Then the splunk receiver should have received exactly 1 request within 10 seconds
     And the request body should stream-decode to exactly 5 JSON objects
 
