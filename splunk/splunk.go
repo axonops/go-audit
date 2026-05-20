@@ -374,7 +374,7 @@ func (o *Output) batchLoop(ctx context.Context) {
 // retry loop with backoff and Retry-After. The function is called
 // only by [batchLoop]; the flush-path buffers are not concurrent-
 // safe.
-func (o *Output) flushBatch(ctx context.Context, batch []splunkEntry) { //nolint:gocyclo,cyclop // long-but-flat; control flow follows the action returned by classify()
+func (o *Output) flushBatch(ctx context.Context, batch []splunkEntry) { //nolint:gocyclo,cyclop,gocognit // long-but-flat; control flow follows the action returned by classify()
 	if len(batch) == 0 {
 		return
 	}
@@ -404,6 +404,19 @@ func (o *Output) flushBatch(ctx context.Context, batch []splunkEntry) { //nolint
 		payload = o.envelopeBuf.Bytes()
 	}
 	if len(payload) == 0 {
+		return
+	}
+
+	// Pre-flush payload-size cap. A batch whose assembled payload
+	// (post-envelope, pre-gzip) exceeds MaxBatchBytes is dropped
+	// client-side rather than sent for the server to reject with
+	// HTTP 413 — the network round-trip is wasted, and Splunk's
+	// 1 MiB cap applies to uncompressed payload anyway.
+	if len(payload) > o.cfg.MaxBatchBytes {
+		o.logger.Warn("audit/splunk: batch payload exceeds MaxBatchBytes — dropping",
+			"output", o.name, "batch_size", len(batch),
+			"payload_bytes", len(payload), "limit", o.cfg.MaxBatchBytes)
+		o.recordDrop(len(batch))
 		return
 	}
 

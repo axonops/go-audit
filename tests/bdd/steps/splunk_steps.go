@@ -54,13 +54,13 @@ type splunkStubRequest struct {
 // configurable response behaviour (status, body, optional first-N
 // failures before success — for retry scenarios).
 type splunkStub struct {
-	server         *httptest.Server
-	mu             sync.Mutex
-	requests       []splunkStubRequest
-	respStatus     int
-	respBody       []byte
-	failFirstN     int32
-	failCount      atomic.Int32
+	server     *httptest.Server
+	mu         sync.Mutex
+	requests   []splunkStubRequest
+	respStatus int
+	respBody   []byte
+	failFirstN int32
+	failCount  atomic.Int32
 }
 
 // newSplunkStub returns a stub server that responds with HTTP 200 +

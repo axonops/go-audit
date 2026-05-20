@@ -75,6 +75,29 @@ const (
 	maxRedirectDrain           = 4 << 10  // 4 KiB
 )
 
+// checkResponseSize returns true when the server's advertised
+// Content-Length is within the per-endpoint limit. A
+// `Content-Length: -1` (unknown — typically chunked transfer
+// encoding) returns true: the io.LimitReader at the body-read site
+// is the load-bearing cap for chunked or unknown-length responses.
+// This header check is a fast-fail short-circuit only — it lets
+// the client reject a misbehaving server's oversize advertised
+// body without allocating the buffer the server expects
+// (security-reviewer HIGH-1).
+//
+// Reusable across endpoints with different limits (PR 2's /ack
+// handling uses this with the 1 MiB limit).
+func checkResponseSize(resp *http.Response, limit int64) bool {
+	if resp == nil {
+		return false
+	}
+	if resp.ContentLength < 0 {
+		// Unknown / chunked — LimitReader bounds at the call site.
+		return true
+	}
+	return resp.ContentLength <= limit
+}
+
 // Retry-After ceiling. HEC may send arbitrary values; cap to prevent
 // server-controlled DoS.
 const maxRetryAfter = 5 * time.Minute
@@ -133,6 +156,31 @@ func (o *Output) doPost(ctx context.Context, body []byte, compressed bool) (hecA
 		}
 		return actionRetry, 0, 0, fmt.Errorf("audit/splunk: request failed: %w", err)
 	}
+
+	// AC 70 — Content-Length fast-fail. Reject before allocating any
+	// buffer when the server advertises a body larger than the cap.
+	// Force `resp.Close = true` so the underlying TCP connection is
+	// NOT returned to the idle pool — we don't trust this peer for
+	// keep-alive after they lied about Content-Length
+	// (security-reviewer HIGH-2).
+	if !checkResponseSize(resp, maxResponseDrainEventOrRaw) {
+		// resp.Close documents intent on the Response object; the
+		// load-bearing mechanism that prevents pool reuse is closing
+		// Body without draining — net/http's persistConn detects the
+		// unread bytes and refuses to return the connection to the
+		// idle pool (security-reviewer HIGH-2 / M1).
+		resp.Close = true
+		_ = resp.Body.Close()
+		return actionDrop, resp.StatusCode, 0, fmt.Errorf(
+			"audit/splunk: response Content-Length %d exceeds cap %d (non-retryable)",
+			resp.ContentLength, int64(maxResponseDrainEventOrRaw))
+	}
+
+	// resp.Trailer (populated only after the body is fully consumed)
+	// is deliberately not inspected — the drainAndClose path below
+	// uses io.LimitReader + io.Discard which never populates trailers
+	// into anywhere observable, so there's nothing to strip
+	// (security-reviewer MEDIUM-2).
 	defer drainAndClose(resp, maxResponseDrainEventOrRaw)
 
 	// Read the response into a bounded buffer so we can parse the
