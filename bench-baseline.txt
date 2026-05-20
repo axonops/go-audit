@@ -777,6 +777,58 @@ BenchmarkParseRetryAfter-32                          	304930465	         4.034 n
 BenchmarkParseRetryAfter-32                          	292547478	         4.133 ns/op	       0 B/op	       0 allocs/op
 PASS
 ok  	github.com/axonops/audit/loki	43.518s
+=== bench splunk ===
+goos: linux
+goarch: amd64
+pkg: github.com/axonops/audit/splunk
+cpu: AMD Ryzen 9 7950X 16-Core Processor
+BenchmarkWrapEvent-32                  	  655861	      1776 ns/op	     643 B/op	       9 allocs/op
+BenchmarkWrapEvent-32                  	  639692	      1772 ns/op	     643 B/op	       9 allocs/op
+BenchmarkWrapEvent-32                  	  671698	      1716 ns/op	     643 B/op	       9 allocs/op
+BenchmarkWrapEvent-32                  	  707766	      1715 ns/op	     643 B/op	       9 allocs/op
+BenchmarkWrapEvent-32                  	  713508	      1700 ns/op	     643 B/op	       9 allocs/op
+BenchmarkWrapEvent_IndexedFields-32    	  332386	      3585 ns/op	    2067 B/op	      44 allocs/op
+BenchmarkWrapEvent_IndexedFields-32    	  325605	      3559 ns/op	    2067 B/op	      44 allocs/op
+BenchmarkWrapEvent_IndexedFields-32    	  323259	      3581 ns/op	    2066 B/op	      44 allocs/op
+BenchmarkWrapEvent_IndexedFields-32    	  332907	      3740 ns/op	    2066 B/op	      44 allocs/op
+BenchmarkWrapEvent_IndexedFields-32    	  335936	      3701 ns/op	    2067 B/op	      44 allocs/op
+BenchmarkExtractTime-32                	 1542490	       808.6 ns/op	     272 B/op	       7 allocs/op
+BenchmarkExtractTime-32                	 1522964	       786.9 ns/op	     272 B/op	       7 allocs/op
+BenchmarkExtractTime-32                	 1517641	       781.0 ns/op	     272 B/op	       7 allocs/op
+BenchmarkExtractTime-32                	 1531210	       793.7 ns/op	     272 B/op	       7 allocs/op
+BenchmarkExtractTime-32                	 1527002	       792.9 ns/op	     272 B/op	       7 allocs/op
+BenchmarkBatchConcatenation_N100-32    	    7078	    170289 ns/op	   62716 B/op	     900 allocs/op
+BenchmarkBatchConcatenation_N100-32    	    6955	    168400 ns/op	   62718 B/op	     900 allocs/op
+BenchmarkBatchConcatenation_N100-32    	    6535	    169338 ns/op	   62721 B/op	     900 allocs/op
+BenchmarkBatchConcatenation_N100-32    	    6608	    171788 ns/op	   62717 B/op	     900 allocs/op
+BenchmarkBatchConcatenation_N100-32    	    6430	    166077 ns/op	   62718 B/op	     900 allocs/op
+BenchmarkBatchConcatenation_N500-32    	    1334	    845792 ns/op	  313691 B/op	    4501 allocs/op
+BenchmarkBatchConcatenation_N500-32    	    1468	    835396 ns/op	  313661 B/op	    4501 allocs/op
+BenchmarkBatchConcatenation_N500-32    	    1336	    873457 ns/op	  313684 B/op	    4501 allocs/op
+BenchmarkBatchConcatenation_N500-32    	    1464	    841611 ns/op	  313668 B/op	    4501 allocs/op
+BenchmarkBatchConcatenation_N500-32    	    1419	    841037 ns/op	  313656 B/op	    4501 allocs/op
+BenchmarkGzipCompression_Small-32      	  132096	      9329 ns/op	       6 B/op	       0 allocs/op
+BenchmarkGzipCompression_Small-32      	  129505	      9308 ns/op	       6 B/op	       0 allocs/op
+BenchmarkGzipCompression_Small-32      	  130101	      9302 ns/op	       6 B/op	       0 allocs/op
+BenchmarkGzipCompression_Small-32      	  131014	      9382 ns/op	       6 B/op	       0 allocs/op
+BenchmarkGzipCompression_Small-32      	  127311	      9451 ns/op	       6 B/op	       0 allocs/op
+BenchmarkGzipCompression_Large-32      	   34839	     34879 ns/op	      23 B/op	       0 allocs/op
+BenchmarkGzipCompression_Large-32      	   34878	     34193 ns/op	      23 B/op	       0 allocs/op
+BenchmarkGzipCompression_Large-32      	   34471	     34563 ns/op	      23 B/op	       0 allocs/op
+BenchmarkGzipCompression_Large-32      	   34747	     34426 ns/op	      23 B/op	       0 allocs/op
+BenchmarkGzipCompression_Large-32      	   34203	     34405 ns/op	      23 B/op	       0 allocs/op
+BenchmarkRawEventLine_N100-32          	 2163237	       552.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRawEventLine_N100-32          	 2163030	       552.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRawEventLine_N100-32          	 2170152	       550.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRawEventLine_N100-32          	 2173750	       556.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRawEventLine_N100-32          	 2159998	       564.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkClassify_FullTable-32         	 9954537	       120.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkClassify_FullTable-32         	 9939634	       121.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkClassify_FullTable-32         	 9884829	       121.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkClassify_FullTable-32         	 9862974	       121.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkClassify_FullTable-32         	 9443119	       121.0 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	github.com/axonops/audit/splunk	64.040s
 === bench outputconfig ===
 goos: linux
 goarch: amd64
