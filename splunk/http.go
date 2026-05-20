@@ -213,13 +213,17 @@ func splunkBackoff(attempt int) time.Duration {
 }
 
 // sanitizeText strips control characters from a HEC response text
-// before it appears in a log line. Limits to 256 characters.
+// before it appears in a log line. Iterates BY BYTE (not by rune)
+// so multi-byte UTF-8 sequences have every byte examined — a rune-
+// iteration would skip past the trailing bytes of a multi-byte
+// character, leaving them in the output. Caps the result at 256
+// bytes to bound log line length.
 func sanitizeText(s string) string {
 	if len(s) > 256 {
 		s = s[:256]
 	}
 	b := make([]byte, 0, len(s))
-	for i := range s {
+	for i := 0; i < len(s); i++ {
 		c := s[i]
 		if c == '\t' || c == ' ' || (c >= 0x21 && c <= 0x7e) {
 			b = append(b, c)
