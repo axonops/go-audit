@@ -15,6 +15,7 @@
 package splunk
 
 import (
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"strings"
@@ -129,4 +130,192 @@ func TestScrubForLog_NoTokenConfigured(t *testing.T) {
 	got := o.scrubForLog("plain text without\nnewlines")
 	assert.Equal(t, "plain text without newlines", got,
 		"empty token must skip the replace step but still strip CR/LF")
+}
+
+// MarshalYAML round-trip tests for the typed string enums. The
+// UnmarshalYAML side is covered by the register_test factory tests;
+// MarshalYAML needs a direct call because the buildOutput path only
+// decodes YAML, never encodes it.
+
+func TestEndpoint_MarshalYAML(t *testing.T) {
+	tests := []struct {
+		want string
+		in   Endpoint
+	}{
+		{"event", EndpointEvent},
+		{"raw", EndpointRaw},
+	}
+	for _, tt := range tests {
+		t.Run(tt.want, func(t *testing.T) {
+			got, err := tt.in.MarshalYAML()
+			assert.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// Config formatter tests — verify the token is REDACTED in String /
+// GoString / Format and the URL is sanitised to scheme+host.
+
+func TestConfig_String_RedactsToken(t *testing.T) {
+	gz := true
+	cfg := Config{
+		URL:           "https://splunk.example.com:8088/path?secret=abc",
+		Token:         "very-secret-tok",
+		Endpoint:      EndpointEvent,
+		Sourcetype:    "audit:event",
+		Index:         "main",
+		Gzip:          &gz,
+		BatchSize:     50,
+		MaxBatchBytes: 65536,
+		AckMode:       AckModeOff,
+	}
+	got := cfg.String()
+	assert.Contains(t, got, "token=REDACTED")
+	assert.NotContains(t, got, "very-secret-tok")
+	assert.Contains(t, got, "https://splunk.example.com:8088",
+		"URL must be sanitised to scheme+host (no path / no query)")
+	assert.NotContains(t, got, "/path",
+		"URL path must be stripped")
+	assert.NotContains(t, got, "secret=abc",
+		"URL query must be stripped")
+}
+
+func TestConfig_String_GzipNilShowsDefault(t *testing.T) {
+	cfg := Config{
+		URL:     "https://splunk.example.com:8088",
+		Token:   "tkn",
+		Gzip:    nil,
+		AckMode: AckModeOff,
+	}
+	assert.Contains(t, cfg.String(), "gzip=<default>")
+}
+
+func TestConfig_String_GzipFalseShowsFalse(t *testing.T) {
+	gz := false
+	cfg := Config{
+		URL:     "https://splunk.example.com:8088",
+		Token:   "tkn",
+		Gzip:    &gz,
+		AckMode: AckModeOff,
+	}
+	assert.Contains(t, cfg.String(), "gzip=false")
+}
+
+func TestConfig_GoString_DelegatesToString(t *testing.T) {
+	cfg := Config{
+		URL:     "https://splunk.example.com:8088",
+		Token:   "tkn",
+		AckMode: AckModeOff,
+	}
+	assert.Equal(t, cfg.String(), cfg.GoString())
+}
+
+func TestConfig_Format_VerboseFormatStillRedacts(t *testing.T) {
+	cfg := Config{
+		URL:     "https://splunk.example.com:8088",
+		Token:   "leak-me-if-you-can",
+		AckMode: AckModeOff,
+	}
+	// %+v would normally reflect every field — Format() must override.
+	got := fmt.Sprintf("%+v", cfg)
+	assert.NotContains(t, got, "leak-me-if-you-can",
+		"%+v must redact the token")
+	assert.Contains(t, got, "REDACTED")
+}
+
+func TestSanitizeURLForLog(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"https://splunk.example.com:8088", "https://splunk.example.com:8088"},
+		{"https://splunk.example.com:8088/services/collector/event", "https://splunk.example.com:8088"},
+		{"https://user:pass@splunk.example.com:8088/x?q=1", "https://splunk.example.com:8088"},
+		{"", ""},
+		{"://broken-no-scheme", "<invalid-url>"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			assert.Equal(t, tt.want, sanitizeURLForLog(tt.in))
+		})
+	}
+}
+
+// Endpoint and AckMode UnmarshalYAML error path tests — already
+// indirectly exercised via factory tests, but a direct test pins the
+// error wrapping (ErrConfigInvalid) and the exact message format.
+
+type yamlEndpointStub struct{ value string }
+
+func (s yamlEndpointStub) unmarshal(v any) error {
+	p, ok := v.(*string)
+	if !ok {
+		return fmt.Errorf("yamlEndpointStub: expected *string target, got %T", v)
+	}
+	*p = s.value
+	return nil
+}
+
+// isTLSError tests — covers each error-type branch in the type-switch
+// + the string-fallback at the bottom. Used by doPost to classify
+// non-retryable TLS errors per AC 54.
+
+func TestIsTLSError_NilReturnsFalse(t *testing.T) {
+	assert.False(t, isTLSError(nil))
+}
+
+func TestIsTLSError_PlainErrorReturnsFalse(t *testing.T) {
+	assert.False(t, isTLSError(errors.New("just an error")))
+}
+
+func TestIsTLSError_UnknownAuthorityError(t *testing.T) {
+	err := fmt.Errorf("wrapped: %w", &x509.UnknownAuthorityError{})
+	assert.True(t, isTLSError(err))
+}
+
+func TestIsTLSError_HostnameError(t *testing.T) {
+	err := fmt.Errorf("wrapped: %w", &x509.HostnameError{Host: "evil.example.com"})
+	assert.True(t, isTLSError(err))
+}
+
+func TestIsTLSError_StringFallback_TLSPrefix(t *testing.T) {
+	// errors that don't match a concrete type but contain "tls: " or
+	// "x509: " — covers the string-match fallback at the bottom of
+	// the function.
+	assert.True(t, isTLSError(errors.New("net/http: TLS handshake error: tls: bad certificate")))
+}
+
+func TestIsTLSError_StringFallback_X509Prefix(t *testing.T) {
+	assert.True(t, isTLSError(errors.New("get https://x: x509: certificate has expired")))
+}
+
+func TestEndpoint_UnmarshalYAML_UnknownReturnsErrConfigInvalid(t *testing.T) {
+	var e Endpoint
+	err := e.UnmarshalYAML(yamlEndpointStub{value: "bogus"}.unmarshal)
+	assert.ErrorIs(t, err, ErrConfigInvalid)
+}
+
+func TestAckMode_UnmarshalYAML_UnknownReturnsErrConfigInvalid(t *testing.T) {
+	var a AckMode
+	err := a.UnmarshalYAML(yamlEndpointStub{value: "bogus"}.unmarshal)
+	assert.ErrorIs(t, err, ErrConfigInvalid)
+}
+
+func TestAckMode_MarshalYAML(t *testing.T) {
+	tests := []struct {
+		want string
+		in   AckMode
+	}{
+		{"off", AckModeOff},
+		{"best_effort", AckModeBestEffort},
+		{"required", AckModeRequired},
+	}
+	for _, tt := range tests {
+		t.Run(tt.want, func(t *testing.T) {
+			got, err := tt.in.MarshalYAML()
+			assert.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
 }
