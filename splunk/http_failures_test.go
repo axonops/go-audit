@@ -555,6 +555,73 @@ func TestOutput_LastDeliveryAge_Lifecycle(t *testing.T) {
 	assert.Greater(t, out.LastDeliveryAge(), a1)
 }
 
+// TestOutput_ExtractTime_FallbackEmitsWarn (AC 23) — events whose
+// `timestamp` field is unparseable fall back to `now` for the HEC
+// envelope's `time` field. The first batch containing fallbacks
+// emits a rate-limited slog.Warn via the diagnostic logger; the
+// warn does NOT include the event payload (PII risk).
+func TestOutput_ExtractTime_FallbackEmitsWarn(t *testing.T) {
+	srv, _ := newStub(t)
+	logBuf := &splunkTestLogBuf{}
+	cfg := validCfg(srv.URL)
+	out, err := splunk.New(cfg, nil, splunk.WithDiagnosticLogger(testLogger(logBuf)))
+	require.NoError(t, err)
+
+	// timestamp: "not-a-date" — extractTime can't parse it, falls back.
+	require.NoError(t, out.Write([]byte(`{"event_type":"x","timestamp":"not-a-date"}`)))
+	require.NoError(t, out.Close())
+
+	assert.Contains(t, logBuf.String(), "timestamp extraction failed",
+		"AC 23: extractTime fallback must emit a diagnostic warn")
+	assert.Contains(t, logBuf.String(), "count_in_batch=1",
+		"warn must include the per-batch fallback count")
+	assert.NotContains(t, logBuf.String(), "not-a-date",
+		"warn must NOT include the event payload (PII risk)")
+}
+
+// TestOutput_ExtractTime_FallbackCount_MultipleEventsInOneBatch (AC 23)
+// — when N events in a single batch all fall back, the warn must
+// report count_in_batch=N (not a hardcoded 1).
+func TestOutput_ExtractTime_FallbackCount_MultipleEventsInOneBatch(t *testing.T) {
+	srv, _ := newStub(t)
+	logBuf := &splunkTestLogBuf{}
+	cfg := validCfg(srv.URL)
+	cfg.BatchSize = 100                 // force a single batch
+	cfg.FlushInterval = 5 * time.Minute // only Close() triggers the flush (5m is the cfg max)
+	out, err := splunk.New(cfg, nil, splunk.WithDiagnosticLogger(testLogger(logBuf)))
+	require.NoError(t, err)
+
+	for i := 0; i < 3; i++ {
+		require.NoError(t, out.Write([]byte(`{"event_type":"x","timestamp":"not-a-date"}`)))
+	}
+	require.NoError(t, out.Close())
+
+	assert.Contains(t, logBuf.String(), "count_in_batch=3",
+		"warn must report the actual per-batch fallback count")
+	assert.Contains(t, logBuf.String(), "batch_size=3")
+}
+
+// TestOutput_ExtractTime_Fallback_RateLimitedWithinInterval (AC 23) —
+// a second batch with fallbacks within dropWarnInterval (10s) is
+// silenced by the dropLimiter; only the first batch's warn lands.
+func TestOutput_ExtractTime_Fallback_RateLimitedWithinInterval(t *testing.T) {
+	srv, _ := newStub(t)
+	logBuf := &splunkTestLogBuf{}
+	cfg := validCfg(srv.URL)
+	cfg.BatchSize = 1 // force every Write to flush as its own batch
+	out, err := splunk.New(cfg, nil, splunk.WithDiagnosticLogger(testLogger(logBuf)))
+	require.NoError(t, err)
+
+	require.NoError(t, out.Write([]byte(`{"event_type":"a","timestamp":"not-a-date"}`)))
+	require.NoError(t, out.Write([]byte(`{"event_type":"b","timestamp":"also-bad"}`)))
+	require.NoError(t, out.Close())
+
+	// Exactly one warn — the second batch's fallback is rate-limited.
+	warns := strings.Count(logBuf.String(), "timestamp extraction failed")
+	assert.Equal(t, 1, warns,
+		"dropLimiter must silence the second fallback within dropWarnInterval; got %d warns", warns)
+}
+
 // countingListener wraps a net.Listener and counts Accept calls
 // (one Accept == one new TCP connection — keep-alive reuse does
 // NOT count again).

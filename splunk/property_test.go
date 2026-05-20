@@ -43,7 +43,7 @@ func TestProperty_EnvelopeWrap_ArbitraryJSON_NeverPanics(t *testing.T) {
 		// Must not panic. The error is acceptable (we don't assert
 		// on it because some pathological inputs may legitimately
 		// fail).
-		_ = wrapEvent(&buf, cfg, eventJSON, time.Now())
+		_, _ = wrapEvent(&buf, cfg, eventJSON, time.Now())
 	})
 }
 
@@ -61,7 +61,7 @@ func TestProperty_EnvelopeRoundTrip(t *testing.T) {
 		}
 		cfg := &Config{Sourcetype: "axonops:audit", Source: "audit"}
 		var buf bytes.Buffer
-		if err := wrapEvent(&buf, cfg, eventJSON, time.Now()); err != nil {
+		if _, err := wrapEvent(&buf, cfg, eventJSON, time.Now()); err != nil {
 			return // wrap legitimately failed; not a property violation
 		}
 		var env struct {
@@ -102,7 +102,7 @@ func TestProperty_BatchConcatenation_Parseable(t *testing.T) {
 			if err != nil {
 				t.Fatalf("marshal: %v", err)
 			}
-			if err := wrapEvent(&buf, cfg, eventJSON, time.Now()); err != nil {
+			if _, err := wrapEvent(&buf, cfg, eventJSON, time.Now()); err != nil {
 				return
 			}
 		}

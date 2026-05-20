@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"net/url"
 	"runtime/debug"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -110,9 +111,10 @@ type Output struct { //nolint:govet // fieldalignment: readability preferred
 	retryHint   time.Duration
 
 	// Drop limiters and metrics.
-	dropsOversized  *dropLimiter
-	dropsBufferFull *dropLimiter
-	maxEventBytes   int
+	dropsOversized     *dropLimiter
+	dropsBufferFull    *dropLimiter
+	fallbackTimestamps *dropLimiter // rate-limited "timestamp extraction fell back to ingest time" warning
+	maxEventBytes      int
 
 	// Most recent successful delivery wall-clock time (powers
 	// [audit.DeliveryReporter.LastDeliveryAge]).
@@ -193,20 +195,21 @@ func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	out := &Output{
-		cfg:             cfg,
-		metrics:         metrics,
-		outputMetrics:   o.outputMetrics,
-		logger:          o.logger,
-		client:          client,
-		endpointURL:     endpointURL,
-		name:            name,
-		ch:              make(chan splunkEntry, cfg.BufferSize),
-		done:            make(chan struct{}),
-		closeCh:         make(chan struct{}),
-		cancel:          cancel,
-		dropsOversized:  newDropLimiter(dropWarnInterval),
-		dropsBufferFull: newDropLimiter(dropWarnInterval),
-		maxEventBytes:   cfg.MaxEventBytes,
+		cfg:                cfg,
+		metrics:            metrics,
+		outputMetrics:      o.outputMetrics,
+		logger:             o.logger,
+		client:             client,
+		endpointURL:        endpointURL,
+		name:               name,
+		ch:                 make(chan splunkEntry, cfg.BufferSize),
+		done:               make(chan struct{}),
+		closeCh:            make(chan struct{}),
+		cancel:             cancel,
+		dropsOversized:     newDropLimiter(dropWarnInterval),
+		dropsBufferFull:    newDropLimiter(dropWarnInterval),
+		fallbackTimestamps: newDropLimiter(dropWarnInterval),
+		maxEventBytes:      cfg.MaxEventBytes,
 	}
 	out.gzWriter = gzip.NewWriter(&out.compressBuf)
 
@@ -315,8 +318,38 @@ func (o *Output) recordBufferFull() {
 // channel into a buffer, then flushes when any of (1) BatchSize
 // events reached, (2) MaxBatchBytes accumulated, (3) FlushInterval
 // elapsed, or (4) Close was signalled.
-func (o *Output) batchLoop(ctx context.Context) {
+func (o *Output) batchLoop(ctx context.Context) { //nolint:gocognit,gocyclo,cyclop // long-but-flat producer goroutine; control flow follows the channel state machine
 	defer close(o.done)
+
+	// Defence-in-depth safety net. A panic in the batch goroutine is
+	// always a bug — but we'd rather log + stop than crash the host
+	// process.
+	//
+	// Stop-on-panic policy: o.stopped.Store(true) permanently disables
+	// this Output for the process lifetime; subsequent Write calls hit
+	// [ErrOutputClosed]. The alternative (auto-restart with bounded
+	// budget) would mask a deterministic-input panic and create a
+	// crash loop. Failing closed surfaces the bug to operators via
+	// the diagnostic logger and audit-write callers; a process
+	// supervisor / liveness probe restarts cleanly.
+	//
+	// Defer ordering: registered AFTER `defer close(o.done)` above,
+	// so on panic LIFO runs recover() first, then close(o.done) —
+	// any in-flight Close() unblocks on <-o.done immediately. The
+	// scrubForLog call strips CR/LF (log-injection defence) and the
+	// token literal (defence-in-depth) from the panic value; the
+	// stack is also scrubbed because runtime.Stack output is multi-
+	// line and would otherwise let a forged panic value emit a fake
+	// log record by exploiting slog's text handler.
+	defer func() {
+		if r := recover(); r != nil {
+			o.logger.Error("audit/splunk: batch goroutine panicked — output stopped",
+				"output", o.name,
+				"panic", o.scrubForLog(fmt.Sprintf("%v", r)),
+				"stack", o.scrubForLog(string(debug.Stack())))
+			o.stopped.Store(true)
+		}
+	}()
 
 	ticker := time.NewTicker(o.cfg.FlushInterval)
 	defer ticker.Stop()
@@ -393,13 +426,26 @@ func (o *Output) flushBatch(ctx context.Context, batch []splunkEntry) { //nolint
 	} else {
 		o.envelopeBuf.Reset()
 		now := time.Now()
+		var nFallback int
 		for _, e := range batch {
-			if err := wrapEvent(&o.envelopeBuf, o.cfg, e.data, now); err != nil {
+			fellBack, err := wrapEvent(&o.envelopeBuf, o.cfg, e.data, now)
+			if err != nil {
 				o.logger.Warn("audit/splunk: envelope wrap failed — dropping event",
 					"output", o.name, "error", err)
 				o.outputMetrics.RecordDrop()
 				continue
 			}
+			if fellBack {
+				nFallback++
+			}
+		}
+		// AC 23 — surface extractTime fallbacks via a rate-limited warn
+		// so a sustained stream of mis-typed timestamps is visible to
+		// operators without spamming the log. The marker omits the event
+		// payload (PII risk); count + batch_size is the actionable signal.
+		if nFallback > 0 && o.fallbackTimestamps.allow() {
+			o.logger.Warn("audit/splunk: timestamp extraction failed — using ingest time",
+				"output", o.name, "count_in_batch", nFallback, "batch_size", len(batch))
 		}
 		payload = o.envelopeBuf.Bytes()
 	}
@@ -458,7 +504,7 @@ func (o *Output) flushBatch(ctx context.Context, batch []splunkEntry) { //nolint
 		case actionRetry:
 			if attempt == maxRetries {
 				o.logger.Warn("audit/splunk: retries exhausted — dropping batch",
-					"output", o.name, "batch_size", len(batch), "error", redact(err))
+					"output", o.name, "batch_size", len(batch), "error", o.redact(err))
 				o.retryHint = 0
 				o.recordDrop(len(batch))
 				return
@@ -483,7 +529,7 @@ func (o *Output) flushBatch(ctx context.Context, batch []splunkEntry) { //nolint
 			continue
 		case actionStop:
 			o.logger.Error("audit/splunk: HEC permanent failure — stopping output",
-				"output", o.name, "hec_code", hecCode, "error", redact(err))
+				"output", o.name, "hec_code", hecCode, "error", o.redact(err))
 			o.retryHint = 0
 			o.stopped.Store(true)
 			o.recordDrop(len(batch))
@@ -497,7 +543,7 @@ func (o *Output) flushBatch(ctx context.Context, batch []splunkEntry) { //nolint
 			return
 		default: // actionDrop
 			o.logger.Warn("audit/splunk: HEC rejected batch — dropping",
-				"output", o.name, "hec_code", hecCode, "error", redact(err))
+				"output", o.name, "hec_code", hecCode, "error", o.redact(err))
 			o.retryHint = 0
 			o.recordDrop(len(batch))
 			return
@@ -526,19 +572,47 @@ func (o *Output) recordDrop(count int) {
 	}
 }
 
-// redact returns the error message with the token redacted. Defensive
-// against any future code path that wraps the URL/token into an error.
-// Currently the existing error sites use `sanitizeURLForLog` and
-// never include the token; this is belt-and-braces.
-func redact(err error) string {
+// redact returns the error message with the token literal stripped.
+// Defence-in-depth against any code path (current or future) that
+// wraps the token into an error string. Existing error sites use
+// `sanitizeURLForLog` and never include the token; this method
+// guarantees the property regardless.
+//
+// For *hecError values we return the canonical .Error() without
+// wrapped chains (suppresses transport-level errors that may carry
+// the request URL with the token in the Authorization header on
+// some Go versions).
+func (o *Output) redact(err error) string {
 	if err == nil {
 		return ""
 	}
-	// Suppress potentially-sensitive wrapped error chains by formatting
-	// only the top-level error message.
+	var msg string
 	var herr *hecError
 	if errors.As(err, &herr) {
-		return herr.Error()
+		msg = herr.Error()
+	} else {
+		msg = err.Error()
 	}
-	return err.Error()
+	if o.cfg != nil && o.cfg.Token != "" {
+		msg = strings.ReplaceAll(msg, o.cfg.Token, "[REDACTED]")
+	}
+	return msg
+}
+
+// scrubForLog sanitises a string before it lands in a slog line.
+// Strips CR/LF (log-injection defence — a panic value containing a
+// forged log record would otherwise emit literal newlines through
+// slog's text handler) and caps the result at 512 bytes to bound
+// log-line growth. Also strips the token literal as defence-in-depth.
+func (o *Output) scrubForLog(s string) string {
+	if o.cfg != nil && o.cfg.Token != "" {
+		s = strings.ReplaceAll(s, o.cfg.Token, "[REDACTED]")
+	}
+	s = strings.ReplaceAll(s, "\r", " ")
+	s = strings.ReplaceAll(s, "\n", " ")
+	const maxLen = 512
+	if len(s) > maxLen {
+		s = s[:maxLen]
+	}
+	return s
 }

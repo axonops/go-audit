@@ -42,13 +42,17 @@ import (
 // The function ASSUMES the input is valid JSON — the core formatter
 // guarantees this contract, so we do NOT pay for a `json.Valid` scan
 // here on the hot path (perf-reviewer HIGH-1).
-func wrapEvent(dst *bytes.Buffer, cfg *Config, eventJSON []byte, now time.Time) error {
+//
+// Returns (fellBack, err): `fellBack` is true when extractTime could
+// not parse the event's `timestamp` field and used `now` instead.
+// Callers aggregate this across a batch and emit a rate-limited
+// diagnostic warning via the dropLimiter pattern (AC 23).
+func wrapEvent(dst *bytes.Buffer, cfg *Config, eventJSON []byte, now time.Time) (bool, error) {
 	// Probe the event once to extract timestamp + optionally indexed
 	// fields. We allocate the probe struct only when IndexedFields is
 	// configured; otherwise a narrow `Timestamp any` decode is enough
 	// (perf-reviewer HIGH-3).
 	timeVal, fellBackToNow := extractTimeWithFallbackFlag(eventJSON, now)
-	_ = fellBackToNow // surfaced via the flushBatch logger path (AC 23)
 	var fields map[string]string
 	if len(cfg.IndexedFields) > 0 {
 		fields = extractIndexedFields(eventJSON, cfg.IndexedFields)
@@ -79,7 +83,7 @@ func wrapEvent(dst *bytes.Buffer, cfg *Config, eventJSON []byte, now time.Time) 
 	}
 	b, err := json.Marshal(envelope)
 	if err != nil {
-		return fmt.Errorf("audit/splunk: encode envelope: %w", err)
+		return false, fmt.Errorf("audit/splunk: encode envelope: %w", err)
 	}
 	dst.Write(b)
 	// One newline between concatenated envelopes — HEC tolerates
@@ -87,7 +91,7 @@ func wrapEvent(dst *bytes.Buffer, cfg *Config, eventJSON []byte, now time.Time) 
 	// the newline is purely diagnostic (matches a `\n`-separated
 	// concatenated JSON form readable with `jq -c .`).
 	dst.WriteByte('\n')
-	return nil
+	return fellBackToNow, nil
 }
 
 // extractTime decodes the event JSON enough to find a top-level

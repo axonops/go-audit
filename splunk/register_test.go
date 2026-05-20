@@ -187,7 +187,7 @@ verify_on_startup: false
 	factory := audit.LookupOutputFactory("splunk")
 	out, err := factory("insecure", rawYAML, audit.FrameworkContext{})
 	require.NoError(t, err)
-	defer func() { _ = out.Close() }()
+	require.NoError(t, out.Close())
 }
 
 // TestFactory_TLSPolicyBlock — the nested `tls_policy:` block lands
@@ -207,7 +207,7 @@ tls_policy:
 	factory := audit.LookupOutputFactory("splunk")
 	out, err := factory("tlspolicy", rawYAML, audit.FrameworkContext{})
 	require.NoError(t, err)
-	defer func() { _ = out.Close() }()
+	require.NoError(t, out.Close())
 }
 
 // TestFactory_VerifyOnStartupExplicitTrue — the positive YAML
@@ -231,7 +231,7 @@ verify_on_startup: true
 	factory := audit.LookupOutputFactory("splunk")
 	out, err := factory("verify_true", rawYAML, audit.FrameworkContext{})
 	require.NoError(t, err)
-	defer func() { _ = out.Close() }()
+	require.NoError(t, out.Close())
 }
 
 // TestNewFactory_WithMetricsFactory — NewFactory plumbs the supplied
@@ -255,7 +255,7 @@ verify_on_startup: false
 `)
 	out, err := factory("with_factory", rawYAML, audit.FrameworkContext{})
 	require.NoError(t, err)
-	defer func() { _ = out.Close() }()
+	require.NoError(t, out.Close())
 }
 
 // TestNewFactory_NilMetricsFactory — passing nil to NewFactory means
@@ -275,7 +275,7 @@ verify_on_startup: false
 `)
 	out, err := factory("no_factory", rawYAML, audit.FrameworkContext{})
 	require.NoError(t, err)
-	defer func() { _ = out.Close() }()
+	require.NoError(t, out.Close())
 }
 
 // TestFactory_ZeroIntFieldSentinel — intPtrOrDefault returns -1 for

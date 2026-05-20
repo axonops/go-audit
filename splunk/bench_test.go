@@ -43,7 +43,7 @@ func BenchmarkWrapEvent(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		buf.Reset()
-		_ = wrapEvent(&buf, cfg, benchEvent, now)
+		_, _ = wrapEvent(&buf, cfg, benchEvent, now)
 	}
 }
 
@@ -64,7 +64,7 @@ func BenchmarkWrapEvent_IndexedFields(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		buf.Reset()
-		_ = wrapEvent(&buf, cfg, benchEvent, now)
+		_, _ = wrapEvent(&buf, cfg, benchEvent, now)
 	}
 }
 
@@ -98,7 +98,7 @@ func BenchmarkBatchConcatenation_N100(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		buf.Reset()
 		for j := 0; j < 100; j++ {
-			_ = wrapEvent(&buf, cfg, benchEvent, now)
+			_, _ = wrapEvent(&buf, cfg, benchEvent, now)
 		}
 	}
 }
@@ -118,7 +118,7 @@ func BenchmarkBatchConcatenation_N500(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		buf.Reset()
 		for j := 0; j < 500; j++ {
-			_ = wrapEvent(&buf, cfg, benchEvent, now)
+			_, _ = wrapEvent(&buf, cfg, benchEvent, now)
 		}
 	}
 }
@@ -129,7 +129,7 @@ func BenchmarkBatchConcatenation_N500(b *testing.B) {
 func BenchmarkGzipCompression_Small(b *testing.B) {
 	cfg := &Config{Sourcetype: "axonops:audit"}
 	var raw bytes.Buffer
-	_ = wrapEvent(&raw, cfg, benchEvent, time.Now())
+	_, _ = wrapEvent(&raw, cfg, benchEvent, time.Now())
 	payload := raw.Bytes()
 
 	var dst bytes.Buffer
@@ -150,7 +150,7 @@ func BenchmarkGzipCompression_Large(b *testing.B) {
 	cfg := &Config{Sourcetype: "axonops:audit"}
 	var raw bytes.Buffer
 	for j := 0; j < 100; j++ {
-		_ = wrapEvent(&raw, cfg, benchEvent, time.Now())
+		_, _ = wrapEvent(&raw, cfg, benchEvent, time.Now())
 	}
 	payload := raw.Bytes()
 

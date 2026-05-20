@@ -115,7 +115,8 @@ func TestWrapEvent_ProducesValidEnvelope(t *testing.T) {
 	}
 	event := []byte(`{"timestamp":"2026-05-20T10:00:00.123Z","event_type":"user_login","actor_id":"alice"}`)
 	var buf bytes.Buffer
-	require.NoError(t, wrapEvent(&buf, cfg, event, time.Now()))
+	_, err := wrapEvent(&buf, cfg, event, time.Now())
+	require.NoError(t, err)
 
 	// Decode as a single JSON object.
 	var env struct {
@@ -144,7 +145,8 @@ func TestWrapEvent_IndexedFieldsPopulated(t *testing.T) {
 	}
 	event := []byte(`{"actor_id":"alice","outcome":"success","timestamp":"2026-05-20T10:00:00Z"}`)
 	var buf bytes.Buffer
-	require.NoError(t, wrapEvent(&buf, cfg, event, time.Now()))
+	_, err := wrapEvent(&buf, cfg, event, time.Now())
+	require.NoError(t, err)
 
 	var env struct {
 		Fields map[string]string `json:"fields"`
@@ -161,7 +163,8 @@ func TestWrapEvent_ControlCharsInFieldValues_Escaped(t *testing.T) {
 	// (Splunk parsing a forged "FAKE" key in the envelope).
 	event := []byte(`{"actor_id":"alice\r\nFAKE:value","timestamp":"2026-05-20T10:00:00Z"}`)
 	var buf bytes.Buffer
-	require.NoError(t, wrapEvent(&buf, cfg, event, time.Now()))
+	_, err := wrapEvent(&buf, cfg, event, time.Now())
+	require.NoError(t, err)
 
 	output := buf.String()
 	// Raw CR/LF must not appear in the output bytes — encoding/json
@@ -185,7 +188,8 @@ func TestWrapEvent_UnicodePreserved(t *testing.T) {
 	cfg := &Config{Sourcetype: "axonops:audit"}
 	event := []byte(`{"name":"日本語 emoji 🎉","arabic":"مرحبا"}`)
 	var buf bytes.Buffer
-	require.NoError(t, wrapEvent(&buf, cfg, event, time.Now()))
+	_, err := wrapEvent(&buf, cfg, event, time.Now())
+	require.NoError(t, err)
 
 	var env struct {
 		Event json.RawMessage `json:"event"`
