@@ -48,6 +48,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- New `github.com/axonops/audit/splunk` sub-module providing a
+  Splunk HTTP Event Collector (HEC) output. PR 1 of three for #55
+  ships the scaffolding: `Splunk.Output` posts to
+  `/services/collector/event` (default JSON envelope) or
+  `/services/collector/raw` (NDJSON, query-string metadata); the
+  full 28-entry HEC error-code table is classified into success /
+  retry / drop / stop / capacity-warning actions; gzip is on by
+  default; the HTTP transport is HTTP/1.1-only with zero
+  redirects, response bodies bounded with `io.LimitReader`, and a
+  mandatory `User-Agent` header; SSRF protection re-uses the
+  exported `audit.NewSSRFDialControl` from the core module; TLS
+  policy is wired via `audit.TLSPolicy` (TLS 1.2 floor with mTLS
+  via cert files); tokens are validated for CR/LF/NUL and reject
+  the `Splunk `/`Bearer ` prefix foot-gun; `Config.String` /
+  `GoString` / `Format` redact the token across every `fmt` verb.
+  The startup health probe (`/services/collector/health`)
+  defends against non-HEC HTTP 200 responses by requiring HEC
+  code 0 or 17. Indexer acknowledgement (PR 2), the
+  `splunkcloud://` URL scheme (PR 2), the CIM-aligned formatter
+  (PR 2), and the Splunk Add-on generator (PR 3) are all rejected
+  at config time with a descriptive `ErrPR1NotImplemented`
+  pointer.
 - New optional output interface
   [`audit.ContentTypeSetter`](https://pkg.go.dev/github.com/axonops/audit#ContentTypeSetter).
   The auditor invokes `SetContentType` on every output that

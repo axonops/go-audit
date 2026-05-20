@@ -1,0 +1,231 @@
+// Copyright 2026 AxonOps Limited.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package splunk
+
+import (
+	"bytes"
+	"context"
+	"crypto/rand"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"math"
+	"net/http"
+	"strconv"
+	"time"
+)
+
+// Response-body drain limits. /ack carries the largest expected body
+// (an ackID map can contain hundreds of entries); /health and /event
+// and /raw return small {"text":"...","code":N} envelopes.
+const (
+	maxResponseDrainEventOrRaw = 64 << 10 // 64 KiB
+	maxResponseDrainHealth     = 64 << 10 // 64 KiB
+	maxResponseDrainAck        = 1 << 20  // 1 MiB
+	maxRedirectDrain           = 4 << 10  // 4 KiB
+)
+
+// Retry-After ceiling. HEC may send arbitrary values; cap to prevent
+// server-controlled DoS.
+const maxRetryAfter = 5 * time.Minute
+
+// Backoff base + cap. 500ms base, 30s cap matches the issue body's
+// `RetryBaseDelay`/`RetryMaxDelay` defaults.
+const (
+	backoffBase = 500 * time.Millisecond
+	backoffMax  = 30 * time.Second
+)
+
+// drainAndClose drains up to drainCap bytes of resp.Body and then
+// closes it. Tolerates a nil resp as defence-in-depth.
+func drainAndClose(resp *http.Response, drainCap int64) {
+	if resp == nil {
+		return
+	}
+	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
+		drainCap = maxRedirectDrain
+	}
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, drainCap))
+	_ = resp.Body.Close()
+}
+
+// errRedirectBlocked is returned by the HTTP client's CheckRedirect
+// to reject all redirects, preventing SSRF via open redirects.
+var errRedirectBlocked = errors.New("audit/splunk: redirects are not followed")
+
+// doPost sends a single HTTP POST to the configured HEC URL. Returns
+// (action, statusCode, hecCode, error). On success the action is
+// [actionSuccess]; the response body has already been drained and
+// closed before return.
+func (o *Output) doPost(ctx context.Context, body []byte, compressed bool) (hecAction, int, int, error) {
+	u := o.endpointURL
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(body))
+	if err != nil {
+		return actionDrop, 0, 0, fmt.Errorf("audit/splunk: request: %w", err)
+	}
+	o.applyRequestHeaders(req, compressed)
+
+	resp, err := o.client.Do(req)
+	if err != nil {
+		if errors.Is(err, errRedirectBlocked) {
+			return actionDrop, 0, 0, fmt.Errorf("audit/splunk: redirect blocked: %w", err)
+		}
+		if ctx.Err() != nil {
+			return actionRetry, 0, 0, fmt.Errorf("audit/splunk: cancelled: %w", ctx.Err())
+		}
+		return actionRetry, 0, 0, fmt.Errorf("audit/splunk: request failed: %w", err)
+	}
+	defer drainAndClose(resp, maxResponseDrainEventOrRaw)
+
+	// Read the response into a bounded buffer so we can parse the
+	// HEC code envelope. Caps at 64 KiB.
+	bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseDrainEventOrRaw))
+	hecCode, _ := parseHECCode(bodyBytes)
+
+	act := classify(resp.StatusCode, hecCode)
+	if act == actionSuccess {
+		return act, resp.StatusCode, hecCode, nil
+	}
+	if act == actionCapacityWarn {
+		return act, resp.StatusCode, hecCode, nil
+	}
+	if act == actionRetry {
+		o.retryHint = parseRetryAfter(resp.Header.Get("Retry-After"))
+		return act, resp.StatusCode, hecCode, &hecError{
+			HTTPStatus: resp.StatusCode,
+			Code:       hecCode,
+			Action:     act,
+			Text:       sanitizeText(string(bodyBytes)),
+		}
+	}
+	// actionStop / actionDrop / actionAckDisabled — non-retryable.
+	return act, resp.StatusCode, hecCode, &hecError{
+		HTTPStatus: resp.StatusCode,
+		Code:       hecCode,
+		Action:     act,
+		Text:       sanitizeText(string(bodyBytes)),
+	}
+}
+
+// applyRequestHeaders sets all HTTP headers on the request. Consumer
+// headers are applied first; library-managed headers override them
+// (defence in depth — config validation already blocks restricted
+// header names).
+func (o *Output) applyRequestHeaders(req *http.Request, compressed bool) {
+	for k, v := range o.cfg.Headers {
+		req.Header.Set(k, v)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", o.cfg.UserAgent)
+	if compressed {
+		req.Header.Set("Content-Encoding", "gzip")
+	}
+	// Auth — must never be overridable by consumer headers.
+	req.Header.Set("Authorization", "Splunk "+o.cfg.Token)
+}
+
+// parseHECCode decodes a HEC response body and returns its `code`
+// field. Returns 0 on parse failure. Bounded by the caller's
+// io.LimitReader.
+func parseHECCode(body []byte) (int, error) {
+	if len(body) == 0 {
+		return 0, nil
+	}
+	var resp hecResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		// Malformed JSON — return 0 and let classify() rely on the
+		// HTTP status alone.
+		return 0, err
+	}
+	return resp.Code, nil
+}
+
+// parseRetryAfter parses a Retry-After header value. Accepts
+// delta-seconds (integer) and HTTP-date forms. Returns 0 if absent,
+// unparseable, non-positive, or describing a past date. Caps the
+// result at [maxRetryAfter] to prevent server-controlled DoS.
+func parseRetryAfter(val string) time.Duration {
+	if val == "" {
+		return 0
+	}
+	// Delta-seconds form (the common case).
+	if secs, err := strconv.Atoi(val); err == nil {
+		if secs <= 0 {
+			return 0
+		}
+		d := time.Duration(secs) * time.Second
+		if d > maxRetryAfter {
+			return maxRetryAfter
+		}
+		return d
+	}
+	// HTTP-date form: RFC 1123, RFC 850, ANSI C asctime.
+	for _, layout := range []string{time.RFC1123, time.RFC850, time.ANSIC} {
+		if t, err := time.Parse(layout, val); err == nil {
+			d := time.Until(t)
+			if d <= 0 {
+				return 0
+			}
+			if d > maxRetryAfter {
+				return maxRetryAfter
+			}
+			return d
+		}
+	}
+	// Unparseable — fall back to backoff.
+	return 0
+}
+
+// splunkBackoff returns a jittered exponential backoff duration:
+// backoffBase * 2^attempt with [0.5, 1.0) jitter, capped at backoffMax.
+//
+// SYNC: matches the pattern at webhook/http.go and loki/http.go
+// (different cap/base values). The helper is unexported and cannot
+// be shared across Go modules. Keep in sync when refining (#542).
+func splunkBackoff(attempt int) time.Duration {
+	exp := float64(attempt)
+	if exp > 20 {
+		exp = 20
+	}
+	d := backoffBase * time.Duration(math.Pow(2, exp))
+	if d > backoffMax {
+		d = backoffMax
+	}
+	var b [1]byte
+	if _, err := rand.Read(b[:]); err == nil {
+		jitter := 0.5 + float64(b[0])/512.0 // [0.5, 1.0)
+		d = time.Duration(float64(d) * jitter)
+	}
+	return d
+}
+
+// sanitizeText strips control characters from a HEC response text
+// before it appears in a log line. Limits to 256 characters.
+func sanitizeText(s string) string {
+	if len(s) > 256 {
+		s = s[:256]
+	}
+	b := make([]byte, 0, len(s))
+	for i := range s {
+		c := s[i]
+		if c == '\t' || c == ' ' || (c >= 0x21 && c <= 0x7e) {
+			b = append(b, c)
+		} else {
+			b = append(b, '?')
+		}
+	}
+	return string(b)
+}
