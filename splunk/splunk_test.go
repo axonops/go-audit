@@ -249,12 +249,22 @@ func TestNew_HTTPRejected(t *testing.T) {
 	assert.ErrorIs(t, err, splunk.ErrConfigInvalid)
 }
 
-func TestNew_SplunkCloudScheme_RejectedInPR1(t *testing.T) {
+// TestNew_SplunkCloudScheme_ExpandsAndConstructs verifies that
+// `splunkcloud://<stack>` is expanded to the canonical HTTPS URL
+// during construction. The stub server is unreachable (no real
+// Splunk Cloud DNS in tests), so we DisableStartupVerification and
+// assert the URL rewrite + successful construction.
+func TestNew_SplunkCloudScheme_ExpandsAndConstructs(t *testing.T) {
 	cfg := validCfg("splunkcloud://acme-prod")
 	cfg.DisableStartupVerification = true
-	_, err := splunk.New(cfg, nil)
-	require.Error(t, err)
-	assert.ErrorIs(t, err, splunk.ErrPR1NotImplemented)
+	out, err := splunk.New(cfg, nil)
+	require.NoError(t, err)
+	require.NoError(t, out.Close())
+	// The URL must be rewritten to the canonical form (visible via
+	// the stored config — sanity check via Name() which derives from
+	// the URL host).
+	assert.Contains(t, out.Name(), "http-inputs-acme-prod.splunkcloud.com",
+		"Name() must reflect the expanded splunkcloud URL host")
 }
 
 func TestNew_AckModeRequired_RejectedInPR1(t *testing.T) {

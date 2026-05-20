@@ -202,9 +202,17 @@ type Config struct { //nolint:govet // fieldalignment: readability preferred (gr
 	// ============ Required ============
 
 	// URL is the HEC endpoint. Two accepted forms:
-	//   "https://splunk.example.com:8088"           - Splunk Enterprise
-	//   "splunkcloud://acme-prod"                   - Splunk Cloud stack
-	//                                                  shortcut (PR 2 — rejected in PR 1)
+	//   "https://splunk.example.com:8088"           - Splunk Enterprise / self-managed
+	//   "splunkcloud://acme-prod"                   - Splunk Cloud stack shortcut
+	//
+	// The `splunkcloud://<stack>` form is expanded at config validation
+	// to `https://http-inputs-<stack>.splunkcloud.com:443`. The stack
+	// name MUST match `^[a-z0-9][a-z0-9-]{0,62}$`. The shortcut form
+	// rejects any non-empty path, port, query, fragment, or opaque
+	// component (use the full `https://` form for non-standard cases),
+	// and rejects [Config.TLSCert] / [Config.TLSKey] (Splunk Cloud HEC
+	// does not support mTLS — use a self-managed HTTPS proxy with
+	// mTLS termination if mTLS is required).
 	URL string
 
 	// Token is the HEC token (opaque string). Required. Validated to
@@ -368,7 +376,7 @@ var validCloudStack = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
 // defaults to unset fields, and returns the first violation as a
 // wrapped [ErrConfigInvalid]. Idempotent. Mutates the receiver to
 // apply defaults.
-func (c *Config) Validate() error { //nolint:cyclop,gocyclo,funlen // long-but-flat validation; clarity > decomposition
+func (c *Config) Validate() error { //nolint:cyclop,gocyclo,funlen,gocognit // long-but-flat validation; clarity > decomposition
 	if c == nil {
 		return fmt.Errorf("%w: nil config", ErrConfigInvalid)
 	}
@@ -387,10 +395,29 @@ func (c *Config) Validate() error { //nolint:cyclop,gocyclo,funlen // long-but-f
 	}
 	switch u.Scheme {
 	case "splunkcloud":
-		// PR 1 rejects this scheme with a clear "PR 2" pointer.
-		// PR 2 validates the host against validCloudStack and
-		// expands to the Splunk Cloud HEC URL form.
-		return fmt.Errorf("%w: splunkcloud:// URL scheme is implemented in PR 2; use the full https://http-inputs-<stack>.splunkcloud.com URL in PR 1", ErrPR1NotImplemented)
+		// Expand to canonical Splunk Cloud HEC URL. The stack name
+		// lives in the host component (URL form
+		// `splunkcloud://<stack>`). Reject any non-empty path / port
+		// / query / fragment / opaque (e.g., `splunkcloud:foo` with
+		// no double-slash sets u.Opaque) — they make no sense for
+		// the shortcut form and a typo is more likely than intent.
+		if u.Opaque != "" || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.Port() != "" {
+			return fmt.Errorf("%w: splunkcloud:// URL must be the bare form splunkcloud://<stack> with no path, port, query, or fragment", ErrConfigInvalid)
+		}
+		if err := ValidateCloudStack(u.Host); err != nil {
+			return err
+		}
+		// Splunk Cloud HEC presents a public-CA-signed cert and does
+		// NOT support custom TLS material (mTLS client cert/key or
+		// custom CA bundle). Reject the ambiguous config rather than
+		// silently dropping the operator's settings — somebody who
+		// configured TLS material expects it to be used.
+		if c.TLSCert != "" || c.TLSKey != "" || c.TLSCA != "" {
+			return fmt.Errorf("%w: splunkcloud:// does not support custom TLS material (TLSCert/TLSKey/TLSCA); target https:// to a self-managed proxy with mTLS termination if required", ErrConfigInvalid)
+		}
+		// Rewrite to the canonical form. Idempotent: a re-Validate()
+		// observes https:// and takes the https branch directly.
+		c.URL = "https://http-inputs-" + u.Host + ".splunkcloud.com:443"
 	case "https":
 		// ok
 	case "http":

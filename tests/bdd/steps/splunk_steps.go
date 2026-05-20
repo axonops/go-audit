@@ -368,6 +368,16 @@ func registerSplunkSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 
 	ctx.Step(`^I construct a splunk output with URL "([^"]*)"$`, func(url string) error {
 		cfg := &splunk.Config{URL: url, Token: "t", AllowInsecureHTTP: true, DisableStartupVerification: true}
+		out, err := splunk.New(cfg, nil)
+		state.constructionErr = err
+		if err == nil {
+			state.output = out
+		}
+		return nil
+	})
+
+	ctx.Step(`^I construct a splunk output with URL "([^"]*)" and TLSCert "([^"]*)"$`, func(url, tlsCert string) error {
+		cfg := &splunk.Config{URL: url, Token: "t", AllowInsecureHTTP: true, DisableStartupVerification: true, TLSCert: tlsCert}
 		_, err := splunk.New(cfg, nil)
 		state.constructionErr = err
 		return nil
@@ -539,6 +549,39 @@ func registerSplunkSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^construction should fail with ErrPR1NotImplemented$`, func() error {
 		if !errors.Is(state.constructionErr, splunk.ErrPR1NotImplemented) {
 			return fmt.Errorf("construction error = %v; want ErrPR1NotImplemented", state.constructionErr)
+		}
+		return nil
+	})
+
+	ctx.Step(`^construction should succeed$`, func() error {
+		if state.constructionErr != nil {
+			return fmt.Errorf("construction failed: %v", state.constructionErr)
+		}
+		return nil
+	})
+
+	ctx.Step(`^the output's URL should equal "([^"]*)"$`, func(want string) error {
+		// Output does not expose URL directly. Assert via Name(),
+		// which is "splunk:<host>" computed from the (rewritten) URL.
+		// For URL https://http-inputs-acme-prod.splunkcloud.com:443
+		// the Name is "splunk:http-inputs-acme-prod.splunkcloud.com:443".
+		if state.output == nil {
+			return fmt.Errorf("output is nil — construction did not succeed")
+		}
+		// Strip scheme, take host:port from `want`.
+		const prefix = "https://"
+		if !strings.HasPrefix(want, prefix) {
+			return fmt.Errorf("test fixture URL must start with https:// — got %q", want)
+		}
+		hostPort := strings.TrimPrefix(want, prefix)
+		// Trailing path components, if any, are dropped — the test
+		// fixtures only assert host:port equality.
+		if i := strings.Index(hostPort, "/"); i >= 0 {
+			hostPort = hostPort[:i]
+		}
+		wantName := "splunk:" + hostPort
+		if state.output.Name() != wantName {
+			return fmt.Errorf("Name() = %q; want %q (derived from URL %q)", state.output.Name(), wantName, want)
 		}
 		return nil
 	})

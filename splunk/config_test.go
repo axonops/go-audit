@@ -194,13 +194,6 @@ func TestValidate_BoundsTable(t *testing.T) { //nolint:funlen // table-driven by
 			wantErr: splunk.ErrConfigInvalid,
 		},
 		{
-			name: "splunkcloud:// scheme rejected in PR 1",
-			mutate: func(c *splunk.Config) {
-				c.URL = "splunkcloud://acme-prod"
-			},
-			wantErr: splunk.ErrPR1NotImplemented,
-		},
-		{
 			name: "AckModeBestEffort rejected in PR 1",
 			mutate: func(c *splunk.Config) {
 				c.AckMode = splunk.AckModeBestEffort
@@ -291,4 +284,116 @@ func TestValidateCloudStack(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestConfig_SplunkCloud_ExpandsCorrectly verifies that a
+// `splunkcloud://<stack>` URL is rewritten in-place by Validate() to
+// the canonical Splunk Cloud HEC URL form.
+func TestConfig_SplunkCloud_ExpandsCorrectly(t *testing.T) {
+	cfg := validCfgForValidate()
+	cfg.URL = "splunkcloud://acme-prod"
+	require.NoError(t, cfg.Validate())
+	assert.Equal(t, "https://http-inputs-acme-prod.splunkcloud.com:443", cfg.URL,
+		"Validate() must rewrite the URL to the canonical Splunk Cloud HEC form")
+}
+
+// TestConfig_SplunkCloud_Idempotent verifies that calling Validate()
+// twice on the same config is safe: the second call observes the
+// already-rewritten https:// URL and takes the https branch.
+func TestConfig_SplunkCloud_Idempotent(t *testing.T) {
+	cfg := validCfgForValidate()
+	cfg.URL = "splunkcloud://acme-prod"
+	require.NoError(t, cfg.Validate())
+	rewritten := cfg.URL
+	require.NoError(t, cfg.Validate(), "second Validate() must succeed")
+	assert.Equal(t, rewritten, cfg.URL,
+		"second Validate() must not mutate the URL again")
+}
+
+// TestConfig_SplunkCloud_RejectsInvalidStackName drives the
+// rejection list from the issue body's AC 17. Each entry must fail
+// Validate() with ErrConfigInvalid.
+func TestConfig_SplunkCloud_RejectsInvalidStackName(t *testing.T) {
+	tests := []struct {
+		name string
+		url  string
+	}{
+		{"dot in stack", "splunkcloud://acme-prod.evil.com"},
+		{"at sign in stack", "splunkcloud://acme@evil.com"},
+		{"path appended", "splunkcloud://acme/path"},
+		{"port appended", "splunkcloud://acme:1234"},
+		{"space in stack", "splunkcloud://acme prod"},
+		{"cyrillic homograph", "splunkcloud://аcme-prod"}, // leading Cyrillic 'а'
+		{"empty stack", "splunkcloud://"},
+		{"64-char stack", "splunkcloud://" + strings.Repeat("a", 64)},
+		{"query appended", "splunkcloud://acme?foo=bar"},
+		{"fragment appended", "splunkcloud://acme#frag"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := validCfgForValidate()
+			cfg.URL = tc.url
+			err := cfg.Validate()
+			require.Error(t, err)
+			assert.ErrorIs(t, err, splunk.ErrConfigInvalid)
+		})
+	}
+}
+
+// TestConfig_SplunkCloud_RejectionPrecedence pins which rejection
+// fires first when a URL has BOTH a structural fault (path/port/
+// query/fragment) AND a bad stack name. Structural errors fire
+// first — they're more actionable for the operator. Code-reviewer
+// follow-up: anchor the precedence so a future refactor that swaps
+// the order is caught by this test, not by an angry user.
+func TestConfig_SplunkCloud_RejectionPrecedence(t *testing.T) {
+	t.Run("structural error fires before stack-name error", func(t *testing.T) {
+		cfg := validCfgForValidate()
+		cfg.URL = "splunkcloud://has.dot/and-path" // both bad
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "must be the bare form",
+			"structural rejection message should fire before stack-name rejection")
+	})
+	t.Run("stack-name error fires for content-only fault", func(t *testing.T) {
+		cfg := validCfgForValidate()
+		cfg.URL = "splunkcloud://HAS_UPPERCASE"
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "splunkcloud stack name",
+			"content rejection should mention stack name")
+	})
+}
+
+// TestConfig_SplunkCloud_WithCustomTLSMaterial_Rejected verifies
+// that `splunkcloud://` rejects ANY custom TLS material — TLSCert,
+// TLSKey, or TLSCA. Splunk Cloud presents a public-CA-signed cert;
+// silently dropping the operator's TLS settings would be a security
+// surprise.
+func TestConfig_SplunkCloud_WithCustomTLSMaterial_Rejected(t *testing.T) {
+	t.Run("TLSCert set", func(t *testing.T) {
+		cfg := validCfgForValidate()
+		cfg.URL = "splunkcloud://acme-prod"
+		cfg.TLSCert = "/path/to/client.crt"
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.ErrorIs(t, err, splunk.ErrConfigInvalid)
+		assert.Contains(t, err.Error(), "does not support custom TLS material")
+	})
+	t.Run("TLSKey set", func(t *testing.T) {
+		cfg := validCfgForValidate()
+		cfg.URL = "splunkcloud://acme-prod"
+		cfg.TLSKey = "/path/to/client.key"
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.ErrorIs(t, err, splunk.ErrConfigInvalid)
+	})
+	t.Run("TLSCA set", func(t *testing.T) {
+		cfg := validCfgForValidate()
+		cfg.URL = "splunkcloud://acme-prod"
+		cfg.TLSCA = "/path/to/ca.crt"
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.ErrorIs(t, err, splunk.ErrConfigInvalid)
+	})
 }

@@ -128,8 +128,30 @@ Feature: Splunk HEC Output
     Then the splunk receiver should have received exactly 1 request within 10 seconds
     And the request body should stream-decode to exactly 5 JSON objects
 
-  # --- Splunk-Cloud-stack rejection (PR 1 only — PR 2 enables it) ---
+  # --- Splunk Cloud URL expansion ---
 
-  Scenario: splunkcloud:// URL scheme rejected in PR 1
+  Scenario: splunkcloud://acme-prod expands to the canonical HEC URL
     When I construct a splunk output with URL "splunkcloud://acme-prod"
-    Then construction should fail with ErrPR1NotImplemented
+    Then construction should succeed
+    And the output's URL should equal "https://http-inputs-acme-prod.splunkcloud.com:443"
+
+  Scenario Outline: splunkcloud:// rejects invalid stack name <input>
+    When I construct a splunk output with URL "<input>"
+    Then construction should fail with ErrConfigInvalid
+
+    Examples:
+      | input                              |
+      | splunkcloud://acme-prod.evil.com   |
+      | splunkcloud://acme@evil.com        |
+      | splunkcloud://acme/path            |
+      | splunkcloud://acme:1234            |
+      | splunkcloud://acme prod            |
+      | splunkcloud://                     |
+      | splunkcloud://acme?q=1             |
+      | splunkcloud://acme#frag            |
+      | splunkcloud://HAS_UPPERCASE        |
+      | splunkcloud://-leading-hyphen      |
+
+  Scenario: splunkcloud:// with mTLS is rejected
+    When I construct a splunk output with URL "splunkcloud://acme-prod" and TLSCert "/p.crt"
+    Then construction should fail with ErrConfigInvalid
