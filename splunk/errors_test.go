@@ -75,6 +75,7 @@ func TestClassify_FullTable(t *testing.T) {
 		{"code 18 — HEC unhealthy (HTTP 503)", 503, 18, actionRetry},
 		{"code 19 — HEC queues full (HTTP 503)", 503, 19, actionRetry},
 		{"code 20 — HEC overloaded (HTTP 503)", 503, 20, actionRetry},
+		{"code 21 — undocumented but in the 0-27 range (HTTP 503 → retry)", 503, 21, actionRetry},
 		{"code 23 — Server shutting down (HTTP 503)", 503, 23, actionRetry},
 		{"unknown 5xx code — retry", 500, 999, actionRetry},
 

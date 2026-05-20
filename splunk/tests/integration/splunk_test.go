@@ -97,7 +97,7 @@ func newSplunkOutput(t *testing.T, mutate func(*splunk.Config)) *splunk.Output {
 	cfg := &splunk.Config{
 		URL:                        splunkURL,
 		Token:                      splunkToken,
-		Sourcetype:                 "axonops:audit",
+		Sourcetype:                 "audit:event",
 		Source:                     "audit",
 		Index:                      "main",
 		BatchSize:                  10,
@@ -209,7 +209,7 @@ func TestSplunkIntegration_EventEndpoint_SendAndSearch(t *testing.T) {
 	require.NoError(t, out.Write(event))
 
 	// Search for the marker; should land exactly once.
-	hits := waitForEvent(t, fmt.Sprintf(`index=main sourcetype="axonops:audit" actor_id=%q`, m), 1)
+	hits := waitForEvent(t, fmt.Sprintf(`index=main sourcetype="audit:event" actor_id=%q`, m), 1)
 	require.GreaterOrEqual(t, len(hits), 1)
 	// The first hit's raw event should contain our marker.
 	first := hits[0]
@@ -235,7 +235,7 @@ func TestSplunkIntegration_BatchMultipleEvents(t *testing.T) {
 	}
 
 	// Wait for all N events to appear.
-	hits := waitForEvent(t, fmt.Sprintf(`index=main sourcetype="axonops:audit" actor_id=%q | stats count`, m), 1)
+	hits := waitForEvent(t, fmt.Sprintf(`index=main sourcetype="audit:event" actor_id=%q | stats count`, m), 1)
 	require.GreaterOrEqual(t, len(hits), 1)
 	countStr, _ := hits[0]["count"].(string)
 	assert.Equal(t, fmt.Sprintf("%d", n), countStr,
@@ -258,7 +258,7 @@ func TestSplunkIntegration_GzipCompression_SendAndSearch(t *testing.T) {
 
 	// Splunk should index the gzipped event identically to the
 	// uncompressed case.
-	hits := waitForEvent(t, fmt.Sprintf(`index=main sourcetype="axonops:audit" actor_id=%q`, m), 1)
+	hits := waitForEvent(t, fmt.Sprintf(`index=main sourcetype="audit:event" actor_id=%q`, m), 1)
 	require.GreaterOrEqual(t, len(hits), 1)
 }
 
@@ -277,7 +277,7 @@ func TestSplunkIntegration_RawEndpoint_SendAndSearch(t *testing.T) {
 	// /raw bypasses the envelope; metadata is set via the URL query
 	// string. Splunk still indexes the event under the configured
 	// sourcetype.
-	hits := waitForEvent(t, fmt.Sprintf(`index=main sourcetype="axonops:audit" actor_id=%q`, m), 1)
+	hits := waitForEvent(t, fmt.Sprintf(`index=main sourcetype="audit:event" actor_id=%q`, m), 1)
 	require.GreaterOrEqual(t, len(hits), 1)
 }
 

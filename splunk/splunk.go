@@ -25,11 +25,30 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"runtime/debug"
 	"sync/atomic"
 	"time"
 
 	"github.com/axonops/audit"
 )
+
+// libraryVersion returns the splunk module's version string parsed
+// from BuildInfo. Falls back to "0.x" for `go run`-from-source
+// builds where the module is not yet versioned. Used as the
+// default UserAgent for HEC requests (AC 34).
+func libraryVersion() string {
+	if info, ok := debug.ReadBuildInfo(); ok {
+		for _, m := range info.Deps {
+			if m.Path == "github.com/axonops/audit/splunk" && m.Version != "" {
+				return m.Version
+			}
+		}
+		if info.Main.Version != "" && info.Main.Version != "(devel)" {
+			return info.Main.Version
+		}
+	}
+	return "0.x"
+}
 
 // Compile-time interface assertions.
 var (
@@ -434,6 +453,13 @@ func (o *Output) flushBatch(ctx context.Context, batch []splunkEntry) { //nolint
 			delay := o.retryHint
 			if delay <= 0 {
 				delay = splunkBackoff(attempt)
+			}
+			// Cap server-supplied Retry-After at the configured
+			// RetryMaxDelay (AC 53) — even if HEC says "wait 5
+			// minutes", we never wait more than the operator-
+			// configured maximum between attempts.
+			if delay > o.cfg.RetryMaxDelay {
+				delay = o.cfg.RetryMaxDelay
 			}
 			o.retryHint = 0
 			select {

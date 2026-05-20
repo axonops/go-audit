@@ -18,6 +18,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,8 +27,43 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
+
+// isTLSError returns true when err is a TLS-handshake or
+// certificate-verification failure. These are non-retryable: a
+// mis-configured cert chain won't fix itself on the next attempt;
+// retrying just exhausts the budget without making progress.
+func isTLSError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var certErr *x509.UnknownAuthorityError
+	if errors.As(err, &certErr) {
+		return true
+	}
+	var hostErr *x509.HostnameError
+	if errors.As(err, &hostErr) {
+		return true
+	}
+	var invalidErr x509.CertificateInvalidError
+	if errors.As(err, &invalidErr) {
+		return true
+	}
+	var tlsErr *tls.RecordHeaderError
+	if errors.As(err, &tlsErr) {
+		return true
+	}
+	// String-match for "tls:" / "x509:" prefixes that don't match a
+	// concrete type (e.g. some handshake errors). Used as a fallback
+	// only.
+	msg := err.Error()
+	if strings.Contains(msg, "tls: ") || strings.Contains(msg, "x509: ") {
+		return true
+	}
+	return false
+}
 
 // Response-body drain limits. /ack carries the largest expected body
 // (an ackID map can contain hundreds of entries); /health and /event
@@ -85,6 +122,14 @@ func (o *Output) doPost(ctx context.Context, body []byte, compressed bool) (hecA
 		}
 		if ctx.Err() != nil {
 			return actionRetry, 0, 0, fmt.Errorf("audit/splunk: cancelled: %w", ctx.Err())
+		}
+		// TLS handshake errors and cert validation failures are NOT
+		// retryable — retrying against a misconfigured cert chain
+		// will just exhaust the retry budget without progress (AC
+		// 54). The errors.As probe finds a wrapped *tls.RecordHeaderError
+		// or x509 verification failure.
+		if isTLSError(err) {
+			return actionDrop, 0, 0, fmt.Errorf("audit/splunk: TLS error (non-retryable): %w", err)
 		}
 		return actionRetry, 0, 0, fmt.Errorf("audit/splunk: request failed: %w", err)
 	}

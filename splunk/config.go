@@ -327,7 +327,7 @@ func (c *Config) applyDefaults() {
 		c.Gzip = &t
 	}
 	if c.UserAgent == "" {
-		c.UserAgent = "audit-splunk/0.x"
+		c.UserAgent = "audit-splunk/" + libraryVersion()
 	}
 	if c.Sourcetype == "" {
 		c.Sourcetype = defaultSourcetype

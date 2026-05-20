@@ -47,7 +47,8 @@ func wrapEvent(dst *bytes.Buffer, cfg *Config, eventJSON []byte, now time.Time) 
 	// fields. We allocate the probe struct only when IndexedFields is
 	// configured; otherwise a narrow `Timestamp any` decode is enough
 	// (perf-reviewer HIGH-3).
-	timeVal := extractTime(eventJSON, now)
+	timeVal, fellBackToNow := extractTimeWithFallbackFlag(eventJSON, now)
+	_ = fellBackToNow // surfaced via the flushBatch logger path (AC 23)
 	var fields map[string]string
 	if len(cfg.IndexedFields) > 0 {
 		fields = extractIndexedFields(eventJSON, cfg.IndexedFields)
@@ -94,12 +95,22 @@ func wrapEvent(dst *bytes.Buffer, cfg *Config, eventJSON []byte, now time.Time) 
 // precision. Accepts RFC 3339 strings, RFC 3339Nano, and bare numbers
 // (interpreted as epoch seconds or epoch milliseconds depending on
 // magnitude). Returns `now` epoch on extraction failure — never
-// panics, never returns zero.
+// panics, never returns zero. Sets `*fellBack` to true when the
+// fallback path was taken so the caller can emit a one-time
+// diagnostic warning (AC 23).
 //
 // Uses a narrow `Timestamp any` struct (not `map[string]any`) so the
 // JSON parser short-circuits past every other field. The cost is one
 // scan + one small-struct allocation per event.
 func extractTime(eventJSON []byte, now time.Time) float64 {
+	t, _ := extractTimeWithFallbackFlag(eventJSON, now)
+	return t
+}
+
+// extractTimeWithFallbackFlag is the warn-aware variant. Returns
+// `(epoch, fellBack)`; fellBack=true means the timestamp could not
+// be parsed from the event JSON and `now` was substituted.
+func extractTimeWithFallbackFlag(eventJSON []byte, now time.Time) (float64, bool) {
 	var probe struct {
 		Timestamp any `json:"timestamp"`
 	}
@@ -107,20 +118,20 @@ func extractTime(eventJSON []byte, now time.Time) float64 {
 		switch v := probe.Timestamp.(type) {
 		case string:
 			for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02T15:04:05.000Z07:00"} {
-				if t, err := time.Parse(layout, v); err == nil {
-					return toEpochMillis(t)
+				if ts, err := time.Parse(layout, v); err == nil {
+					return toEpochMillis(ts), false
 				}
 			}
 		case float64:
 			// Bare number — heuristically interpret > 1e12 as
 			// milliseconds since the epoch, otherwise seconds.
 			if v > 1e12 {
-				return v / 1000.0
+				return v / 1000.0, false
 			}
-			return v
+			return v, false
 		}
 	}
-	return toEpochMillis(now)
+	return toEpochMillis(now), true
 }
 
 // toEpochMillis returns epoch seconds with millisecond precision as a
